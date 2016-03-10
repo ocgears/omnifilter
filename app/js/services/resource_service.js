@@ -17,14 +17,14 @@ module.exports = exports = function(app) {
     };
 
     Resource.prototype.getAll = function(callback) {
-      $http.get('http://localhost:3000/api' + this.resourceName)
+      $http.get('http://localhost:3000/' + this.resourceName)
         .then(handleSuccess(callback), handleFailure(callback));
     };
 
     Resource.prototype.create = function(data, callback) {
       $http({
         method: 'POST',
-        url: 'http://localhost:3000/api' + this.resourceName,
+        url: 'http://localhost:3000/' + this.resourceName,
         data: data,
         headers: {
           token: userAuth.getToken()
@@ -36,7 +36,7 @@ module.exports = exports = function(app) {
     Resource.prototype.update = function(data, callback) {
       $http({
         method: 'PUT',
-        url: 'http://localhost:3000/api' + this.resourceName + '/' + data._id,
+        url: 'http://localhost:3000/' + this.resourceName + '/' + data._id,
         data: data,
         headers: {
           token: userAuth.getToken()
@@ -48,7 +48,7 @@ module.exports = exports = function(app) {
     Resource.prototype.delete = function(data, callback) {
       $http({
         method: 'DELETE',
-        url: 'http://localhost:3000/api' + this.resourceName + '/' + data._id,
+        url: 'http://localhost:3000/' + this.resourceName + '/' + data._id,
         headers: {
           token: userAuth.getToken()
         }

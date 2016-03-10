@@ -5,7 +5,7 @@ module.exports = function(app) {
     var auth = {
       createUser: function(user, cb) {
         cb = cb || function(){};
-        $http.post('http://localhost:3000/api/signup', user)
+        $http.post('http://localhost:3000/signup', user)
           .then(function(res) {
             token = $window.localStorage.token = res.data.token;
             cb(null);
@@ -18,7 +18,7 @@ module.exports = function(app) {
         cb = cb || function(){};
         $http({
           method: 'GET',
-          url: 'http://localhost:3000/api/signin',
+          url: 'http://localhost:3000/signin',
           headers: {
             'Authorization': 'Basic ' + btoa((user.email + ':' + user.password))
           }
@@ -45,7 +45,7 @@ module.exports = function(app) {
         cb = cb || function(){};
         $http({
           method: 'GET',
-          url: 'http://localhost:3000/api/currentuser',
+          url: 'http://localhost:3000/currentuser',
           headers: {
             token: auth.getToken()
           }
