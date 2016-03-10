@@ -3,6 +3,7 @@ module.exports = function(app) {
     return {
       restrict: 'EAC',
       replace: true,
+      transclude: true,
       templateUrl: '/templates/photos/directives/photo_form_directive.html',
       scope: {
         buttonText: '@',
@@ -10,7 +11,7 @@ module.exports = function(app) {
         save: '&'
       },
       controller: function($scope) {
-        $scope.photo = $scope.photo || {author: 'author'};
+        $scope.photo = $scope.photo || {user_id : '5'};
       }
     };
   });
