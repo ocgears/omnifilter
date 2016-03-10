@@ -13,9 +13,6 @@ omnifilterApp.config(['$routeProvider', function(routes) {
       controller: 'OmnifilterController',
       templateUrl: '/views/omnifilter_view.html'
     })
-    .when('/', {
-      redirectTo: '/home'
-    })
     .when('/signup', {
       controller: 'SignupController',
       templateUrl: '/views/sign_up_in_view.html'
@@ -23,6 +20,9 @@ omnifilterApp.config(['$routeProvider', function(routes) {
     .when('/signin', {
       controller: 'SigninController',
       templateUrl: '/views/sign_up_in_view.html'
+    })
+    .when('/', {
+      redirectTo: '/signin'
     })
     .otherwise({
       templateUrl: '/views/four_oh_four.html'
