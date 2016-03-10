@@ -1,21 +1,44 @@
-<section class="Grid">
-    <form action="submit" class="Grid-cell">
-      <radiogroup>
-        <radio id="Sepia" label="Sepia" accesskey="S"/>
-        <radio id="Gaussian" label="Gaussian" accesskey="G"/>
-        <radio id="Black_and_White" label="Black_and_White"  accesskey="B" selected="true"/>
-      </radiogroup>
+<!-- Facebook Javascript SDK -->
+<div id="fb-root"></div>
+<script>(function(d, s, id) {
+  var js, fjs = d.getElementsByTagName(s)[0];
+  if (d.getElementById(id)) return;
+  js = d.createElement(s); js.id = id;
+  js.src = "//connect.facebook.net/en_US/sdk.js#xfbml=1&version=v2.5&appId=302386236565197";
+  fjs.parentNode.insertBefore(js, fjs);
+}(document, 'script', 'facebook-jssdk'));</script>
+
+<!--This is the container for the FILTERS section -->
+<section class="Grid" id="filters">
+  <form action="submit" class="Grid-cell">
+    <radiogroup>
+      <radio id="Sepia" label="Sepia" accesskey="S"/>
+      <radio id="Gaussian" label="Gaussian" accesskey="G"/>
+      <radio id="Black_and_White" label="Black_and_White"  accesskey="B" selected="true"/>
+    </radiogroup>
   </form>
 </section>
 
-  <!--This is the container for the SAVE AND SHARE section -->
-  <section class="save_and_share_box">
-    <!-- NEEDS WORK: insert FB share code from https://developers.facebook.com/docs/plugins/share-button-->
+<!--This is the container for the SAVE AND SHARE section -->
+<section class="save_and_share_box">
+  <!-- FB share code from https://developers.facebook.com/docs/plugins/share-button-->
+  <div class="fb-share-button" data-href="https://omnifilter.herokuapp.com/" data-layout="icon"></div>
 
-
-
-    <!-- NEEDS WORK: insert Twitter share code https://about.twitter.com/resources/buttons#tweet -->
-
+  <!-- Twitter share code https://about.twitter.com/resources/buttons#tweet -->
+  <a href="https://twitter.com/share" class="twitter-share-button"
+   data-text="Check out my rad Omnifilter-ed image" data-via="erikawh0">Tweet</a>
+  <script>
+    !function(d,s,id) {
+      var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';
+        if(!d.getElementById(id)) {
+          js=d.createElement(s);
+          js.id=id;
+          js.src=p+'://platform.twitter.com/widgets.js';
+          fjs.parentNode.insertBefore(js,fjs);
+        }
+      }
+      (document, 'script', 'twitter-wjs');
+  </script>
     <!-- NEEDS WORK: insert OmniWall share code here -->
     <p>Share on OmniWall!</p>
 
