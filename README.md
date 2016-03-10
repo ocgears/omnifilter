@@ -24,11 +24,20 @@ Or you can clone our repo directly from GITHUB
 Content model
 ```
 }
-author_id: String,
+user_id: String,
 title: String,
 createdOn: String,
 tags: [String],
-location: String
+location: String,
+content: { mixed type }
+}
+```
+
+User model
+```
+}
+email: String,
+password: String
 }
 ```
 
