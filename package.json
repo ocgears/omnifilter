@@ -1,6 +1,6 @@
 {
   "name": "omnifilter",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "\"Awesome filters applied to personal images\"",
   "main": "gulpfile.js",
   "directories": {},

@@ -56,4 +56,4 @@ Gene Troy [Github](https://github.com/energene)<br/>
 
 ## License
 
-This project is licensed under the terms of the MIT license. (view file titled 'LICENSE')
+This project is licensed under the terms of the MIT license. (view file titled [LICENSE](https://github.com/ocgears/omnifilter/blob/master/LICENSE))
