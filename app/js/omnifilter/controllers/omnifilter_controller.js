@@ -4,7 +4,7 @@ module.exports = function(app) {
   app.controller('OmnifilterController', ['$scope', '$http', 'cfResource',
   function($scope, $http, Resource) {
     $scope.omnifilter = [];
-    var omnifilterservice = Resource('/omnifilter');
+    var omnifilterservice = Resource('/');
 
     $scope.toggleEdit = function(omnifilter) {
       if (omnifilter.backup) {
