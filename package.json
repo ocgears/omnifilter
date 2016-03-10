@@ -43,7 +43,7 @@
     "jshint": "2.9.1"
   },
   "scripts": {
-    "test": "./server/test"
+    "mocha": "./server/test"
   },
   "keywords": [
     "image-filter",
