@@ -4,6 +4,7 @@ module.exports = function(app) {
   app.controller('PhotosController', ['$scope', '$http', 'cfResource',
   function($scope, $http, Resource) {
     $scope.photos = [];
+    $scope.newPhoto = {};
     // $scope.errors = [];
     var photoService = Resource('/photos');
 
