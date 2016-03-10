@@ -45,7 +45,7 @@ module.exports = function(app) {
         cb = cb || function(){};
         $http({
           method: 'GET',
-          url: 'http://localhost:3000/currentuser',
+          url: 'http://localhost:3000/verify',
           headers: {
             token: auth.getToken()
           }

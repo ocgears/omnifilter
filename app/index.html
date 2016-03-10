@@ -4,14 +4,14 @@
   <head>
     <meta charset="UTF-8">
     <title>OmniFilter</title>
-    <link rel="stylesheet" href="/sass/styles.scss">
+    <link rel="stylesheet" href="/sass/styles.css">
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,800' rel='stylesheet' type='text/css'>
   </head>
 
   <body data-ng-app="omnifilterApp">
-    <section data-ng-controller="authController" data-ng-init="updateUsername()">
+    <section data-ng-controller="authController" data-ng-init="updateEmail()">
       <header>
-        <p data-ng-if="username"> {{'Hello ' + username}} <a href data-ng-click="logout()">logout</a></p>
+        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
       </header>
       <main data-ng-view>
       </main>
@@ -19,7 +19,7 @@
 
   <footer>
   	<section class="footer">
-  		<p>Copyright 2016 Walk A Pup</p>
+  		<p>Footer placeholder</p>
   	</section>
   </footer>
 

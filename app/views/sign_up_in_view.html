@@ -7,3 +7,4 @@
   <input data-ng-if="signup" type="password" name="confirmation" data-ng-model="auth.confirmation">
   <button type="submit" data-ng-disabled="(signup && (auth.confirmation !== auth.password)) || authForm.$invalid">{{signup ? 'Create New User' : 'Sign In'}}</button>
 </form>
+<a href="#/signup">Sign up</a>
