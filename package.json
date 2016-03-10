@@ -46,7 +46,7 @@
     "jshint": "2.9.1"
   },
   "scripts": {
-    "test": "./node_modules/jshint/bin/jshint shut_up_travis.js"
+    "mocha": "./server/test"
   },
   "keywords": [
     "image-filter",
