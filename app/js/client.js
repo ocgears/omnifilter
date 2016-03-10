@@ -6,6 +6,8 @@ require('./services')(omnifilterApp);
 
 require('./omnifilter')(omnifilterApp);
 require('./auth')(omnifilterApp);
+require('./photos')(omnifilterApp);
+require('./users')(omnifilterApp);
 
 omnifilterApp.config(['$routeProvider', function(routes) {
   routes
