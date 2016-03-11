@@ -9,18 +9,15 @@
     <link rel='shortcut icon' type='image/x-icon' href='/favicon.ico' />
   </head>
 
-  <body data-ng-app="omnifilterApp" class="body">
-    <nav class="nav">
-      <section data-ng-controller="authController" data-ng-init="updateEmail()">
-          <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
-      </section>
-    </nav>
 
-  <header>
-  </header>
-
-  <main data-ng-view>
-  </main>
+  <body data-ng-app="omnifilterApp">
+    <section data-ng-controller="authController" data-ng-init="updateEmail()">
+      <header>
+        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
+      </header>
+      <main data-ng-view>
+      </main>
+    </section>
 
   <footer>
   	<section class="footer">

@@ -29,19 +29,20 @@ var userRouter = module.exports = exports = express.Router();
 // });
 
 userRouter.get('/verify', jwtAuth, (req, res) => {
+  console.log('in the userRouter.get and /verify path');
   User.find({
     user_id: req.user._id
-  }, (err, data) => {
-    if (err) {
-      return res.status(500).json({
-        msg: 'Error finding user'
-      })
-    }
+    }, (err, data) => {
+      if (err) {
+        return res.status(500).json({
+          msg: 'Error finding user'
+        })
+      }
 
-    res.status(200).json({
-      msg: 'User verified',
-      contents: data
-    });
+      res.status(200).json({
+        msg: 'User verified',
+        contents: data
+      });
   });
 });
 

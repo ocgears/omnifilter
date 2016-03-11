@@ -20,7 +20,6 @@ module.exports = exports = (req, res, next) => {
       res.status(500).json({ msg: 'DB error' });
     }
     if (!user) return res.status(401).json({ msg: 'Error finding user' });
-    // console.log('req.user in jwt :' + req.user);
     delete user.password;
     req.user = user;
     next();

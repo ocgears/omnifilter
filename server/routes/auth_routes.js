@@ -26,9 +26,9 @@ authRouter.post('/signup', jsonParser, (req, res) => {
   //   return res.status(400).json({ msg: 'Please enter a user name' });
   // }
 
-  if (!((req.body.password || '').length > 3)) {
+  if (!((req.body.password || '').length > 7)) {
     return res.status(400)
-      .json({ msg: 'Please enter a password longer than 3 characters' });
+      .json({ msg: 'Please enter a password longer than 7 characters' });
   }
 
   var newUser = new User();
