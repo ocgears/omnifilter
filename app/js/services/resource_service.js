@@ -62,6 +62,17 @@ module.exports = exports = function(app) {
         .then(handleSuccess(callback), handleFailure(callback));
     };
 
+    Resource.prototype.verify = function(data, callback) {
+      $http({
+        method: 'GET',
+        url: 'http://localhost:3000/verify',
+        headers: {
+          token: $window.localStorage.token
+        }
+      })
+        .then(handleSuccess(callback), handleFailure(callback));
+    };
+
     return function(resourceName) {
       return new Resource(resourceName);
     };
