@@ -4,10 +4,10 @@ const omnifilterApp = angular.module('omnifilterApp', ['ngRoute']);
 
 require('./services')(omnifilterApp);
 
-// require('./omnifilter')(omnifilterApp);
+require('./omnifilter')(omnifilterApp);
 require('./auth')(omnifilterApp);
 require('./photos')(omnifilterApp);
-// require('./users')(omnifilterApp);
+require('./users')(omnifilterApp);
 
 omnifilterApp.config(['$routeProvider', function(routes) {
   routes

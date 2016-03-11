@@ -35,7 +35,7 @@ module.exports = function(app) {
       $scope.photos.push(photo);
 
       photoService.verify(function(res){
-        if(!res.content) return console.log('res error' + res);
+        if(!res || !res.content) return console.log('res error : ' + res);
         console.log('res.content is : ' + res.content);
         photo.user_id = res.content.user._id;
 
