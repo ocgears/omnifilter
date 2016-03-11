@@ -5,12 +5,12 @@ module.exports = function(app) {
   function($scope, $http, Resource) {
     $scope.photos = [];
     $scope.newPhoto = {};
-    // $scope.errors = [];
+    $scope.errors = [];
     var photoService = Resource('/');
 
-    // $scope.dismissError = function(err) {
-    //   $scope.errors.splice($scope.errors.indexOf(err), 1);
-    // };
+    $scope.dismissError = function(err) {
+      $scope.errors.splice($scope.errors.indexOf(err), 1);
+    };
 
     $scope.toggleEdit = function(photo) {
       if (photo.backup) {
@@ -30,22 +30,27 @@ module.exports = function(app) {
     };
 
     $scope.createPhoto = function(photo) {
+      alert('OMFG');
+      $scope.photos.push(photo);
       photoService.verify(function(res){
         if(!res.content) return console.log('res error' + res);
         console.log('res.content is : ' + res.content);
-        
+        photo.user_id = res.content.user._id;
+
+        photoService.create(photo, function(err, res) {
+          if (err) {
+            $scope.photos.splice($scope.photos.indexOf(photo), 1);
+            $scope.errors.push('Could not save photo with name of ' + photo.name);
+            return console.log('quiting out the photoService.create with err: ' + err);
+          }
+          $scope.photos.splice($scope.photos.indexOf(photo), 1, res);
+          $scope.newPhoto = null;
+        });
+
       });
       // photo.user_id = $scope.user_id;
-      $scope.photos.push(photo);
-      photoService.create(photo, function(err, res) {
-        if (err) {
-          $scope.photos.splice($scope.photos.indexOf(photo), 1);
-          $scope.errors.push('Could not save photo with name of ' + photo.name);
-          return console.log(err);
-        }
-        $scope.photos.splice($scope.photos.indexOf(photo), 1, res);
-        $scope.newPhoto = null;
-      });
+
+
     };
 
     $scope.deletePhoto = function(photo) {
