@@ -3,6 +3,7 @@ var angular = require('angular');
 module.exports = function(app) {
   app.controller('PhotosController', ['$scope', '$http', 'cfResource',
   function($scope, $http, Resource) {
+    // console.log('we made a PhotosController!');
     $scope.photos = [];
     $scope.newPhoto = {};
     $scope.errors = [];
@@ -24,14 +25,15 @@ module.exports = function(app) {
 
     $scope.getAll = function() {
       photoService.getAll(function(err, res) {
-        if (err) return console.log(err);
+        if (err) return console.log('Error in getAll function : ' + err);
         $scope.photos = res;
       });
     };
 
-    $scope.create = function(photo) {
-      alert('OMFG');
+    $scope.createPhoto = function(photo) {
+
       $scope.photos.push(photo);
+
       photoService.verify(function(res){
         if(!res.content) return console.log('res error' + res);
         console.log('res.content is : ' + res.content);
@@ -48,9 +50,6 @@ module.exports = function(app) {
         });
 
       });
-      // photo.user_id = $scope.user_id;
-
-
     };
 
     $scope.deletePhoto = function(photo) {
