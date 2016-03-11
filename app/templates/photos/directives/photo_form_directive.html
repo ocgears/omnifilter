@@ -1,7 +1,9 @@
-<form data-ng-submit="createPhoto(photo)">
-  <label for="content">content:</label>
-  <input type="file" accept=".jpg,.jpeg" name="content" data-ng-model="photo.content">
+<form ng-submit="save(photo)">
+
+  <label for="newContent">Photo:</label>
+  <input type="file" accept=".jpg" name="newContent" ng-model="photo.content">
+
 
   <ng-transclude></ng-transclude>
-  <button type="submit">Submit</button>
+  <button type="submit">{{buttonText}}</button>
 </form>
