@@ -62,7 +62,7 @@ module.exports = exports = function(app) {
         .then(handleSuccess(callback), handleFailure(callback));
     };
 
-    Resource.prototype.verify = function(data, callback) {
+    Resource.prototype.verify = function(callback) {
       $http({
         method: 'GET',
         url: 'http://localhost:3000/verify',

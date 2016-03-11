@@ -1,4 +1,15 @@
 
+  <!-- <label for="dateCreated">Date Created:</label>
+  <input type="text" name="Date Created" data-ng-model="photo.dateCreated">
+
+  <label for="Title">Title:</label>
+  <input type="text" name="title" data-ng-model="photo.title">
+
+  <label for="Tags">Tags:</label>
+  <input type="text" name="tags" data-ng-model="photo.tags">
+
+  <label for="Location">Location:</label>
+  <input type="text" name="location" data-ng-model="photo.location"> -->
   <!--This is the container for the SAVE AND SHARE section -->
   <section class="save_and_share_box">
     <!-- NEEDS WORK: insert FB share code from https://developers.facebook.com/docs/plugins/share-button-->
