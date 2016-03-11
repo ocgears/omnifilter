@@ -6,13 +6,14 @@
     <title>OmniFilter</title>
     <link rel="stylesheet" href="/sass/styles.css">
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,800' rel='stylesheet' type='text/css'>
+    <link rel='shortcut icon' type='image/x-icon' href='/favicon.ico' />
   </head>
 
   <body data-ng-app="omnifilterApp" class="body">
     <nav class="nav">
       <section data-ng-controller="authController" data-ng-init="updateEmail()">
           <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
-      </section>  
+      </section>
     </nav>
 
   <header>
