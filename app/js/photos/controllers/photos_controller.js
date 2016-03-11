@@ -3,7 +3,7 @@ var angular = require('angular');
 module.exports = function(app) {
   app.controller('PhotosController', ['$scope', '$http', 'cfResource',
   function($scope, $http, Resource) {
-    console.log('we made a PhotosController!');
+    // console.log('we made a PhotosController!');
     $scope.photos = [];
     $scope.newPhoto = {};
     $scope.errors = [];
@@ -25,12 +25,12 @@ module.exports = function(app) {
 
     $scope.getAll = function() {
       photoService.getAll(function(err, res) {
-        if (err) return console.log(err);
+        if (err) return console.log('Error in getAll function : ' + err);
         $scope.photos = res;
       });
     };
 
-    $scope.create = function(photo) {
+    $scope.createPhoto = function(photo) {
 
       $scope.photos.push(photo);
 

@@ -4,16 +4,16 @@ const omnifilterApp = angular.module('omnifilterApp', ['ngRoute']);
 
 require('./services')(omnifilterApp);
 
-require('./omnifilter')(omnifilterApp);
+// require('./omnifilter')(omnifilterApp);
 require('./auth')(omnifilterApp);
 require('./photos')(omnifilterApp);
-require('./users')(omnifilterApp);
+// require('./users')(omnifilterApp);
 
 omnifilterApp.config(['$routeProvider', function(routes) {
   routes
     .when('/home', {
-      controller: 'OmnifilterController',
-      templateUrl: '/views/omnifilter_view.html'
+      controller: 'PhotosController',
+      templateUrl: '/views/photo_view.html'
     })
     .when('/signup', {
       controller: 'SignupController',
