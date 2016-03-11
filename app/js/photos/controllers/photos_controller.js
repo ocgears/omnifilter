@@ -29,7 +29,7 @@ module.exports = function(app) {
       });
     };
 
-    $scope.createPhoto = function(photo) {
+    $scope.create = function(photo) {
       alert('OMFG');
       $scope.photos.push(photo);
       photoService.verify(function(res){
