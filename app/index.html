@@ -8,14 +8,18 @@
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,800' rel='stylesheet' type='text/css'>
   </head>
 
-  <body data-ng-app="omnifilterApp">
-    <section data-ng-controller="authController" data-ng-init="updateEmail()">
-      <header>
-        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
-      </header>
-      <main data-ng-view>
-      </main>
-    </section>
+  <body data-ng-app="omnifilterApp" class="body">
+    <nav class="nav">
+      <section data-ng-controller="authController" data-ng-init="updateEmail()">
+          <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
+      </section>  
+    </nav>
+
+  <header>
+  </header>
+
+  <main data-ng-view>
+  </main>
 
   <footer>
   	<section class="footer">
