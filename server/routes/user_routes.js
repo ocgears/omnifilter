@@ -38,10 +38,12 @@ userRouter.get('/verify', jwtAuth, (req, res) => {
           msg: 'Error finding user'
         })
       }
-
+      var content = {user : {
+        _id : 1
+      }};
       res.status(200).json({
         msg: 'User verified',
-        contents: data
+        content: content
       });
   });
 });
