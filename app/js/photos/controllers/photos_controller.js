@@ -24,7 +24,7 @@ module.exports = function(app) {
 
     $scope.getAll = function() {
       photoService.getAll(function(err, res) {
-        if (err) return console.log('Error in getAll function : ' + err);
+        if (err) return; // console.log('Error in getAll function : ' + err);
         $scope.photos = res;
       });
     };
@@ -34,7 +34,11 @@ module.exports = function(app) {
       $scope.photos.push(photo);
 
       photoService.verify(function(res){
-        if(!res) return console.log('res error : ' + res);
+        if(!res) return console.log('Tried to verify with token to find _id, response is empty.');
+        if(res.err){
+          console.log('Error in response : ' + res.err);
+          return null;
+        }
         photo.user_id = res.content.user._id;
 
         photoService.create(photo, function(err, res) {

@@ -8,6 +8,7 @@ const basicHTTP = require(__dirname + '/../lib/basic_http');
 const authRouter = module.exports = exports = express.Router();
 
 authRouter.post('/signup', jsonParser, (req, res) => {
+  debugger;
   if ((req.body.email || '').length < 5) {
     return res.status(400).json({ msg: 'Please enter an email' });
   }
@@ -29,7 +30,6 @@ authRouter.post('/signup', jsonParser, (req, res) => {
   newUser.email = req.body.email;
   newUser.hashPassword(req.body.password);
   newUser.save((err, data) => {
-    debugger;
     if (err) return handleDBError(err, res);
     res.status(200).json({token: data.generateToken(), email: newUser.email}); //to be replaced with an auth token
   });

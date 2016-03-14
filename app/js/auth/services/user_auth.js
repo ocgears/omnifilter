@@ -7,10 +7,12 @@ module.exports = function(app) {
         cb = cb || function(){};
         $http.post('http://localhost:3000/signup', user)
           .then(function(res) {
+            console.log('createUser success promise, res status : ' + res.status);
             token = $window.localStorage.token = res.data.token;
             cb(null);
           }, function(res) {
-            cb(res.err);
+            console.log('createUser fail promise, res status : ' + res.status);
+            cb(res);
           });
       },
       signIn: function(user, cb) {
