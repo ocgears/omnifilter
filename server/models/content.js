@@ -1,5 +1,3 @@
-'use strict';
-
 const mongoose = require('mongoose');
 
 var contentSchema = new mongoose.Schema({
@@ -8,8 +6,8 @@ var contentSchema = new mongoose.Schema({
   createdOn: String,
   tags: [String],
   location: String,
-  content: {type: mongoose.Schema.Types.Mixed, required: true }
-  // timestamps: { createdAt: 'created_at' }
+  content: {type: mongoose.Schema.Types.Mixed, required: true },
+  createdAt: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('Content', contentSchema);

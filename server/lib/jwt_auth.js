@@ -1,4 +1,4 @@
-'use strict';
+'use strict'
 
 const User = require(__dirname + '/../models/user');
 const jwt = require('jsonwebtoken');
