@@ -4,7 +4,6 @@ module.exports = function(app) {
 
     $scope.updateEmail = function() {
       userAuth.getEmail(function(res) {
-      //  console.log(res);
         $scope.email = res.data.email;
       });
     };

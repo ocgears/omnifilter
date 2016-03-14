@@ -1,6 +1,6 @@
 'use strict';
 
 module.exports = exports = function(err, res) {
-  console.log('db error' + err);
-  res.status(500).json({ msg: 'server error' });
+  console.log('DB error : ' + err);
+  res.status(500).json({ msg: 'Server Error' });
 };

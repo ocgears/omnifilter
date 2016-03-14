@@ -3,7 +3,6 @@ var angular = require('angular');
 module.exports = function(app) {
   app.controller('PhotosController', ['$scope', '$http', 'cfResource',
   function($scope, $http, Resource) {
-    // console.log('we made a PhotosController!');
     $scope.photos = [];
     $scope.newPhoto = {};
     $scope.errors = [];
@@ -36,7 +35,6 @@ module.exports = function(app) {
 
       photoService.verify(function(res){
         if(!res) return console.log('res error : ' + res);
-        console.log('res.content is : ' + res.content);
         photo.user_id = res.content.user._id;
 
         photoService.create(photo, function(err, res) {
