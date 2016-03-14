@@ -13,6 +13,7 @@ module.exports = function(app) {
     $scope.logout = function() {
       userAuth.signOut(function() {
         $scope.email = null;
+        $location.path('/signin');
       });
     };
   }]);

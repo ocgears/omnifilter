@@ -14,7 +14,7 @@
 
   <button type="submit" data-ng-disabled="(signup && (auth.confirmation !== auth.password)) || authForm.$invalid">{{signup ? 'Create New User' : 'Sign In'}}</button>
 </form>
-<p data-ng-if="!signup">Ready to create an account? <button><a href="#/signup">{{'Sign up'}}</a></button></p>
-<p data-ng-if="signup">If you have an account, sign in here : <button><a href="#/signin">{{'Sign in'}}</a></button></p>
+<p data-ng-if="!signup">Ready to create an account? <button><a href="#/signup">Sign Up</a></button></p>
+<p data-ng-if="signup">If you have an account, sign in here : <button><a href="#/signin">Sign In</a></button></p>
 
 </section>

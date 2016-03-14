@@ -39,7 +39,8 @@ module.exports = function(app) {
         $window.localStorage.token = null;
         token = null;
         user = null;
-        if (cb) cb();
+        cb = cb || function(){};
+        cb();
       },
       getEmail: function(cb) {
         cb = cb || function(){};
