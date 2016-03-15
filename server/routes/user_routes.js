@@ -6,42 +6,30 @@ const basicHTTP = require(__dirname + '/../lib/basic_http');
 const jwtAuth = require(__dirname + '/../lib/jwt_auth');
 
 const User = require(__dirname + '/../models/user');
-// const Content = require(__dirname + '/../models/Content');
+
+const tokenFilter = (req, res, next) => {
+  if (!req.headers.token || req.headers.token == 'null') return res.status(200).json({ msg: 'No token yet, so there is no email to find. Goodbye.' });
+  next();
+};
 
 var userRouter = module.exports = exports = express.Router();
-//
-// userRouter.post('/newuser', jsonParser, (req, res) => {
-//   if (!req.body || !req.user) return console.log('No user or body.'); // take this chance to quit early
-//   var newUser = new User(req.body);
-//   newUser.user_id = req.user._id;
-//   newUser.save((err, data) => {
-//     if (err) {
-//       return res.status(500).json({
-//         msg: 'Error creating user'
-//       })
-//     }
-//
-//     res.status(200).json({
-//       msg: 'User created',
-//       createdUser: data
-//     });
-//   });
-// });
 
-userRouter.get('/verify', jwtAuth, (req, res) => {
-  console.log('in the userRouter.get and /verify path');
-  User.find({
-    user_id: req.user._id
+userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
+
+  User.findOne({
+    _id: req.user.id
     }, (err, data) => {
       if (err) {
+        console.log('Error in verify after sending id to db');
         return res.status(500).json({
           msg: 'Error finding user'
-        })
+        });
       }
 
       res.status(200).json({
         msg: 'User verified',
-        contents: data
+        email: data.email,
+        id: data.id
       });
   });
 });
@@ -55,7 +43,7 @@ userRouter.put('/usersettings/:id', jwtAuth, jsonParser, (req, res) => {
     if (err) {
       return res.status(500).json({
         msg: 'Error updating user'
-      })
+      });
     }
     res.status(200).json({
       msg: 'User updated'
@@ -70,7 +58,7 @@ userRouter.delete('/deleteuser/:id', jwtAuth, (req, res) => {
     if (err) {
       return res.status(500).json({
         msg: 'Error deleting user'
-      })
+      });
     }
     res.status(200).json({
       msg: 'User deleted'

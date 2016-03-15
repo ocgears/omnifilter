@@ -30,7 +30,7 @@ module.exports = exports = function(app) {
     Resource.prototype.create = function(data, callback) {
       $http({
         method: 'POST',
-        url: 'http://localhost:3000' + this.resourceName,
+        url: 'http://localhost:3000' + this.resourceName + 'newcontent',
         data: data,
         headers: {
           token: userAuth.getToken()

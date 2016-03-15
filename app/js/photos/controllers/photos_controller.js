@@ -3,7 +3,6 @@ var angular = require('angular');
 module.exports = function(app) {
   app.controller('PhotosController', ['$scope', '$http', 'cfResource',
   function($scope, $http, Resource) {
-    // console.log('we made a PhotosController!');
     $scope.photos = [];
     $scope.newPhoto = {};
     $scope.errors = [];
@@ -25,7 +24,7 @@ module.exports = function(app) {
 
     $scope.getAll = function() {
       photoService.getAll(function(err, res) {
-        if (err) return console.log('Error in getAll function : ' + err);
+        if (err) return; // console.log('Error in getAll function : ' + err);
         $scope.photos = res;
       });
     };
@@ -34,10 +33,11 @@ module.exports = function(app) {
 
       $scope.photos.push(photo);
 
-      photoService.verify(function(res){
-        if(!res || !res.content) return console.log('res error : ' + res);
-        console.log('res.content is : ' + res.content);
-        photo.user_id = res.content.user._id;
+      photoService.verify(function(err, res){
+        if(err) return console.log('Tried to verify with token to find _id, err is : ' + err);
+
+        photo.user_id = res.id;
+        photo.content = photo.file || 'Placeholder string';
 
         photoService.create(photo, function(err, res) {
           if (err) {

@@ -1,13 +1,20 @@
 <section>
 <form name="authForm" data-ng-submit="submit(auth)">
-  Have an account?
+  <span data-ng-if="!signup">Have an account? : </span>
+  <span data-ng-if="signup">Make an account? : </span>
+
   <label for="email">Email: </label>
   <input type="text" required name="email" data-ng-model="auth.email">
+
   <label for="password">Password</label>
   <input type="password" required name="password" data-ng-model="auth.password">
+
   <label data-ng-if="signup" for="confirmation">Confirmation:</label>
   <input data-ng-if="signup" type="password" name="confirmation" data-ng-model="auth.confirmation">
+
   <button type="submit" data-ng-disabled="(signup && (auth.confirmation !== auth.password)) || authForm.$invalid">{{signup ? 'Create New User' : 'Sign In'}}</button>
 </form>
-<p>Ready to create an account? <button><a href="#/signup">{{'Sign up'}}</a></button>
+<p data-ng-if="!signup">Ready to create an account? <button><a href="#/signup">Sign Up</a></button></p>
+<p data-ng-if="signup">If you have an account, sign in here : <button><a href="#/signin">Sign In</a></button></p>
+
 </section>
