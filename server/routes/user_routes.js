@@ -36,7 +36,7 @@ userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
 
 userRouter.put('/usersettings/:id', jwtAuth, jsonParser, (req, res) => {
   var updateUser = req.body;
-  delete updateUser._id;
+  // delete updateUser._id;
   User.update({
     _id: req.params.id
   }, updateUser, (err) => {
