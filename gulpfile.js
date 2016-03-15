@@ -41,7 +41,7 @@ gulp.task('webpack:dev', () => {
 });
 
 gulp.task('webpack:test', () => {
-  gulp.src(__dirname + '/test/test_entry.js')
+  gulp.src(__dirname + '/app/test/test_entry.js')
     .pipe(webpack({
       module: {
         loaders: [
@@ -55,9 +55,8 @@ gulp.task('webpack:test', () => {
         filename: 'test_bundle.js'
       }
     }))
-    .pipe(gulp.dest('test/'));
+    .pipe(gulp.dest(__dirname + '/test/'));
 });
-
 
 gulp.task('build:dev', ['webpack:dev', 'html:dev', 'css:dev', 'sass:dev', 'images:dev']);
 gulp.task('default', ['build:dev']);
