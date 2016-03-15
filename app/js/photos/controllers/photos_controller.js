@@ -33,13 +33,10 @@ module.exports = function(app) {
 
       $scope.photos.push(photo);
 
-      photoService.verify(function(res){
-        if(!res) return console.log('Tried to verify with token to find _id, response is empty.');
-        if(res.err){
-          console.log('Error in response : ' + res.err);
-          return null;
-        }
-        photo.user_id = res.content.user._id;
+      photoService.verify(function(err, res){
+        if(err) return console.log('Tried to verify with token to find _id, err is : ' + err);
+
+        photo.user_id = res.id;
 
         photoService.create(photo, function(err, res) {
           if (err) {

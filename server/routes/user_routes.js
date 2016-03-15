@@ -30,7 +30,8 @@ userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
 
       res.status(200).json({
         msg: 'User verified',
-        email: data.email
+        email: data.email,
+        id: data.id
       });
   });
 });
