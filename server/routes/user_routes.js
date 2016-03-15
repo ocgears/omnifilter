@@ -26,8 +26,6 @@ userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
         });
       }
 
-      debugger;
-
       res.status(200).json({
         msg: 'User verified',
         email: data.email,

@@ -8,7 +8,7 @@ const basicHTTP = require(__dirname + '/../lib/basic_http');
 const authRouter = module.exports = exports = express.Router();
 
 authRouter.post('/signup', jsonParser, (req, res) => {
-  debugger;
+
   if ((req.body.email || '').length < 5) {
     return res.status(400).json({ msg: 'Please enter an email' });
   }

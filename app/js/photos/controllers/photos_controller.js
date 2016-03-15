@@ -37,6 +37,7 @@ module.exports = function(app) {
         if(err) return console.log('Tried to verify with token to find _id, err is : ' + err);
 
         photo.user_id = res.id;
+        photo.content = photo.file || 'Placeholder string';
 
         photoService.create(photo, function(err, res) {
           if (err) {
