@@ -60,10 +60,8 @@
 
 	__webpack_require__(6)(omnifilterApp);
 
-	// require('./omnifilter')(omnifilterApp);
 	__webpack_require__(8)(omnifilterApp);
 	__webpack_require__(13)(omnifilterApp);
-	// require('./users')(omnifilterApp);
 
 	omnifilterApp.config(['$routeProvider', function(routes) {
 	  routes

@@ -16,7 +16,7 @@ contentRouter.get('/getlatest', (req, res) => {
 });
 
 contentRouter.get('/getall', jwtAuth, (req, res) => {
-  Content.find({contentId: req.user._id}, (err, data) => {
+  Content.find({contentId: req.user.id}, (err, data) => {
     if (err) return handleDBError(err, res);
 
     res.status(200).json(data);
@@ -27,7 +27,7 @@ contentRouter.get('/getall', jwtAuth, (req, res) => {
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
 
   var newContent = new Content(req.body);
-  newContent.user_id = req.user._id;
+  newContent.user_id = req.user.id;
   newContent.content = req.body.content;
   newContent.save((err, data) => {
 
@@ -39,8 +39,18 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
 
 contentRouter.post('/save', jwtAuth, jsonParser, (req, res) => {
   var newContent = new Content(req.body);
-  newContent.user_id = req.user._id;
+  newContent.user_id = req.user.id;
   newContent.save((err, data) => {
+    if (err) return handleDBError(err, res);
+
+    res.status(200).json(data);
+  });
+});
+
+contentRouter.put('/update', jwtAuth, jsonParser, (req, res) => {
+  var updateContent = new Content(req.body);
+  updateContent.user_id = req.user.id;
+  updateContent.save((err, data) => {
     if (err) return handleDBError(err, res);
 
     res.status(200).json(data);
@@ -49,7 +59,7 @@ contentRouter.post('/save', jwtAuth, jsonParser, (req, res) => {
 
 contentRouter.put('/preview/:id', jwtAuth, jsonParser, (req, res) => {
   var contentData = req.body;
-  delete contentData._id;
+  // delete contentData.id;
   Content.update({_id: req.params.id}, contentData, (err) => {
     if (err) return handleDBError(err, res);
 

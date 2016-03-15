@@ -30,6 +30,11 @@ gulp.task('images:dev', () => {
     .pipe(gulp.dest(__dirname + '/build/images'));
 });
 
+gulp.task('favicon:dev', () => {
+  gulp.src(__dirname + '/favicon.ico')
+    .pipe(gulp.dest(__dirname + '/build/'));
+});
+
 gulp.task('webpack:dev', () => {
   gulp.src('./app/js/client.js')
     .pipe(webpack({
@@ -58,5 +63,5 @@ gulp.task('webpack:test', () => {
     .pipe(gulp.dest(__dirname + '/test/'));
 });
 
-gulp.task('build:dev', ['webpack:dev', 'html:dev', 'css:dev', 'sass:dev', 'images:dev']);
+gulp.task('build:dev', ['webpack:dev', 'html:dev', 'css:dev', 'sass:dev', 'images:dev', 'favicon:dev']);
 gulp.task('default', ['build:dev']);
