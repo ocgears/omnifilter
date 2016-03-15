@@ -10,8 +10,8 @@ module.exports = function(app) {
             token = $window.localStorage.token = res.data.token;
             cb(null);
           }, function(res) {
-          //  console.log(res);
-            cb(res.err);
+            console.log('createUser fail promise, res status : ' + res.status);
+            cb(res);
           });
       },
       signIn: function(user, cb) {
@@ -27,7 +27,6 @@ module.exports = function(app) {
             token = $window.localStorage.token = res.data.token;
             cb(null);
           }, function(res) {
-        //    console.log(res);
             cb(res);
           });
       },
@@ -39,7 +38,8 @@ module.exports = function(app) {
         $window.localStorage.token = null;
         token = null;
         user = null;
-        if (cb) cb();
+        cb = cb || function(){};
+        cb();
       },
       getEmail: function(cb) {
         cb = cb || function(){};

@@ -19,4 +19,4 @@ app.use('/', authRouter);
 app.use('/', userRouter);
 
 var PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('server up on port: ' + PORT));
+app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));

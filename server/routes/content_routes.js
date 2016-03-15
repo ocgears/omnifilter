@@ -7,7 +7,6 @@ const jwtAuth = require(__dirname + '/../lib/jwt_auth');
 
 var contentRouter = module.exports = exports = express.Router();
 
-
 contentRouter.get('/getlatest', (req, res) => {
   Content.find({}, (err, data) => {
     if (err) return handleDBError(err, res);
@@ -26,12 +25,12 @@ contentRouter.get('/getall', jwtAuth, (req, res) => {
 });
 
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
-  debugger;
+
   var newContent = new Content(req.body);
   newContent.user_id = req.user._id;
   newContent.content = req.body.content;
   newContent.save((err, data) => {
-    debugger;
+
     if (err) return handleDBError(err, res);
 
     res.status(200).json(data);

@@ -19,10 +19,9 @@ describe('content API', () => {
     newUser.email = 'gene@gmail.com';
     newUser.hashPassword('password');
     newUser.save((err, data) => {
-      if(err) return console.log(err);
+      if(err) return console.log('Error in the before section of the test with : ' + err);
       userToken = data.generateToken();
       userId = data._id;
-      // console.log('made user, token is : ' + userToken);
       done();
     });
   });
@@ -45,7 +44,6 @@ describe('content API', () => {
   });
 
   it('should create content with a POST', (done) => {
-    // console.log('user token : ' + userToken);
     chai.request('localhost:3000')
       .post('/newcontent')
       .set({token: userToken})

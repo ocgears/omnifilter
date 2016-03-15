@@ -1,5 +1,3 @@
-'use strict';
-
 const zeroBuffer = require(__dirname + '/zero_buffer');
 
 module.exports = exports = (req, res, next) => {
@@ -19,7 +17,7 @@ module.exports = exports = (req, res, next) => {
       return next();
     }
 } catch (e) {
-  console.log('basic http error' + e);
+  console.log('basic http error : ' + e);
 }
   res.status(401).json({ msg: 'could not authenticate user' });
 };

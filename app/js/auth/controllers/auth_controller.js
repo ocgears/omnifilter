@@ -1,10 +1,11 @@
 module.exports = function(app) {
-  app.controller('authController', ['$scope', 'userAuth', function($scope, userAuth) {
+  app.controller('authController', ['$scope', '$location', 'userAuth', function($scope, $location, userAuth) {
     $scope.email = null;
 
     $scope.updateEmail = function() {
+      // If we are at the signup/in route, the user email is not known, so return.
+      // if($location.path() == '/signin' || $location.path() == '/signup') return null;
       userAuth.getEmail(function(res) {
-      //  console.log(res);
         $scope.email = res.data.email;
       });
     };
@@ -12,6 +13,7 @@ module.exports = function(app) {
     $scope.logout = function() {
       userAuth.signOut(function() {
         $scope.email = null;
+        $location.path('/signin');
       });
     };
   }]);

@@ -18,7 +18,7 @@ module.exports = function(app) {
 
     $scope.getAll = function() {
       omnifilterservice.getAll(function(err, res) {
-        if (err) return console.log('get all error' + err);
+        if (err) return console.log('get all error : ' + err);
         $scope.omnifilter = res;
       });
     };
@@ -26,7 +26,7 @@ module.exports = function(app) {
     $scope.createOmnifilter = function(omnifilter) {
       $scope.omnifilter.push(omnifilter);
       omnifilterservice.create(omnifilter, function(err, res) {
-        if (err) return console.log('create error' + err);
+        if (err) return console.log('create error : ' + err);
         $scope.omnifilter.splice($scope.omnifilter.indexOf(omnifilter), 1, res);
         $scope.newOmnifilter = null;
       });
@@ -35,7 +35,7 @@ module.exports = function(app) {
     $scope.deleteOmnifilter = function(omnifilter) {
       if (!omnifilter._id) return setTimeout(function() {$scope.deleteOmnifilter(omnifilter);}, 1000);
       omnifilterservice.delete(omnifilter, function(err, res) {
-        if (err) return console.log('delete error' + err);
+        if (err) return console.log('delete error : ' + err);
         $scope.omnifilter.splice($scope.omnifilter.indexOf(omnifilter), 1);
       });
     };
@@ -44,7 +44,7 @@ module.exports = function(app) {
       omnifilterservice.update(omnifilter, function(err, res) {
         omnifilter.editing = false;
         omnifilter.backup = null;
-        if (err) return console.log('update error' + err);
+        if (err) return console.log('update error : ' + err);
       });
     };
   }]);
