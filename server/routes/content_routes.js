@@ -15,7 +15,7 @@ var contentRouter = module.exports = exports = express.Router();
 // });
 
 contentRouter.get('/getall', jwtAuth, (req, res) => {
-  Content.find({contentId: req.user.id}, (err, data) => {
+  Content.find({contentId: req.user._id}, (err, data) => {
     if (err) return handleDBError(err, res);
 
     res.status(200).json(data);
@@ -25,7 +25,7 @@ contentRouter.get('/getall', jwtAuth, (req, res) => {
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
   debugger;
   var newContent = new Content(req.body);
-  newContent.user_id = req.user.id;
+  newContent.user_id = req.user._id;
   newContent.content = req.body.content;
   newContent.save((err, data) => {
 
@@ -37,7 +37,7 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
 
 contentRouter.post('/save', jwtAuth, jsonParser, (req, res) => {
   var newContent = new Content(req.body);
-  newContent.user_id = req.user.id;
+  newContent.user_id = req.user._id;
   newContent.save((err, data) => {
     if (err) return handleDBError(err, res);
 
