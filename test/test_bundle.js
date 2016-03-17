@@ -34827,6 +34827,12 @@
 	      expect($scope.email).toBe('tester');
 	    });
 
+	    it('should call to log out path', () => {
+	      $scope.email = 'testemail@super.net';
+	      $scope.logout();
+	      expect($scope.email).toBe(null);
+	    });
+
 	  });
 
 	});
