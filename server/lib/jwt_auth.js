@@ -15,6 +15,7 @@ module.exports = exports = (req, res, next) => {
   if (!decoded) res.status(401).json({ msg: 'could not authenticate user' });
 
   User.findOne({ _id: decoded.id }, (err, user) => {
+    // console.log('got a new user info from db : ' + user); // uses _id
     if (err) {
       console.log('find error in jwt error' + err);
       res.status(500).json({ msg: 'DB error' });

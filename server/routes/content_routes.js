@@ -1,4 +1,3 @@
-
 const express = require('express');
 const jsonParser = require('body-parser').json();
 const Content = require(__dirname + '/../models/content');
@@ -8,7 +7,7 @@ const jwtAuth = require(__dirname + '/../lib/jwt_auth');
 var contentRouter = module.exports = exports = express.Router();
 
 contentRouter.get('/getlatest', (req, res) => {
-  Content.find({}, (err, data) => {
+  Content.findOne({ contentId: req.user._id, $sortBy: createdOn}, (err, data) => {
     if (err) return handleDBError(err, res);
 
     res.status(200).json(data);
@@ -16,18 +15,17 @@ contentRouter.get('/getlatest', (req, res) => {
 });
 
 contentRouter.get('/getall', jwtAuth, (req, res) => {
-  Content.find({contentId: req.user.id}, (err, data) => {
+  Content.find({contentId: req.user._id}, (err, data) => {
     if (err) return handleDBError(err, res);
 
     res.status(200).json(data);
   });
-
 });
 
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
-
+  debugger;
   var newContent = new Content(req.body);
-  newContent.user_id = req.user.id;
+  newContent.user_id = req.user._id;
   newContent.content = req.body.content;
   newContent.save((err, data) => {
 
@@ -39,18 +37,8 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
 
 contentRouter.post('/save', jwtAuth, jsonParser, (req, res) => {
   var newContent = new Content(req.body);
-  newContent.user_id = req.user.id;
+  newContent.user_id = req.user._id;
   newContent.save((err, data) => {
-    if (err) return handleDBError(err, res);
-
-    res.status(200).json(data);
-  });
-});
-
-contentRouter.put('/update', jwtAuth, jsonParser, (req, res) => {
-  var updateContent = new Content(req.body);
-  updateContent.user_id = req.user.id;
-  updateContent.save((err, data) => {
     if (err) return handleDBError(err, res);
 
     res.status(200).json(data);

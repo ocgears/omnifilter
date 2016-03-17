@@ -31781,8 +31781,6 @@
 	    $scope.email = null;
 
 	    $scope.updateEmail = function() {
-	      // If we are at the signup/in route, the user email is not known, so return.
-	      // if($location.path() == '/signin' || $location.path() == '/signup') return null;
 	      userAuth.getEmail(function(res) {
 	        $scope.email = res.data.email;
 	      });
@@ -34808,6 +34806,35 @@
 	    expect(typeof authController).toBe('object');
 	    expect(typeof $scope.updateEmail).toBe('function');
 	  });
+
+
+	  describe('function calls', () => {
+	    beforeEach(angular.mock.inject(function(_$httpBackend_) {
+	      $httpBackend = _$httpBackend_;
+	      $ControllerConstructor('authController', {$scope});
+	    }));
+
+	    afterEach(() => {
+	      $httpBackend.verifyNoOutstandingExpectation();
+	      $httpBackend.verifyNoOutstandingRequest();
+	    });
+
+	    it('should call to verify path', () => {
+	      $scope.email = null;
+	      $httpBackend.expectGET('http://localhost:3000/verify').respond(200, {email: 'tester'});
+	      $scope.updateEmail();
+	      $httpBackend.flush();
+	      expect($scope.email).toBe('tester');
+	    });
+
+	    it('should call to log out path', () => {
+	      $scope.email = 'testemail@super.net';
+	      $scope.logout();
+	      expect($scope.email).toBe(null);
+	    });
+
+	  });
+
 	});
 
 
