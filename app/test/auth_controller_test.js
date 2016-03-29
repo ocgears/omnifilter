@@ -1,6 +1,6 @@
 var angular = require('angular');
 
-describe('auth controller 1', () => {
+describe('auth controller basic', () => {
   var $httpBackend;
   var $scope;
   var $ControllerConstructor;
