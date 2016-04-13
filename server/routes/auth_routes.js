@@ -3,7 +3,6 @@ const User = require(__dirname + '/../models/user');
 const jsonParser = require('body-parser').json();
 const handleDBError = require(__dirname + '/../lib/handle_db_error');
 const basicHTTP = require(__dirname + '/../lib/basic_http');
-// const emailValidation = require(__dirname + '/../lib/email_validation.js');
 
 const authRouter = module.exports = exports = express.Router();
 
@@ -12,14 +11,6 @@ authRouter.post('/signup', jsonParser, (req, res) => {
   if ((req.body.email || '').length < 5) {
     return res.status(400).json({ msg: 'Please enter an email' });
   }
-
-  // if (!emailValidation(req.body.email)) {
-  //   return res.status(400).json({ msg: 'Please enter a valid email' });
-  // }
-  //
-  // if (!(req.body.username || '').length) {
-  //   return res.status(400).json({ msg: 'Please enter a user name' });
-  // }
 
   if (!((req.body.password || '').length > 7)) {
     return res.status(400)
@@ -31,6 +22,7 @@ authRouter.post('/signup', jsonParser, (req, res) => {
   newUser.hashPassword(req.body.password);
   newUser.save((err, data) => {
     if (err) return handleDBError(err, res);
+    console.log(data);
     res.status(200).json({token: data.generateToken(), email: newUser.email}); //to be replaced with an auth token
   });
 });
