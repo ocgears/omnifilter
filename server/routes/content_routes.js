@@ -28,7 +28,6 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
   newContent.user_id = req.user._id;
   newContent.content = req.body.content;
   newContent.tOption = req.body.tOption;
-  console.log('req.body.tOption : ' + req.body.tOption);
   newContent.save((err, data) => {
 
     if (err) return handleDBError(err, res);

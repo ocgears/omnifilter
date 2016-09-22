@@ -54,7 +54,7 @@ module.exports = exports = function(app) {
     Resource.prototype.delete = function(data, callback) {
       $http({
         method: 'DELETE',
-        url: 'http://localhost:3000' + this.resourceName + '/' + data._id,
+        url: 'http://localhost:3000' + this.resourceName + 'delete/' + data._id,
         headers: {
           token: userAuth.getToken()
         }

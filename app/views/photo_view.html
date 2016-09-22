@@ -3,19 +3,29 @@
   <section data-ng-if="errors.length">
     <h2>Errors: </h2>
     <ul>
-    	<li data-ng-repeat="error in errors">{{error}}<button data-ng-click="dismissError(error)" alt="dismiss">X</button></li>
+    	<li data-ng-repeat="error in errors">
+         {{error}}
+         <button data-ng-click="dismissError(error)" alt="dismiss">
+           X</button></li>
     </ul>
   </section>
-
-  <ul data-ng-if="photos.length">
-    <li data-ng-repeat="photo in photos">
-      <img src={{photo.content}} width=200 />
-      Created at : {{photo.createdAt}}
-      <!-- <button data-ng-click="deletePhoto(photo)">Delete Photo</button>
-      <button data-ng-if="!photo.editing" data-ng-click="toggleEdit(photo)">Update Photo</button>
-      <button type="button" data-ng-click="toggleEdit(photo)">Cancel</button> -->
-    </li>
-  </ul>
+  <section data-ng-if="serverMessages.length">
+    <h2>Server Message: </h2>
+    <ul>
+    	<li data-ng-repeat="message in serverMessages">
+         {{message.msg}}
+         <button data-ng-click="dismissMessage(message)" alt="dismiss">
+           Dismiss </button></li>
+    </ul>
+  </section>
+  <p>
+    This form allows you to select an image file from your local computer with
+    the file picker. The image is then show in the preview section so you can
+    confirm it is the one you want. Then, select from the radio button options
+    the transformation you want to put on the image. Clicking transform will send
+    the image to the server and perform the transformation. It is then sent back
+    up and displayed on this webpage.
+  </p>
   <section>
     <input type="file" id="file" name="file"/>
     <button data-ng-click="createPhoto()">Upload for Preview</button>
@@ -30,7 +40,14 @@
       <button type="button" name="Cancel Preview" data-ng-click="cancelPreview()">Cancel</button>
       Click cancel button to clear the preview.
     </div>
-
   </section>
-
+  <section>
+    <ul data-ng-if="photos.length">
+      <li data-ng-repeat="photo in photos">
+        <img src={{photo.content}} width=200 data-ng-if="photo" />
+        Created at : {{photo.createdAt}}
+        <button data-ng-click="deletePhoto(photo)">Delete Photo</button>
+      </li>
+    </ul>
+  </section>
 </section>

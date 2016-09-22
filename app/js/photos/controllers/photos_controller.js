@@ -6,10 +6,15 @@ module.exports = function(app) {
     $scope.photos = [];
     $scope.newPhoto = {};
     $scope.errors = [];
+    $scope.serverMessages = [];
     var photoService = Resource('/');
 
     $scope.dismissError = function(err) {
       $scope.errors.splice($scope.errors.indexOf(err), 1);
+    };
+
+    $scope.dismissMessage = function(message) {
+      $scope.serverMessages.splice($scope.serverMessages.indexOf(message), 1);
     };
 
     $scope.toggleEdit = function(photo) {
@@ -23,16 +28,16 @@ module.exports = function(app) {
     };
 
     $scope.getAll = function() {
-      console.log('called getAll function');
       photoService.getAll((err, res) => {
-        if (err) return console.log('Error in getAll function : ' + err);
-        console.log('reply from getAll, results: ' + res.length);
+        if (err) {
+          $scope.errors.push(err);
+          return console.log('err in getAll : ' + err);
+        }
         $scope.photos = res;
       });
     };
 
     $scope.createPhoto = function() {
-      console.log('createPhoto called');
       var filePicked = document.getElementById('file').files[0];
       var readIt = new FileReader();
       readIt.onloadend = function(e) {
@@ -54,13 +59,14 @@ module.exports = function(app) {
     };
 
     $scope.deletePhoto = function(photo) {
-      if (!photo._id) return setTimeout(function() {$scope.deletePhoto(photo);}, 1000);
       photoService.delete(photo, function(err, res) {
         if (err) {
-          $scope.errors.push('could not delete photo ' + photo.name);
+          $scope.errors.push('Could not delete photo ' +
+            photo._id + ', ' + photo.name);
           return console.log(err);
         }
-        $scope.photos.splice($scope.photos.indexOf(photo), 1, res);
+        $scope.photos.splice($scope.photos.indexOf(photo), 1);
+        $scope.serverMessages.push(res);
       });
     };
 
@@ -84,7 +90,6 @@ module.exports = function(app) {
 
     $scope.transformPhoto = function() {
       $scope.tOption = $scope.tOption || '';
-      console.log('transform called called. option selected : ' + $scope.tOption);
       if (!document.getElementById('preview').src) {
         console.log('Image src for preview was not valid');
         return $scope.errors.push('The image source was not valid. Please select via preview.');
@@ -99,8 +104,9 @@ module.exports = function(app) {
           $scope.errors.push('Could not create photo on server.');
           return console.log('Error in transformPhoto create.' + err);
         }
-        $scope.photos.splice(0, 1, res);
+        $scope.photos.push(res);
       });
     };
+
   }]);
 };
