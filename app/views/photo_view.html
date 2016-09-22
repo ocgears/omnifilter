@@ -6,25 +6,31 @@
     	<li data-ng-repeat="error in errors">{{error}}<button data-ng-click="dismissError(error)" alt="dismiss">X</button></li>
     </ul>
   </section>
-  <ul>
-    <photo data-ng-repeat="photo in photos" data-photo-data="photo">
-      <button data-ng-click="deletePhoto(photo)">Delete Photo</button>
+
+  <ul data-ng-if="photos.length">
+    <li data-ng-repeat="photo in photos">
+      <img src={{photo.content}} width=200 />
+      Created at : {{photo.createdAt}}
+      <!-- <button data-ng-click="deletePhoto(photo)">Delete Photo</button>
       <button data-ng-if="!photo.editing" data-ng-click="toggleEdit(photo)">Update Photo</button>
-      <photo-form
-        data-ng-if="photo.editing"
-        data-save="updatePhoto(photo)"
-        data-button-text="Update Photo"
-        data-photo="photo"
-      >
-        <button type="button" data-ng-click="toggleEdit(photo)">Cancel</button>
-      </photo-form>
-    </photo>
+      <button type="button" data-ng-click="toggleEdit(photo)">Cancel</button> -->
+    </li>
   </ul>
-  <photo data-photo-data="newPhoto">
-    <photo-form
-      data-button-text="Create new Photo"
-      data-photo="newPhoto"
-      data-save="createPhoto(newPhoto)"
-    ></photo-form>
-  </photo>
+  <section>
+    <input type="file" id="file" name="file"/>
+    <button data-ng-click="createPhoto()">Upload for Preview</button>
+    <img src="" alt="Preview of image" id="preview" width=150 />
+    <div>
+      Select the type of transformation
+      <input type="radio" ng-model="tOption" name="transformOption" value="sharpen"/>Sharpen
+      <input type="radio" ng-model="tOption" name="transformOption" value="blur"/>Blur
+
+      <button id="transform" data-ng-click="transformPhoto()">Transform</button>
+      <br>
+      <button type="button" name="Cancel Preview" data-ng-click="cancelPreview()">Cancel</button>
+      Click cancel button to clear the preview.
+    </div>
+
+  </section>
+
 </section>

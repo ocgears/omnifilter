@@ -34,7 +34,7 @@ describe('content API', () => {
 
   it('should be able to GET all content', (done) => {
     chai.request('localhost:3000')
-      .get('/getall')
+      .get('/getAll')
       .set({token: userToken})
       .end((err, res) => {
         expect(err).to.eql(null);
