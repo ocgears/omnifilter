@@ -6,7 +6,8 @@ var contentSchema = new mongoose.Schema({
   createdOn: String,
   tags: [String],
   location: String,
-  content: {type: mongoose.Schema.Types.Mixed, required: true },
+  tOption: String,
+  content: { type: mongoose.Schema.Types.Mixed, required: true },
   createdAt: { type: Date, default: Date.now }
 });
 
