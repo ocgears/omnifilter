@@ -1,7 +1,6 @@
 const angular = require('angular');
 require('angular-route');
-require('ng-file-upload');
-const omnifilterApp = angular.module('omnifilterApp', ['ngRoute', 'ngFileUpload']);
+const omnifilterApp = angular.module('omnifilterApp', ['ngRoute']);
 
 require('./services')(omnifilterApp);
 

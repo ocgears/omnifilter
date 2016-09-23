@@ -23,13 +23,15 @@ Or you can clone our repo directly from GITHUB
 ### API
 Content model
 ```
-}
-user_id: String,
+{
+user_id: { type: String, required: true },
 title: String,
 createdOn: String,
 tags: [String],
 location: String,
-content: { mixed type }
+tOption: String,
+content: { type: mongoose.Schema.Types.Mixed, required: true },
+createdAt: { type: Date, default: Date.now }
 }
 ```
 
@@ -42,19 +44,7 @@ password: String
 ```
 
 ### Dependencies
-assert,
-babel-core,
-babel-loader,
-bluebird,
-ffi,
-html-loader,
-jpeg-js,
-lodash,
-nooocl,
-path,
-ref,
-underscore,
-webpack
+
 
 ### Authors
 Aaron Filson [Github](https://github.com/aaronfilson)<br/>
