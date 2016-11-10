@@ -22,8 +22,7 @@ authRouter.post('/signup', jsonParser, (req, res) => {
   newUser.hashPassword(req.body.password);
   newUser.save((err, data) => {
     if (err) return handleDBError(err, res);
-    console.log(data);
-    res.status(200).json({token: data.generateToken(), email: newUser.email}); //to be replaced with an auth token
+    res.status(200).json({ token: data.generateToken(), email: newUser.email });
   });
 });
 
