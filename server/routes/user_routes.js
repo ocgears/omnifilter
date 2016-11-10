@@ -1,15 +1,16 @@
 const express = require('express');
 const jsonParser = require('body-parser').json();
 const mongoose = require('mongoose');
-
-const basicHTTP = require(__dirname + '/../lib/basic_http');
+mongoose.thisIsNotUsed = null;
+require(__dirname + '/../lib/basic_http');
 const jwtAuth = require(__dirname + '/../lib/jwt_auth');
 
 const User = require(__dirname + '/../models/user');
 
 const tokenFilter = (req, res, next) => {
-  if (!req.headers.token || req.headers.token == 'null') return res.status(200)
-    .json({ msg: 'No token yet, so there is no email to find. Goodbye.' });
+  if (!req.headers.token || req.headers.token == 'null') {
+    return res.status(200).json({ msg: 'No token yet, so there is no email to find. Goodbye.' });
+  }
   next();
 };
 
@@ -19,19 +20,19 @@ userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
 
   User.findOne({
     _id: req.user.id
-    }, (err, data) => {
-      if (err) {
-        console.log('Error in verify after sending id to db');
-        return res.status(500).json({
-          msg: 'Error finding user'
-        });
-      }
-
-      res.status(200).json({
-        msg: 'User verified',
-        email: data.email,
-        id: data.id
+  }, (err, data) => {
+    if (err) {
+      console.log('Error in verify after sending id to db');
+      return res.status(500).json({
+        msg: 'Error finding user'
       });
+    }
+
+    res.status(200).json({
+      msg: 'User verified',
+      email: data.email,
+      id: data.id
+    });
   });
 });
 
