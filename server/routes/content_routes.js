@@ -38,6 +38,11 @@ MyPixelStream.prototype._end = function(done) {
   }
 
   this.push(bufTrans);
+  allPixels = null;
+  allPixels = [];
+  translatedPixels = null;
+  newPix = null;
+  bufTrans = null;
   done();
 };
 
@@ -60,11 +65,11 @@ contentRouter.get('/getAll', jwtAuth, (req, res) => {
 });
 
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
-  var newContent = new Content(req.body);
+  var newContent = new Content();
   newContent.user_id = req.user._id;
   newContent.tOption = req.body.tOption;
   newContent.content = req.body.content;
-  const tempBuffer = new Buffer(req.body.content.slice(23), 'base64');
+  var tempBuffer = new Buffer(req.body.content.slice(23), 'base64');
   var outArray = [];
   var myStream = Readable();
   var ws = Writable();
@@ -73,7 +78,7 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
     next();
   };
   ws.on('finish', function() {
-    const transfer = new Buffer(req.body.content.length - 23);
+    var transfer = new Buffer(req.body.content.length - 23);
     var i = 0;
     for (var k = 0; k < outArray.length; k++) {
       for (var l = 0; l < outArray[k].length; l++) {
@@ -82,15 +87,19 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
         }
       }
     }
+    outArray = null;
+    tempBuffer = null;
+
     newContent.content = 'data:image/jpeg;base64,';
     newContent.content += transfer.toString('base64');
-
+    transfer = null;
     newContent.save((err, data) => {
 
       if (err) return handleDBError(err, res);
 
       res.status(200).json(data);
     });
+    newContent = null;
   });
   myStream.push(tempBuffer);
   myStream.push(null);
