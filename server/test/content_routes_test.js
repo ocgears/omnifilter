@@ -51,7 +51,7 @@ describe('content API', () => {
       .end(function(err, res) {
         expect(err).to.eql(null);
         expect(res).to.have.status(200);
-        expect(res.body.content).to.eql('data:image/jpeg;base64,');
+        expect(res.body.content).to.eql('content');
         expect(res.body).to.have.property('_id');
         done();
       });
