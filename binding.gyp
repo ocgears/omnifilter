@@ -30,7 +30,7 @@
                   '/etc/OpenCL/vendors/',
                   '/opt/opencl-headers/include/CL'
                 ]
-            ]
+            }]
       ]
     }
   ]
