@@ -1,13 +1,14 @@
-const chai = require('chai');
-const chaiHttp = require('chai-http');
-chai.use(chaiHttp);
-const expect = chai.expect;
-const mongoose = require('mongoose');
-process.env.MONGOLAB_URI = 'mongodb://localhost/content_app_test';
-require(__dirname + '/../server');
-const Content = require(__dirname + '/../models/content');
+process.env.MONGOLAB_URI = 'mongodb://localhost/content_routes_test';
+require(__dirname + '/../server.js');
 const User = require(__dirname + '/../models/user');
+const Content = require(__dirname + '/../models/content');
+var baseUri = 'localhost:3000';
 
+var chai = require('chai');
+var chaiHTTP = require('chai-http');
+chai.use(chaiHTTP);
+var mongoose = require('mongoose');
+var expect = chai.expect;
 
 describe('content API', () => {
 
@@ -33,7 +34,7 @@ describe('content API', () => {
   });
 
   it('should be able to GET all content', (done) => {
-    chai.request('localhost:3000')
+    chai.request(baseUri)
       .get('/getAll')
       .set( { token: userToken } )
       .end((err, res) => {
@@ -44,7 +45,7 @@ describe('content API', () => {
   });
 
   it('should create content with a POST', (done) => {
-    chai.request('localhost:3000')
+    chai.request(baseUri)
       .post('/newcontent')
       .set( { token: userToken } )
       .send({ content: 'content' } )
@@ -67,7 +68,7 @@ describe('content API', () => {
     });
 
     it('should be able to update content', (done) => {
-      chai.request('localhost:3000')
+      chai.request(baseUri)
         .put('/preview/' + this.testContent._id)
         .set( { token: userToken } )
         .send( { name: 'new content name' } )
@@ -80,7 +81,7 @@ describe('content API', () => {
     });
 
     it('should be able to delete content', (done) => {
-      chai.request('localhost:3000')
+      chai.request(baseUri)
         .delete('/delete/' + this.testContent._id)
         .set( { token: userToken } )
         .end((err, res) => {

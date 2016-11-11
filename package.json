@@ -33,6 +33,7 @@
     "babel-core": "^6.6.5",
     "babel-loader": "^6.2.4",
     "chai": "^3.5.0",
+    "chai-http": "^3.0.0",
     "gulp": "^3.9.1",
     "gulp-minify-css": "^1.2.4",
     "gulp-sass": "^2.2.0",
