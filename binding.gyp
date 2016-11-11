@@ -29,9 +29,10 @@
                 'include_dirs': [
                   '/etc/OpenCL/vendors/',
                   '/opt/opencl-headers/include/CL'
-                ]
-            }]
-      ]
-    }
-  ]
+                ],
+                },
+            ],
+      ],
+    },
+  ],
 }

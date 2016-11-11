@@ -4,9 +4,9 @@ node_js:
 env:
   - CXX=g++-4.8
 script:
-  - TGT_DIR=/opt/opencl-headers/include/CL
-  - mkdir -p $TGT_DIR && cd $TGT_DIR
-  - wget https://github.com/KhronosGroup/OpenCL-Headers/blob/master/{opencl,cl_platform,cl,cl_ext,cl_gl,cl_gl_ext}.h
+  - /usr/bin/env/bash TGT_DIR=/opt/opencl-headers/include/CL
+  - /usr/bin/env/bash mkdir -p $TGT_DIR && cd $TGT_DIR
+  - /usr/bin/env/bash wget https://github.com/KhronosGroup/OpenCL-Headers/blob/master/{opencl,cl_platform,cl,cl_ext,cl_gl,cl_gl_ext}.h
 addons:
   apt:
     sources:
