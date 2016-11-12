@@ -10,16 +10,3 @@ before_script:
 script:
   - sleep 15
   - npm test
-  # - mongo mydb_test --eval 'db.addUser("travis", "test");'
-# env:
-#   - CXX=g++-4.8
-# script:
-#   -
-# addons:
-#   apt:
-#     sources:
-#       - ubuntu-toolchain-r-test
-#     packages:
-#       - g++-4.8
-#       - opencl-headers
-#       - nvidia-opencl-dev
