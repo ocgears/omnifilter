@@ -15,4 +15,10 @@ script:
   - gulp
   - gulp webpack:test
   - npm install -g karma
+  - npm install -g phantomjs-prebuilt
   - karma start
+  - ls
+  - cd ~
+  - ls
+  - karma start
+  - ./karma start
