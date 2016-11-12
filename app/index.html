@@ -13,7 +13,8 @@
     <nav></nav>
     <section data-ng-controller="authController" data-ng-init="updateEmail()">
       <header>
-        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
+        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a>
+           or Go <a href="#/home">Home</a></p>
       </header>
       <main data-ng-view>
       </main>

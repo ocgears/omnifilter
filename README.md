@@ -4,13 +4,14 @@
 ## Contents
 +   [Overview](https://github.com/ocgears/omnifilter#overview)
 +   [Usage](https://github.com/ocgears/omnifilter#usage)
-+   [API](https://github.com/ocgears/omnifilter#api)
 +   [Dependencies](https://github.com/ocgears/omnifilter#dependencies)
 +   [Authors](https://github.com/ocgears/omnifilter#authors)
 +   [License](https://github.com/ocgears/omnifilter#license)
 
 # Overview
-Application is still under development, thank you for your patience.
+The Omnifilter app is designed to enable the work of filtering images provided by a user on a multitude of server environments. As node.js is fantastic for making web apps, OpenCL is a way to harness the fantastic power of GPUs and multi-core CPUs. Initial work has been on the Mac OSX platform due to the standard installation of OpenCL. Enabling additional platforms is in the works.
+
+Our application is still under development, thank you for your patience.
 
 # Usage
 Installing on NPM
@@ -20,31 +21,20 @@ npm install omnifilter
 
 Or you can clone our repo directly from GITHUB
 
-### API
-Content model
-```
-{
-user_id: { type: String, required: true },
-title: String,
-createdOn: String,
-tags: [String],
-location: String,
-tOption: String,
-content: { type: mongoose.Schema.Types.Mixed, required: true },
-createdAt: { type: Date, default: Date.now }
-}
-```
-
-User model
-```
-}
-email: String,
-password: String
-}
-```
-
 ### Dependencies
-
+angular: ^1.5.0,
+angular-route: ^1.5.0,
+bcrypt: ^0.8.5,
+bindings: ^1.2.1,
+body-parser: ^1.15.2,
+express: ^4.13.4,
+jpg-stream: ^1.1.1,
+jsonwebtoken: ^5.7.0,
+mongoose: ^4.4.6,
+nan: ^2.4.0,
+node-gyp: ^3.4.0,
+path: ^0.12.7,
+pixel-stream: ^1.0.3
 
 ### Authors
 Aaron Filson [Github](https://github.com/aaronfilson)<br/>

@@ -19,22 +19,22 @@
     "angular-route": "^1.5.0",
     "bcrypt": "^0.8.5",
     "bindings": "^1.2.1",
+    "body-parser": "^1.15.2",
     "express": "^4.13.4",
     "jpg-stream": "^1.1.1",
     "jsonwebtoken": "^5.7.0",
-    "lodash": "^4.6.1",
     "mongoose": "^4.4.6",
     "nan": "^2.4.0",
     "node-gyp": "^3.4.0",
     "path": "^0.12.7",
-    "pixel-stream": "^1.0.3",
-    "underscore": "^1.8.3"
+    "pixel-stream": "^1.0.3"
   },
   "devDependencies": {
     "angular-mocks": "^1.5.0",
     "babel-core": "^6.6.5",
     "babel-loader": "^6.2.4",
     "chai": "^3.5.0",
+    "chai-http": "^3.0.0",
     "gulp": "^3.9.1",
     "gulp-minify-css": "^1.2.4",
     "gulp-sass": "^2.2.0",
@@ -47,6 +47,7 @@
     "webpack-stream": "^3.1.0"
   },
   "scripts": {
+    "test": " mocha ./server/test",
     "mocha": "./server/test",
     "install": "node-gyp rebuild"
   },

@@ -38,6 +38,11 @@ MyPixelStream.prototype._end = function(done) {
   }
 
   this.push(bufTrans);
+  allPixels = null;
+  allPixels = [];
+  translatedPixels = null;
+  newPix = null;
+  bufTrans = null;
   done();
 };
 
@@ -60,45 +65,68 @@ contentRouter.get('/getAll', jwtAuth, (req, res) => {
 });
 
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
-  var newContent = new Content(req.body);
+  if (req.body.content.length > 1000000) {
+    return res.status(500).json( { 'msg': 'Error: image too large' } );
+  }
+
+  var newContent = new Content();
   newContent.user_id = req.user._id;
   newContent.tOption = req.body.tOption;
-  newContent.content = req.body.content;
-  const tempBuffer = new Buffer(req.body.content.slice(23), 'base64');
-  var outArray = [];
-  var myStream = Readable();
-  var ws = Writable();
-  ws._write = function(chunk, enc, next) {
-    outArray.push(chunk);
-    next();
-  };
-  ws.on('finish', function() {
-    const transfer = new Buffer(req.body.content.length - 23);
-    var i = 0;
-    for (var k = 0; k < outArray.length; k++) {
-      for (var l = 0; l < outArray[k].length; l++) {
-        if (i < transfer.length) {
-          transfer.writeUInt8(outArray[k][l], i++);
+
+  if ( newContent.tOption === 'blur') {
+    var tempBuffer = new Buffer(req.body.content.slice(23), 'base64');
+    var outArray = [];
+    var myStream = Readable();
+    var ws = Writable();
+    ws._write = function(chunk, enc, next) {
+      outArray.push(chunk);
+      next();
+    };
+    ws.on('finish', function() {
+      var transfer = new Buffer(req.body.content.length - 23);
+      var i = 0;
+      for (var k = 0; k < outArray.length; k++) {
+        for (var l = 0; l < outArray[k].length; l++) {
+          if (i < transfer.length) {
+            transfer.writeUInt8(outArray[k][l], i++);
+          }
         }
       }
-    }
-    newContent.content = 'data:image/jpeg;base64,';
-    newContent.content += transfer.toString('base64');
+      outArray = null;
+      tempBuffer = null;
 
+      newContent.content = 'data:image/jpeg;base64,';
+      newContent.content += transfer.toString('base64');
+      transfer = null;
+      newContent.save((err, data) => {
+
+        if (err) return handleDBError(err, res);
+
+        res.status(200).json(data);
+      });
+      newContent = null;
+    });
+    try {
+      myStream.push(tempBuffer);
+      myStream.push(null);
+      myStream.pipe(new JPEGDecoder())
+      .pipe(new MyPixelStream())
+      .pipe(new JPEGEncoder())
+      .pipe(ws);
+    } catch (e) {
+      return console.log('Error in processing image: ', e);
+    }
+
+  } else {
+    newContent.content = req.body.content;
     newContent.save((err, data) => {
 
       if (err) return handleDBError(err, res);
 
       res.status(200).json(data);
     });
-  });
-  myStream.push(tempBuffer);
-  myStream.push(null);
-  myStream.pipe(new JPEGDecoder)
-  .pipe(new MyPixelStream)
-  .pipe(new JPEGEncoder)
-  .pipe(ws);
-
+    newContent = null;
+  }
 });
 
 contentRouter.post('/save', jwtAuth, jsonParser, (req, res) => {
