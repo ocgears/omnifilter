@@ -4,8 +4,11 @@ node_js:
   - "4.2.3"
 services:
   - mongodb
+before_script:
+  - brew update
+  - brew outdated mongodb || brew upgrade mongodb
 script:
-  - sleep 15
+  - sleep 30
   - mongo mydb_test --eval 'db.addUser("travis", "test");'
 # env:
 #   - CXX=g++-4.8
