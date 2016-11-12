@@ -6,8 +6,11 @@ services:
   - mongodb
 before_script:
   - brew update
-  - brew outdated mongodb || brew upgrade mongodb
+  - brew list
+  - brew tap
+  - brew install mongodb
 script:
+  - mongodb
   - sleep 30
   - mongo mydb_test --eval 'db.addUser("travis", "test");'
 # env:
