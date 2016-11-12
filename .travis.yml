@@ -6,8 +6,8 @@ services:
   - mongodb
 before_script:
   - brew install mongodb
+  - brew services start mongodb
 script:
-  - mongod --config /usr/local/etc/mongod.conf
   - sleep 30
   - mongo mydb_test --eval 'db.addUser("travis", "test");'
 # env:
