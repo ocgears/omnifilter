@@ -5,6 +5,7 @@ node_js:
 services:
   - mongodb
 before_script:
+  - brew update
   - brew install mongodb
   - brew services start mongodb
 script:
@@ -13,4 +14,3 @@ script:
   - gulp
   - gulp webpack:test
   - karma start
-  
