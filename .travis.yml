@@ -11,6 +11,8 @@ before_script:
 script:
   - sleep 15
   - npm test
+  - npm install -g gulp
   - gulp
   - gulp webpack:test
+  - npm install -g karma
   - karma start
