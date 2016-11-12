@@ -8,8 +8,8 @@ before_script:
   - brew install mongodb
   - brew services start mongodb
 script:
-  - sleep 30
-  - mongo mydb_test --eval 'db.addUser("travis", "test");'
+  - sleep 15
+  # - mongo mydb_test --eval 'db.addUser("travis", "test");'
 # env:
 #   - CXX=g++-4.8
 # script:
