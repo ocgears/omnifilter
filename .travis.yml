@@ -4,6 +4,9 @@ node_js:
   - "4.2.3"
 services:
   - mongodb
+before_script:
+  - sleep 15
+  - ./mongod --dbpath=./db
 # env:
 #   - CXX=g++-4.8
 # script:
