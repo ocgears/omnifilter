@@ -6,7 +6,7 @@ services:
   - mongodb
 before_script:
   - sleep 15
-  - mongod
+  - mongo mydb_test --eval 'db.addUser("travis", "test");'
 # env:
 #   - CXX=g++-4.8
 # script:
