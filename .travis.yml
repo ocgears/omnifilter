@@ -9,6 +9,7 @@ before_script:
   - brew services start mongodb
 script:
   - sleep 15
+  - npm test
   # - mongo mydb_test --eval 'db.addUser("travis", "test");'
 # env:
 #   - CXX=g++-4.8
