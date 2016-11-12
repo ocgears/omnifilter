@@ -5,12 +5,9 @@ node_js:
 services:
   - mongodb
 before_script:
-  - brew update
-  - brew list
-  - brew tap
   - brew install mongodb
 script:
-  - mongodb
+  - mongod --config /usr/local/etc/mongod.conf
   - sleep 30
   - mongo mydb_test --eval 'db.addUser("travis", "test");'
 # env:
