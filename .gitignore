@@ -3,8 +3,8 @@ build/**/**
 node_modules
 node_modules/**
 **/node_modules
-test/test_bundle.js
-test/**
+app/test/bndl/test_bundle.js
+app/test/bndl/**
 
 # Compiled source #
 ###################

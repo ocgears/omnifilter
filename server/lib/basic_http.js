@@ -16,8 +16,8 @@ module.exports = exports = (req, res, next) => {
       };
       return next();
     }
-} catch (e) {
-  console.log('basic http error : ' + e);
-}
+  } catch (e) {
+    console.log('basic http error : ' + e);
+  }
   res.status(401).json({ msg: 'could not authenticate user' });
 };

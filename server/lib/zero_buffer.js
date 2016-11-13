@@ -1,4 +1,4 @@
-'use strict'
+'use strict';
 
 module.exports = exports = function(buf) {
   for (let i = 0; i < buf.length; i++) {

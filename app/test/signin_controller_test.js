@@ -1,7 +1,7 @@
 var angular = require('angular');
 
 describe('sign in controller basic', () => {
-  var $httpBackend;
+  // var $httpBackend;
   var $scope;
   var $ControllerConstructor;
 
@@ -15,7 +15,7 @@ describe('sign in controller basic', () => {
 
   it('should be able to make a controller', () => {
 
-    var SigninController = $ControllerConstructor('SigninController', {$scope});
+    var SigninController = $ControllerConstructor('SigninController', { $scope });
     expect(typeof SigninController).toBe('object');
     expect(typeof $scope.submit).toBe('function');
   });
@@ -49,7 +49,8 @@ describe('sign in controller basic', () => {
   //       return;
   //     };
   //     $scope.email = null;
-  //     $httpBackend.expectGET('http://localhost:3000/signin').respond(200, {token:'tokenstring', email: 'tester'});
+  //     $httpBackend.expectGET('http://localhost:3000/signin')
+  //     .respond(200, {token:'tokenstring', email: 'tester'});
   //     debugger;
   //     $scope.submit(user);
   //     $httpBackend.flush();

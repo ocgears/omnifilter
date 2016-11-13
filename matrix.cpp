@@ -1,17 +1,17 @@
 #ifndef _WIN32
-    #include <unistd.h>
-    #endif
-
-#include <nan.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include <unistd.h>
+#endif
 
 #ifdef __APPLE__
 #include <OpenCL/opencl.h>
 #else
 #include <CL/cl.h>
 #endif
+
+#include <nan.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 
 #define MEM_SIZE (210000)
 #define MAX_SOURCE_SIZE (0x100000)
@@ -21,7 +21,6 @@ using v8::Local;
 using Nan::New;
 using Nan::Null;
 using Nan::To;
-
 
 NAN_METHOD(Blurry) {
 
@@ -46,7 +45,6 @@ NAN_METHOD(Blurry) {
   int width;
   if (maybeInt.IsNothing() == false) {
     width = maybeInt.FromJust();
-    // printf("pixel width: %d \n", width);
 
   } else {
     printf("Error converting width \n");
@@ -57,7 +55,6 @@ NAN_METHOD(Blurry) {
   int height;
   if (maybeInt2.IsNothing() == false) {
     height = maybeInt2.FromJust();
-    // printf("pixel height: %d \n", height);
 
   } else {
     printf("Error converting height \n");
@@ -140,8 +137,6 @@ NAN_METHOD(Blurry) {
   /* Copy results from the memory buffer */
   ret = clEnqueueReadBuffer(command_queue, memobjOut, CL_TRUE, 0,
               width * height * 3 * sizeof(int), (void *)outImg, 0, NULL, NULL);
-
-  // printf("Code from trying to read buffer: %d: \n" , ret);
 
   /* Finalization */
   ret = clFlush(command_queue);

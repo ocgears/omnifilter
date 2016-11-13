@@ -4,7 +4,7 @@ module.exports = function(app) {
     var user;
     var auth = {
       createUser: function(user, cb) {
-        cb = cb || function(){};
+        cb = cb || function() {};
         $http.post('http://localhost:3000/signup', user)
           .then(function(res) {
             token = $window.localStorage.token = res.data.token;
@@ -15,12 +15,12 @@ module.exports = function(app) {
           });
       },
       signIn: function(user, cb) {
-        cb = cb || function(){};
+        cb = cb || function() {};
         $http({
           method: 'GET',
           url: 'http://localhost:3000/signin',
           headers: {
-            'Authorization': 'Basic ' + btoa((user.email + ':' + user.password))
+            'Authorization': 'Basic ' + btoa(user.email + ':' + user.password)
           }
         })
           .then(function(res) {
@@ -38,11 +38,11 @@ module.exports = function(app) {
         $window.localStorage.token = null;
         token = null;
         user = null;
-        cb = cb || function(){};
+        cb = cb || function() {};
         cb();
       },
       getEmail: function(cb) {
-        cb = cb || function(){};
+        cb = cb || function() {};
         $http({
           method: 'GET',
           url: 'http://localhost:3000/verify',
@@ -53,7 +53,7 @@ module.exports = function(app) {
         .then(function(res) {
           user = res.data.email;
           cb(res);
-        },function(res) {
+        }, function(res) {
           cb(res);
         });
       },

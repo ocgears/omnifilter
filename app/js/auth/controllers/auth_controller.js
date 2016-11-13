@@ -1,5 +1,6 @@
 module.exports = function(app) {
-  app.controller('authController', ['$scope', '$location', 'userAuth', function($scope, $location, userAuth) {
+  app.controller('authController',
+  ['$scope', '$location', 'userAuth', function($scope, $location, userAuth) {
     $scope.email = null;
 
     $scope.updateEmail = function() {
