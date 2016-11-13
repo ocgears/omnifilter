@@ -13,7 +13,7 @@ describe('auth controller basic', () => {
   }));
 
   it('should be able to make a controller', () => {
-    var authController = $ControllerConstructor('authController', {$scope});
+    var authController = $ControllerConstructor('authController', { $scope });
     expect(typeof authController).toBe('object');
     expect(typeof $scope.updateEmail).toBe('function');
   });
@@ -22,7 +22,7 @@ describe('auth controller basic', () => {
   describe('function calls', () => {
     beforeEach(angular.mock.inject(function(_$httpBackend_) {
       $httpBackend = _$httpBackend_;
-      $ControllerConstructor('authController', {$scope});
+      $ControllerConstructor('authController', { $scope });
     }));
 
     afterEach(() => {
@@ -32,7 +32,8 @@ describe('auth controller basic', () => {
 
     it('should call to verify path', () => {
       $scope.email = null;
-      $httpBackend.expectGET('http://localhost:3000/verify').respond(200, {email: 'tester'});
+      $httpBackend.expectGET('http://localhost:3000/verify')
+      .respond(200, { email: 'tester' });
       $scope.updateEmail();
       $httpBackend.flush();
       expect($scope.email).toBe('tester');

@@ -60,7 +60,7 @@ gulp.task('webpack:test', () => {
         filename: 'test_bundle.js'
       }
     }))
-    .pipe(gulp.dest(__dirname + '/test/'));
+    .pipe(gulp.dest(__dirname + '/app/test/bndl/'));
 });
 
 gulp.task('build:dev', ['webpack:dev', 'html:dev', 'css:dev',
