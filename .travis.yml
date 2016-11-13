@@ -8,15 +8,15 @@ before_script:
   - brew update
   - brew install mongodb
   - brew services start mongodb
+  - npm install gulp
+  - gulp
+  - gulp webpack:test
+  - npm install karma
+  - npm install jasmine
+  - jasmine init
+  - npm install phantomjs-prebuilt
+  - npm install karma-phantomjs-launcher
 script:
   - sleep 15
   - npm test
-  - npm install -g gulp
-  - gulp
-  - gulp webpack:test
-  - npm install -g karma
-  - npm install -g jasmine
-  - jasmine init
-  - npm install -g phantomjs-prebuilt
-  - npm install -g karma-phantomjs-launcher
   - karma start
