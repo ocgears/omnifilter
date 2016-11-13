@@ -6,10 +6,15 @@ module.exports = function(app) {
     $scope.photos = [];
     $scope.newPhoto = {};
     $scope.errors = [];
+    $scope.serverMessages = [];
     var photoService = Resource('/');
 
     $scope.dismissError = function(err) {
       $scope.errors.splice($scope.errors.indexOf(err), 1);
+    };
+
+    $scope.dismissMessage = function(message) {
+      $scope.serverMessages.splice($scope.serverMessages.indexOf(message), 1);
     };
 
     $scope.toggleEdit = function(photo) {
@@ -23,43 +28,45 @@ module.exports = function(app) {
     };
 
     $scope.getAll = function() {
-      photoService.getAll(function(err, res) {
-        if (err) return; // console.log('Error in getAll function : ' + err);
+      photoService.getAll((err, res) => {
+        if (err) {
+          $scope.errors.push(err);
+          return console.log('err in getAll : ' + err);
+        }
         $scope.photos = res;
       });
     };
 
-    $scope.createPhoto = function(photo) {
+    $scope.createPhoto = function() {
+      var filePicked = document.getElementById('file').files[0];
+      var readIt = new FileReader();
+      readIt.onloadend = function(e) {
+        var dataFile = e.target.result;
+        if (!dataFile) {
+          dataFile = null;
+          $scope.errors.push('Could not load photo into preview, no data in event. ');
+          return console.log('error');
+        }
+        document.getElementById('preview').src = dataFile;
+        window.previewImg = true;
+      };
+      try {
+        readIt.readAsDataURL(filePicked);
+      } catch (err) {
+        $scope.errors.push('Error in picking the file. ' + err);
+      }
 
-      $scope.photos.push(photo);
-
-      photoService.verify(function(err, res){
-        if(err) return console.log('Tried to verify with token to find _id, err is : ' + err);
-
-        photo.user_id = res.id;
-        photo.content = photo.file || 'Placeholder string';
-
-        photoService.create(photo, function(err, res) {
-          if (err) {
-            $scope.photos.splice($scope.photos.indexOf(photo), 1);
-            $scope.errors.push('Could not save photo with name of ' + photo.name);
-            return console.log('quiting out the photoService.create with err: ' + err);
-          }
-          $scope.photos.splice($scope.photos.indexOf(photo), 1, res);
-          $scope.newPhoto = null;
-        });
-
-      });
     };
 
     $scope.deletePhoto = function(photo) {
-      if (!photo._id) return setTimeout(function() {$scope.deletePhoto(photo);}, 1000);
       photoService.delete(photo, function(err, res) {
         if (err) {
-          $scope.errors.push('could not delete photo ' + photo.name);
+          $scope.errors.push('Could not delete photo ' +
+            photo._id + ', ' + photo.name);
           return console.log(err);
         }
         $scope.photos.splice($scope.photos.indexOf(photo), 1);
+        $scope.serverMessages.push(res);
       });
     };
 
@@ -71,7 +78,35 @@ module.exports = function(app) {
           $scope.errors.push('could not update photo ' + photo.name);
           return console.log(err);
         }
+        $scope.photos.splice($scope.photos.indexOf(photo), 1, res);
       });
     };
+
+    $scope.cancelPreview = function() {
+      console.log('cancelPreview called.');
+      window.previewImg = false;
+      document.getElementById('preview').src = '';
+    };
+
+    $scope.transformPhoto = function() {
+      $scope.tOption = $scope.tOption || '';
+      if (!document.getElementById('preview').src) {
+        console.log('Image src for preview was not valid');
+        return $scope.errors.push('The image source was not valid. Please select via preview.');
+      }
+      var sendObj = {
+        content: document.getElementById('preview').src,
+        tOption: $scope.tOption
+      };
+
+      photoService.create(sendObj, function(err, res) {
+        if (err) {
+          $scope.errors.push('Could not create photo on server.');
+          return console.log('Error in transformPhoto create.' + err);
+        }
+        $scope.photos.push(res);
+      });
+    };
+
   }]);
 };

@@ -1,34 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
-
   <head>
     <meta charset="UTF-8">
     <title>OmniFilter</title>
     <link rel="stylesheet" href="/sass/styles.css">
+
     <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,800' rel='stylesheet' type='text/css'>
+
     <link rel='shortcut icon' type='image/x-icon' href='/favicon.ico' />
   </head>
-
-
   <body data-ng-app="omnifilterApp">
+    <nav></nav>
     <section data-ng-controller="authController" data-ng-init="updateEmail()">
       <header>
-        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a></p>
+        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a>
+           or Go <a href="#/home">Home</a></p>
       </header>
       <main data-ng-view>
       </main>
     </section>
 
-  <nav class="nav">
-    <ul>
-      <li class="nav li"></li>
-    </ul>
-  </nav>
-
   <footer>
-  	<section class="footer">
   		<p>Copyright 2016 Omnifilter</p>
-  	</section>
   </footer>
 
     <script src="bundle.js"></script>

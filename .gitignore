@@ -3,6 +3,9 @@ build/**/**
 node_modules
 node_modules/**
 **/node_modules
+test/test_bundle.js
+test/**
+
 # Compiled source #
 ###################
 *.com

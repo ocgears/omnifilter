@@ -1,3 +1,22 @@
+os: osx
 language: node_js
 node_js:
-  - "0.12"
+  - "4.2.3"
+services:
+  - mongodb
+before_script:
+  - brew update
+  - brew install mongodb
+  - brew services start mongodb
+  - npm install -g gulp
+  - gulp
+  - gulp webpack:test
+  # - npm install -g karma
+  # - npm install -g jasmine
+  # - jasmine init
+  # - npm install -g phantomjs-prebuilt
+  # - npm install -g karma-phantomjs-launcher
+script:
+  - sleep 15
+  - npm test
+  # - karma start || ./karma start
