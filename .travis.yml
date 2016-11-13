@@ -15,6 +15,7 @@ script:
   - gulp
   - gulp webpack:test
   - npm install -g karma
+  - npm install -g jasmine
   - npm install -g phantomjs-prebuilt
   - npm install -g karma-phantomjs-launcher
   - karma start
