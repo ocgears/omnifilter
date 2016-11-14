@@ -1,6 +1,6 @@
 var angular = require('angular');
 
-describe('sign in controller basic', () => {
+describe('Sign up controller basic', () => {
   var $httpBackend;
   var $scope;
   var $ControllerConstructor;
@@ -18,10 +18,11 @@ describe('sign in controller basic', () => {
 
   it('should be able to make a controller', () => {
 
-    var SigninController = $ControllerConstructor('SigninController', { $scope });
-    expect(typeof SigninController).toBe('object');
+    var SignupController = $ControllerConstructor('SignupController', { $scope });
+    expect(typeof SignupController).toBe('object');
     expect(typeof $scope.submit).toBe('function');
   });
+
 
   describe('function call', () => {
     beforeEach(angular.mock.inject(function(_$httpBackend_, _userAuth_) {
@@ -29,7 +30,7 @@ describe('sign in controller basic', () => {
       $location = {};
       $location.path = function() { return 0; };
       userAuth = _userAuth_;
-      $ControllerConstructor('SigninController', { $scope, $location, userAuth });
+      $ControllerConstructor('SignupController', { $scope, $location, userAuth });
     }));
 
     afterEach(() => {
@@ -37,23 +38,23 @@ describe('sign in controller basic', () => {
       $httpBackend.verifyNoOutstandingRequest();
     });
 
-    it('should call to sign in', () => {
+    it('should call to sign up', () => {
       var user = {
-        password: 'testpass',
-        email: 'InitTester'
+        password: 'tooshort?',
+        email: 'Signuptester'
       };
       $scope.updateEmail = function() {
-        $scope.email = 'tester';
-        $window.localStorage.token = 'tokenstring';
+        $scope.email = 'Lester';
+        $window.localStorage.token = 'wasHere';
       };
 
       $scope.email = 'startValue';
-      $httpBackend.expectGET('http://localhost:3000/signin')
-      .respond(200, { token: 'tokenstring', email: 'tester' });
+      $httpBackend.expectPOST('http://localhost:3000/signup')
+      .respond(200, { token: 'wasHere', email: 'Lester' });
       $scope.submit(user);
       $httpBackend.flush();
-      expect($scope.email).toBe('tester');
-      expect($window.localStorage.token).toBe('tokenstring');
+      expect($scope.email).toBe('Lester');
+      expect($window.localStorage.token).toBe('wasHere');
     });
   });
 });

@@ -18,7 +18,6 @@ describe('auth controller basic', () => {
     expect(typeof $scope.updateEmail).toBe('function');
   });
 
-
   describe('function calls', () => {
     beforeEach(angular.mock.inject(function(_$httpBackend_) {
       $httpBackend = _$httpBackend_;
@@ -44,7 +43,5 @@ describe('auth controller basic', () => {
       $scope.logout();
       expect($scope.email).toBe(null);
     });
-
   });
-
 });
