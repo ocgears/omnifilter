@@ -48,7 +48,7 @@ MyPixelStream.prototype._end = function(done) {
 
 var contentRouter = module.exports = exports = express.Router();
 
-contentRouter.get('/getlatest', (req, res) => {
+contentRouter.get('/getlatest', jwtAuth, (req, res) => {
   Content.findOne({ contentId: req.user._id, $sortBy: 'createdOn' }, (err, data) => {
     if (err) return handleDBError(err, res);
 

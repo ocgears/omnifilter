@@ -1,16 +1,24 @@
+deploy:
+  provider: heroku
+  api_key:
+    secure: VnCUl70G3w0qhkoHn61HRvdXZvQUECfJGNbUrAIbALulPzLnylRKXNa+tXconKtnMv/HPSL8ZfGIy5t/WXBMIhv7MLSqk7fAfI7tBG9N0UtbVFM8RctLwKubwVYK1bpn/5e1+I+rrKCmIu39um2zpQvaR8SwsOMAGgB4Mdamg+mQqh5spYedeDlW+5QBv9DT6qf5n2t9pL9oheLlqwV8+3xmLxXdH17fDV8aL/jdPKFnliotpInMIwjUwiOcFWj8XFe0ltkzkUE707SuPkYZekaTiX0kyg8USs4PcPu25sa7YIE2k9zb0eCrvuqlz7PKzaULBqWpLw+C9MeRDnCuDoMOc1BTp/h1UkcWuUB9+8eJ34UtUL0j3+eyutDQG/iAAyWThGkx4nVj2d3v2OAMNisbAIh11rMOcVc7K8CvYs8iWck65tLi6sTMBN9ryrmbfb3Pp5cLpTmn1tsA3TF+pIpyw43/MXamkcrJdjhd2tLrfMBQWQiufNJZ/P31CbUx4dJVCu9A/5pMB0/nCdVMPzARpYGixlhoeHGTaVneDUi2woHshKwT4pCBO7kWgqEQZiPfxSvPUY29k+/bZVWi1OSL6BVo4/8HFw68vXsE6STWPWr+BfBx8Ppy3V8gchHoZ4s+H7fWnEvLFheybBaK5o7P4UFKedkCbb4vXUUrOmU=
+  app:
+    master: omnifilter-alpha
+  skip_cleanup: true
 os: osx
 language: node_js
 node_js:
-  - "4.2.3"
+- 4.2.3
 services:
-  - mongodb
+- mongodb
 before_script:
-  - brew update
-  - brew install mongodb
-  - brew services start mongodb
-  - npm install -g gulp
-  - gulp
-  - gulp webpack:test
+- brew update
+- brew install mongodb
+- brew services start mongodb
+- npm install -g gulp
+- gulp
+- gulp webpack:test
 script:
-  - sleep 15
-  - npm test
+- sleep 15
+- npm test
+- npm start

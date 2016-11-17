@@ -1,8 +1,8 @@
 process.env.MONGOLAB_URI = 'mongodb://localhost/auth_routes_test';
 require(__dirname + '/../server.js');
 const User = require(__dirname + '/../models/user');
-var baseUri = 'localhost:3000';
-
+var PORT = process.env.PORT || process.env.$PORT || 3000;
+var baseUri = 'localhost:' + PORT;
 var chai = require('chai');
 var chaiHTTP = require('chai-http');
 chai.use(chaiHTTP);

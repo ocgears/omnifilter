@@ -46,6 +46,7 @@
     "jasmine-core": "^2.5.2",
     "karma": "^0.13.22",
     "karma-chrome-launcher": "^2.0.0",
+    "karma-firefox-launcher": "^1.0.0",
     "karma-jasmine": "^1.0.2",
     "mocha": "^3.0.2",
     "protractor": "^4.0.11",
@@ -53,9 +54,10 @@
     "webpack-stream": "^3.2.0"
   },
   "scripts": {
-    "test": " mocha ./server/test",
+    "test": "mocha ./server/test",
     "mocha": "./server/test",
-    "install": "node-gyp rebuild"
+    "install": "node-gyp rebuild",
+    "start": "node server/server"
   },
   "keywords": [
     "image-filter",
@@ -65,5 +67,8 @@
     "filter",
     "filters"
   ],
+  "engines": {
+    "node": "4.2.3"
+  },
   "gypfile": true
 }
