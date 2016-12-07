@@ -54,7 +54,7 @@
     "webpack-stream": "^3.2.0"
   },
   "scripts": {
-    "test": "mocha ./server/test",
+    "test": "mongod --dbpath=./db & mocha ./server/test",
     "mocha": "./server/test",
     "install": "node-gyp rebuild",
     "start": "node server/server"
