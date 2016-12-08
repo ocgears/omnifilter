@@ -50,11 +50,30 @@ describe('Sign up controller basic', () => {
 
       $scope.email = 'startValue';
       $httpBackend.expectPOST('http://localhost:3000/signup')
-      .respond(200, { token: 'wasHere', email: 'Lester' });
+      // .respond(200, { token: 'wasHere', email: 'Lester' });
+      .respond(200, user);
       $scope.submit(user);
       $httpBackend.flush();
       expect($scope.email).toBe('Lester');
       expect($window.localStorage.token).toBe('wasHere');
+    });
+
+    it('should have an error on bad input', () => {
+      // sending nothing, should get error from function
+      $scope.email = 'Bad Email : No at !';
+      $window.localStorage.token = 'Testing';
+      $scope.updateEmail = function() {
+        // this should not be called, as the error causes a return before it
+        $scope.email = null;
+        $window.localStorage.token = 'handle Error';
+      };
+      var errMsg = 'No user email!';
+      $httpBackend.expectPOST('http://localhost:3000/signup')
+      .respond(400, errMsg);
+      $scope.submit('bad input');
+      $httpBackend.flush();
+      expect($scope.email).toBe('Bad Email : No at !');
+      expect($window.localStorage.token).toBe('Testing');
     });
   });
 });
