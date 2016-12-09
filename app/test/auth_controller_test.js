@@ -4,12 +4,14 @@ describe('auth controller basic', () => {
   var $httpBackend;
   var $scope;
   var $ControllerConstructor;
+  var $location;
 
   beforeEach(angular.mock.module('omnifilterApp'));
 
-  beforeEach(angular.mock.inject(function($rootScope, $controller) {
+  beforeEach(angular.mock.inject(function($rootScope, $controller, _$location_) {
     $ControllerConstructor = $controller;
     $scope = $rootScope.$new();
+    $location = _$location_;
   }));
 
   it('should be able to make a controller', () => {
@@ -42,6 +44,9 @@ describe('auth controller basic', () => {
       $scope.email = 'testemail@super.net';
       $scope.logout();
       expect($scope.email).toBe(null);
+      expect($location.path()).toBe('/signin');
     });
+
+
   });
 });
