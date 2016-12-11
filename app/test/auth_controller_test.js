@@ -18,6 +18,7 @@ describe('auth controller basic', () => {
     var authController = $ControllerConstructor('authController', { $scope });
     expect(typeof authController).toBe('object');
     expect(typeof $scope.updateEmail).toBe('function');
+    expect(typeof $scope.logout).toBe('function');
   });
 
   describe('function calls', () => {
@@ -31,7 +32,7 @@ describe('auth controller basic', () => {
       $httpBackend.verifyNoOutstandingRequest();
     });
 
-    it('should call to verify path', () => {
+    it('should call to updateEmail', () => {
       $scope.email = null;
       $httpBackend.expectGET('http://localhost:3000/verify')
       .respond(200, { email: 'tester' });
@@ -46,7 +47,5 @@ describe('auth controller basic', () => {
       expect($scope.email).toBe(null);
       expect($location.path()).toBe('/signin');
     });
-
-
   });
 });

@@ -25,10 +25,10 @@ describe('Sign up controller basic', () => {
 
 
   describe('function call', () => {
-    beforeEach(angular.mock.inject(function(_$httpBackend_, _userAuth_) {
+    beforeEach(angular.mock.inject(function(_$httpBackend_, _userAuth_, _$location_) {
       $httpBackend = _$httpBackend_;
-      $location = {};
-      $location.path = function() { return 0; };
+      $location = _$location_;
+      // $location.path = function() { return 0; };
       userAuth = _userAuth_;
       $ControllerConstructor('SignupController', { $scope, $location, userAuth });
     }));
@@ -50,16 +50,17 @@ describe('Sign up controller basic', () => {
 
       $scope.email = 'startValue';
       $httpBackend.expectPOST('http://localhost:3000/signup')
-      // .respond(200, { token: 'wasHere', email: 'Lester' });
       .respond(200, user);
       $scope.submit(user);
       $httpBackend.flush();
       expect($scope.email).toBe('Lester');
       expect($window.localStorage.token).toBe('wasHere');
+      expect($location.path()).toBe('/home');
     });
 
     it('should have an error on bad input', () => {
       // sending nothing, should get error from function
+      $location.path('/signup');
       $scope.email = 'Bad Email : No at !';
       $window.localStorage.token = 'Testing';
       $scope.updateEmail = function() {
@@ -74,6 +75,7 @@ describe('Sign up controller basic', () => {
       $httpBackend.flush();
       expect($scope.email).toBe('Bad Email : No at !');
       expect($window.localStorage.token).toBe('Testing');
+      expect($location.path()).toBe('/signup');
     });
   });
 });
