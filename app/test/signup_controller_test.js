@@ -28,7 +28,6 @@ describe('Sign up controller basic', () => {
     beforeEach(angular.mock.inject(function(_$httpBackend_, _userAuth_, _$location_) {
       $httpBackend = _$httpBackend_;
       $location = _$location_;
-      // $location.path = function() { return 0; };
       userAuth = _userAuth_;
       $ControllerConstructor('SignupController', { $scope, $location, userAuth });
     }));
@@ -57,6 +56,19 @@ describe('Sign up controller basic', () => {
       expect($window.localStorage.token).toBe('wasHere');
       expect($location.path()).toBe('/home');
     });
+  });
+  describe('Error handling in the controller', () => {
+    beforeEach(angular.mock.inject(function(_$httpBackend_, _userAuth_, _$location_) {
+      $httpBackend = _$httpBackend_;
+      $location = _$location_;
+      userAuth = _userAuth_;
+      $ControllerConstructor('SignupController', { $scope, $location, userAuth });
+    }));
+
+    afterEach(() => {
+      $httpBackend.verifyNoOutstandingExpectation();
+      $httpBackend.verifyNoOutstandingRequest();
+    });
 
     it('should have an error on bad input', () => {
       // sending nothing, should get error from function
@@ -64,7 +76,7 @@ describe('Sign up controller basic', () => {
       $scope.email = 'Bad Email : No at !';
       $window.localStorage.token = 'Testing';
       $scope.updateEmail = function() {
-        // this should not be called, as the error causes a return before it
+        // this should not be called, as the error causes a return beforehand
         $scope.email = null;
         $window.localStorage.token = 'handle Error';
       };
@@ -75,6 +87,22 @@ describe('Sign up controller basic', () => {
       $httpBackend.flush();
       expect($scope.email).toBe('Bad Email : No at !');
       expect($window.localStorage.token).toBe('Testing');
+      expect($location.path()).toBe('/signup');
+    });
+
+    it('should catch the null user object on call', () => {
+      // sending no input to submit, should get error and not call the server
+      $location.path('/signup');
+      $scope.email = 'start value';
+      $window.localStorage.token = 'start token';
+      $scope.updateEmail = function() {
+        // this should not be called, as the error causes a return beforehand
+        $scope.email = 'bad email, should not change!';
+        $window.localStorage.token = 'do not call';
+      };
+      $scope.submit();
+      expect($scope.email).toBe('start value');
+      expect($window.localStorage.token).toBe('start token');
       expect($location.path()).toBe('/signup');
     });
   });
