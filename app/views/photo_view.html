@@ -41,12 +41,14 @@
       Click cancel button to clear the preview.
     </div>
   </section>
-  <section>
-    <ul data-ng-if="photos.length">
+  <section data-ng-show="photos.length" data-ng-cloak>
+    <ul>
       <li data-ng-repeat="photo in photos">
-        <img src={{photo.content}} width=200 data-ng-if="photo" />
-        Created at : {{photo.createdAt}}
-        <button data-ng-click="deletePhoto(photo)">Delete Photo</button>
+        <p ng-if="photo">
+          <img src={{photo.content}} width=200 />
+          Created at : {{photo.createdAt}}
+          <button data-ng-click="deletePhoto(photo)">Delete Photo</button>
+        </p>
       </li>
     </ul>
   </section>

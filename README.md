@@ -13,6 +13,10 @@ The Omnifilter app is designed to enable the work of filtering images provided b
 
 Our application is still under development, thank you for your patience.
 
+To use locally, set bash env variables of PORT and CLIENTPORT. My settings are :
+PORT=3000
+CLIENTPORT=5000
+
 # Usage
 Installing on NPM
 ```
