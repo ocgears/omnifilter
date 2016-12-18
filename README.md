@@ -15,7 +15,7 @@ Our application is still under development, thank you for your patience.
 
 To use locally, set bash env variables of PORT and CLIENTPORT. My settings are :
 PORT=3000
-CLIENTPORT=5000
+CLIENTPORT=3000
 
 # Usage
 Installing on NPM
