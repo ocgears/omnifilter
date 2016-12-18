@@ -17,7 +17,6 @@ before_script:
 - brew services start mongodb
 - npm install -g gulp
 - gulp
-- gulp webpack:test
 script:
 - sleep 15
 - npm test

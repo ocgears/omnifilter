@@ -13,15 +13,17 @@ The Omnifilter app is designed to enable the work of filtering images provided b
 
 Our application is still under development, thank you for your patience.
 
-To use locally, set bash env variables of PORT and CLIENTPORT. My settings are :
-PORT=3000
-CLIENTPORT=3000
-
 # Usage
 Installing on NPM
 ```
 npm install omnifilter
 ```
+
+To run locally use
+```
+npm start
+```
+which will start mongo, and both backend and client servers. (Make sure to create a 'db' directory in the root of the project, or update the command to your preferred path.)
 
 Or you can clone our repo directly from GITHUB
 
