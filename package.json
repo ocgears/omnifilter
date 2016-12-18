@@ -54,10 +54,10 @@
     "webpack-stream": "^3.2.0"
   },
   "scripts": {
-    "test": "mongod --dbpath=./db & mocha ./server/test",
+    "test": "mongod --dbpath=./db & mocha ./server/test & karma start",
     "mocha": "./server/test",
     "install": "node-gyp rebuild",
-    "start": "node server/server"
+    "start": "node server/server & node clientserver"
   },
   "keywords": [
     "image-filter",
