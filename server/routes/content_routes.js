@@ -1,5 +1,5 @@
 const express = require('express');
-const jsonParser = require('body-parser').json({ limit: 10240000 });
+const jsonParser = require('body-parser').json({ limit: 16000000 });
 const Content = require(__dirname + '/../models/content');
 const handleDBError = require(__dirname + '/../lib/handle_db_error');
 const jwtAuth = require(__dirname + '/../lib/jwt_auth');
@@ -65,7 +65,8 @@ contentRouter.get('/getAll', jwtAuth, (req, res) => {
 });
 
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
-  if (req.body.content.length > 1000000) {
+  debugger;
+  if (req.body.content.length > 16000000) {
     return res.status(500).json( { 'msg': 'Error: image too large' } );
   }
 
