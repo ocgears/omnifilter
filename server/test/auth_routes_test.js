@@ -1,8 +1,8 @@
 process.env.MONGOLAB_URI = 'mongodb://localhost/auth_routes_test';
 require(__dirname + '/../server.js');
 const User = require(__dirname + '/../models/user');
-var baseUri = 'localhost:3000';
-
+var PORT = process.env.PORT || process.env.$PORT || 3000;
+var baseUri = 'localhost:' + PORT;
 var chai = require('chai');
 var chaiHTTP = require('chai-http');
 chai.use(chaiHTTP);
@@ -21,7 +21,7 @@ describe('authorization route', () => {
   it('should create a new user with a POST request', (done) => {
     chai.request(baseUri)
       .post('/signup')
-      .send( { 'email': 'gene@gmail.com', 'password': 'password' } )
+      .send( { 'email': 'test@tester.com', 'password': 'password' } )
       .end((err, res) => {
         expect(err).to.eql(null);
         expect(res).to.have.status(200);
@@ -33,7 +33,7 @@ describe('authorization route', () => {
   describe('rest requests that require an existing user in the DB', () => {
     beforeEach((done) => {
       var newUser = new User();
-      newUser.email = 'gene@gmail.com';
+      newUser.email = 'test@tester.com';
       newUser.hashPassword('password');
       newUser.save((err, data) => {
         if (err) throw err;
@@ -48,7 +48,7 @@ describe('authorization route', () => {
     it('should check if the user has valid credentials', (done) => {
       chai.request(baseUri)
         .get('/signin')
-        .auth('gene@gmail.com', 'password')
+        .auth('test@tester.com', 'password')
         .end((err, res) => {
           expect(err).to.eql(null);
           expect(res).to.have.status(200);
@@ -60,7 +60,7 @@ describe('authorization route', () => {
     it('should not allow user to enter a bad password', (done) => {
       chai.request(baseUri)
         .get('/signin')
-        .auth('gene@gmail.com', 'NOTpassword')
+        .auth('test@tester.com', 'NOTpassword')
         .end((err, res) => {
           expect(err).to.not.eql(null);
           expect(res).to.have.status(401);

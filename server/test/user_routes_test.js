@@ -6,7 +6,8 @@ chai.use(chaiHttp);
 const expect = chai.expect;
 const request = chai.request;
 const mongoose = require('mongoose');
-
+var PORT = process.env.PORT || process.env.$PORT || 3000;
+var baseUri = 'localhost:' + PORT;
 const User = require(__dirname + '/../models/user');
 var userToken;
 var testUser;
@@ -15,7 +16,7 @@ describe('user API', () => {
 
   before((done) => {
     testUser = new User();
-    testUser.email = 'gene@gmail.com';
+    testUser.email = 'test@tester.com';
     testUser.hashPassword('password');
     testUser.save( (err, data) => {
       if (err) throw err;
@@ -32,7 +33,7 @@ describe('user API', () => {
 
   describe('check if user exists', () => {
     it('should be able to verify that a user exists', (done) => {
-      request('localhost:3000')
+      request(baseUri)
         .get('/verify/')
         .set('token', userToken)
         .end((err, res) => {
@@ -46,7 +47,7 @@ describe('user API', () => {
 
   describe('ability to UPDATE and DELETE', () => {
     it('should be able to UPDATE a user', (done) => {
-      request('localhost:3000')
+      request(baseUri)
         .put('/usersettings/' + testUser._id)
         .set('token', userToken)
         .send({ email: 'new email' })
@@ -59,7 +60,7 @@ describe('user API', () => {
     });
 
     it('should be able to DELETE a user', (done) => {
-      request('localhost:3000')
+      request(baseUri)
         .delete('/deleteuser/' + testUser._id)
         .set('token', userToken)
         .end((err, res) => {

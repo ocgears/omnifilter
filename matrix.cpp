@@ -65,8 +65,8 @@ NAN_METHOD(Blurry) {
   outImg = (int *)malloc(numPixels * sizeof(int));
   simpleArray = (int *)malloc(numPixels * sizeof(int));
 
-  for (int lolx = 0; lolx < numPixels; lolx++){
-    simpleArray[lolx] = (*Arr)[lolx];
+  for (int m = 0; m < numPixels; m++){
+    simpleArray[m] = (*Arr)[m];
   }
 
   FILE *fp;
@@ -77,8 +77,8 @@ NAN_METHOD(Blurry) {
   /* Load the source code containing the kernel*/
   fp = fopen(fileName, "r");
   if (!fp) {
-  fprintf(stderr, "Failed to load kernel.\n");
-  exit(1);
+    fprintf(stderr, "Failed to load kernel.\n");
+    exit(1);
   }
   source_str = (char*)malloc(MAX_SOURCE_SIZE);
   source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
