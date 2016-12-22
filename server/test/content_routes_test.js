@@ -18,7 +18,7 @@ describe('content API', () => {
 
   before((done) => {
     var newUser = new User();
-    newUser.email = 'gene@gmail.com';
+    newUser.email = 'test@tester.com';
     newUser.hashPassword('password');
     newUser.save((err, data) => {
       if (err) return console.log('Error in the before section of the test with : ' + err);
@@ -89,6 +89,32 @@ describe('content API', () => {
           expect(err).to.eql(null);
           expect(res).to.have.status(200);
           expect(res.body.msg).to.eql('Successfully deleted content');
+          done();
+        });
+    });
+  });
+  describe('Error handling in preview route', () => {
+    it('should correctly stop for lack of token', (done) => {
+      chai.request(baseUri)
+        .put('/preview/' + this.testContent._id)
+        .set( { token: null } )
+        .send( { name: 'new content name' } )
+        .end((err, res) => {
+          expect(err).to.not.eql(null);
+          expect(res).to.have.status(401);
+          expect(res.body.msg).to.eql('could not authenticate user');
+          done();
+        });
+    });
+
+    it('should correctly stop for mis-match verb', (done) => {
+      chai.request(baseUri)
+        .get('/preview/' + this.testContent._id)
+        .set( { token: userToken } )
+        .send( { name: 'new content name' } )
+        .end((err, res) => {
+          expect(err).to.not.eql(null);
+          expect(res).to.have.status(404);
           done();
         });
     });

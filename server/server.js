@@ -1,12 +1,13 @@
 var PORT = process.env.PORT || process.env.$PORT || 3000;
-var clientPort = process.env.CLIENTPORT || 'https://omnifilter-client.herokuapp.com';
+var clientPort = process.env.CLIENTPORT || 5000;
+var hostURL = process.env.HOSTURL || 'http://localhost:';
 const express = require('express');
 const app = module.exports = exports = express();
 const mongoose = require('mongoose');
 mongoose.connect(process.env.MONGOLAB_URI || 'mongodb://localhost/omnifilter_app_dev');
 
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', clientPort);
+  res.header('Access-Control-Allow-Origin', hostURL + clientPort);
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, token');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
   next();

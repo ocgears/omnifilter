@@ -4,18 +4,21 @@ describe('auth controller basic', () => {
   var $httpBackend;
   var $scope;
   var $ControllerConstructor;
+  var $location;
 
   beforeEach(angular.mock.module('omnifilterApp'));
 
-  beforeEach(angular.mock.inject(function($rootScope, $controller) {
+  beforeEach(angular.mock.inject(function($rootScope, $controller, _$location_) {
     $ControllerConstructor = $controller;
     $scope = $rootScope.$new();
+    $location = _$location_;
   }));
 
   it('should be able to make a controller', () => {
     var authController = $ControllerConstructor('authController', { $scope });
     expect(typeof authController).toBe('object');
     expect(typeof $scope.updateEmail).toBe('function');
+    expect(typeof $scope.logout).toBe('function');
   });
 
   describe('function calls', () => {
@@ -29,7 +32,7 @@ describe('auth controller basic', () => {
       $httpBackend.verifyNoOutstandingRequest();
     });
 
-    it('should call to verify path', () => {
+    it('should call to updateEmail', () => {
       $scope.email = null;
       $httpBackend.expectGET('http://localhost:3000/verify')
       .respond(200, { email: 'tester' });
@@ -42,6 +45,7 @@ describe('auth controller basic', () => {
       $scope.email = 'testemail@super.net';
       $scope.logout();
       expect($scope.email).toBe(null);
+      expect($location.path()).toBe('/signin');
     });
   });
 });

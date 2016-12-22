@@ -19,6 +19,12 @@ Installing on NPM
 npm install omnifilter
 ```
 
+To run locally use
+```
+npm start
+```
+which will start mongo, and both backend and client servers. (Make sure to create a 'db' directory in the root of the project, or update the command to your preferred path.)
+
 Or you can clone our repo directly from GITHUB
 
 ### Dependencies

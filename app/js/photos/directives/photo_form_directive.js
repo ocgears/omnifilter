@@ -11,7 +11,7 @@ module.exports = function(app) {
         save: '&'
       },
       controller: function($scope) {
-        $scope.photo = $scope.photo || { user_id: '21', content: 'string' };
+        $scope.photo = $scope.photo || null;
       }
     };
   });

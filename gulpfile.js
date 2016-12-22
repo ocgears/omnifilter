@@ -63,6 +63,10 @@ gulp.task('webpack:test', () => {
     .pipe(gulp.dest(__dirname + '/app/test/bndl/'));
 });
 
+gulp.task('run:tests', () => {
+  // placeholder for a new task to run a battery of tests.
+});
+
 gulp.task('build:dev', ['webpack:dev', 'html:dev', 'css:dev',
   'sass:dev', 'images:dev', 'favicon:dev']);
 gulp.task('default', ['build:dev', 'webpack:test']);
