@@ -19,10 +19,11 @@ describe('content API', () => {
   before((done) => {
     var newUser = new User();
     newUser.email = 'test2@tester.com';
-    newUser.hashPassword('password');
+    newUser.hashPassword('password2');
     newUser.save((err, data) => {
       if (err) return console.log('Error in the before section of the test with : ' + err);
       userToken = data.generateToken();
+      console.log('token is : ', userToken);
       userId = data._id;
       done();
     });
