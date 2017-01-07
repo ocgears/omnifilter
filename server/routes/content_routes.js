@@ -30,7 +30,6 @@ MyPixelStream.prototype._writePixels = function(data, done) {
 
 MyPixelStream.prototype._end = function(done) {
   var translatedPixels = new Int32Array(allPixels);
-
   var newPix = transformBlur.blurry(translatedPixels, this.format.width, this.format.height);
   var bufTrans = new Buffer(newPix.length);
   for (var j = 0; j < translatedPixels.length; j++) {
@@ -65,7 +64,6 @@ contentRouter.get('/getAll', jwtAuth, (req, res) => {
 });
 
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
-  debugger;
   if (req.body.content.length > 16000000) {
     return res.status(500).json( { 'msg': 'Error: image too large' } );
   }

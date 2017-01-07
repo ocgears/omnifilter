@@ -17,7 +17,7 @@
                     "link_settings": {
                         "libraries": [
                             "-framework",
-                            "OpenCL" # // this is how you use a framework on OSX
+                            "OpenCL" # this is how you use a framework on OSX
                         ]
                     }
                 }
