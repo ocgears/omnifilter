@@ -11,5 +11,6 @@ before_script:
 - npm install -g gulp
 - gulp
 script:
+- mkdir db
 - sleep 15
 - npm test
