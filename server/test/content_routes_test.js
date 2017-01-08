@@ -1,4 +1,4 @@
-process.env.MONGOLAB_URI = 'mongodb://localhost/server_test';
+process.env.MONGOLAB_URI = 'mongodb://localhost/content_route_test';
 require(__dirname + '/../server.js');
 const User = require(__dirname + '/../models/user');
 const Content = require(__dirname + '/../models/content');
@@ -22,11 +22,8 @@ describe('content API', () => {
     newUser.hashPassword('password2');
     newUser.save((err, data) => {
       if (err) return console.log('Error in the before section of the test with : ' + err);
-      
       userToken = data.generateToken();
-      // console.log('token is : ', userToken);
       userId = data._id;
-      // console.log('userId is : ', userId);
       done();
     });
   });
@@ -38,14 +35,12 @@ describe('content API', () => {
   });
 
   it('should be able to GET all content', (done) => {
-    console.log('starting getAll test now');
     chai.request(baseUri)
       .get('/getAll')
       .set( { token: userToken } )
       .end((err, res) => {
         expect(err).to.eql(null);
         expect(res.body).to.not.eql(null);
-        console.log(res.status);
         done();
       });
   });

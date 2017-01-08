@@ -1,4 +1,4 @@
-process.env.MONGOLAB_URI = 'mongodb://localhost/server_test';
+process.env.MONGOLAB_URI = 'mongodb://localhost/user_routes_test';
 require(__dirname + '/../server');
 const chai = require('chai');
 const chaiHttp = require('chai-http');
