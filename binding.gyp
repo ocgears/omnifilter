@@ -26,9 +26,16 @@
                 'defines': [
                   'LINUX_DEFINE',
                 ],
+                'link_settings': {
+                    'libraries': [
+                        '/opt/intel/opencl/lib64/libOpenCL.so'
+                    ]
+                },
                 'include_dirs': [
                   '/etc/OpenCL/vendors/',
-                  '/opt/opencl-headers/include/CL'
+                  '/opt/opencl-headers/include/CL',
+                  '/opt/intel/opencl/',
+                  '/opt/intel/opencl/lib64'
                 ],
                 },
             ],
