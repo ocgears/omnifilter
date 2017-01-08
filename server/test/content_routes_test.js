@@ -25,6 +25,7 @@ describe('content API', () => {
       userToken = data.generateToken();
       console.log('token is : ', userToken);
       userId = data._id;
+      console.log('userId is : ', userId);
       done();
     });
   });
@@ -42,6 +43,7 @@ describe('content API', () => {
       .end((err, res) => {
         expect(err).to.eql(null);
         expect(res.body).to.not.eql(null);
+        console.log(res);
         done();
       });
   });
@@ -63,7 +65,7 @@ describe('content API', () => {
   describe('rest requests that require content already in db', () => {
     beforeEach((done) => {
       Content.create( { content: 'test content', user_id: userId }, (err, data) => {
-        if (err) throw new Error('Error', err);
+        if (err) return new Error('Error', err);
         this.testContent = data;
         done();
       });
