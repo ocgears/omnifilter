@@ -1,6 +1,4 @@
-
 /*************** Main Page Layout **************/
-// @import url(https://fonts.googleapis.com/css?family=Gloria+Hallelujah);
 
 html {
   font-size: 62.5%;
@@ -17,9 +15,36 @@ body {
 }
 
 main {
-  font-family: fantasy, serif;
-  font-size: 1.6rem;
-  text-shadow: 1px 1px #C3DEEC;
+  font-size: 1.9rem;
+}
+
+.header-text {
+  background-color: rgba(200, 200, 200, 0.65);
+  padding: 2px;
+}
+
+.help-text {
+  background-color: rgba(200, 200, 200, 0.65);
+  padding: 2px;
+}
+
+.errors-section {
+  background-color: rgba(245, 200, 200, 0.65);
+  padding: 2px;
+}
+
+.server-msg {
+  background-color: rgba(200, 245, 200, 0.65);
+  padding: 2px;
+}
+
+.button-group {
+  background-color: rgba(200, 200, 200, 0.65);
+  padding: 2px;
+}
+
+.footer-text {
+  background-color: rgba(233,233,233,0.2);
 }
 
 header {
@@ -37,24 +62,17 @@ nav {
 	width: 100%;
 }
 
-nav li {
-}
-
 h1 {
   font-size: 3.4rem;
   text-shadow: 2px 2px #C3DEEC;
 }
 
 h1.title {
-	font-family: 'Gloria Hallelujah';
+	font-family: serif;
 	font-size: 3em;
 	text-align: center;
 	padding-top: 15px;
 	padding-bottom: 15px;
-}
-
-a {
-  color: #808080;
 }
 
 img {
@@ -70,6 +88,7 @@ footer {
 	width: 100%;
   color: green;
 }
- footer a {
+
+footer a {
    color: #1111DD;
- }
+}

@@ -13,7 +13,7 @@
     <nav></nav>
     <section data-ng-controller="authController" data-ng-init="updateEmail()">
       <header>
-        <p data-ng-if="email">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a>
+        <p data-ng-if="email" class="header-text">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a>
            or Go <a href="#/home">Home</a></p>
       </header>
       <main data-ng-view>
@@ -21,7 +21,7 @@
     </section>
 
     <footer>
-    		<p>MIT license 2016, OC Gears : Readme at <a href="https://github.com/ocgears/omnifilter">github</a></p>
+    		<p class="footer-text">MIT license 2016, OC Gears : Readme at <a href="https://github.com/ocgears/omnifilter">github</a></p>
     </footer>
 
     <script src="bundle.js"></script>
