@@ -1,4 +1,4 @@
-process.env.MONGOLAB_URI = 'mongodb://localhost/content_routes_test';
+process.env.MONGOLAB_URI = 'mongodb://localhost/content_route_test';
 require(__dirname + '/../server.js');
 const User = require(__dirname + '/../models/user');
 const Content = require(__dirname + '/../models/content');
@@ -18,8 +18,8 @@ describe('content API', () => {
 
   before((done) => {
     var newUser = new User();
-    newUser.email = 'test@tester.com';
-    newUser.hashPassword('password');
+    newUser.email = 'test2@tester.com';
+    newUser.hashPassword('password2');
     newUser.save((err, data) => {
       if (err) return console.log('Error in the before section of the test with : ' + err);
       userToken = data.generateToken();
@@ -62,7 +62,7 @@ describe('content API', () => {
   describe('rest requests that require content already in db', () => {
     beforeEach((done) => {
       Content.create( { content: 'test content', user_id: userId }, (err, data) => {
-        if (err) throw new Error('Error', err);
+        if (err) return new Error('Error', err);
         this.testContent = data;
         done();
       });

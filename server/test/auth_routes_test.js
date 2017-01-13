@@ -1,4 +1,4 @@
-process.env.MONGOLAB_URI = 'mongodb://localhost/auth_routes_test';
+process.env.MONGOLAB_URI = 'mongodb://localhost/auth_route_test';
 require(__dirname + '/../server.js');
 const User = require(__dirname + '/../models/user');
 var PORT = process.env.PORT || process.env.$PORT || 3000;

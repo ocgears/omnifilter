@@ -1,6 +1,6 @@
 <section data-ng-init="getAll()">
   <h1>Welcome to Omnifilter:</h1>
-  <section data-ng-if="errors.length">
+  <section data-ng-if="errors.length" class="errors-section">
     <h2>Errors: </h2>
     <ul>
     	<li data-ng-repeat="error in errors">
@@ -9,7 +9,7 @@
            X</button></li>
     </ul>
   </section>
-  <section data-ng-if="serverMessages.length">
+  <section data-ng-if="serverMessages.length" class="server-msg">
     <h2>Server Message: </h2>
     <ul>
     	<li data-ng-repeat="message in serverMessages">
@@ -18,15 +18,18 @@
            Dismiss </button></li>
     </ul>
   </section>
-  <p>
-    This form allows you to select an image file from your local computer with
-    the file picker. The image is then show in the preview section so you can
-    confirm it is the one you want. Then, select from the radio button options
-    the transformation you want to put on the image. Clicking transform will send
-    the image to the server and perform the transformation. It is then sent back
-    up and displayed on this webpage.
-  </p>
-  <section>
+  <section class="help-text">
+    <p>
+      This form allows you to select an image file from your local computer with
+      the file picker. The image is then shown in the preview section so you can
+      confirm it is the one you want. Then, select from the radio button options
+      the transformation you want to put on the image. Clicking transform will send
+      the image to the server and perform the transformation. It is then sent back
+      up and displayed on this webpage.
+    </p>
+  </section>
+
+  <section class="button-group">
     <input type="file" id="file" name="file"/>
     <button data-ng-click="createPhoto()">Upload for Preview</button>
     <img src="" alt="Preview of image" id="preview" width=150 />
@@ -43,10 +46,12 @@
   </section>
   <section data-ng-show="photos.length" data-ng-cloak>
     <ul>
-      <li data-ng-repeat="photo in photos">
+      <li data-ng-repeat="photo in photos" class="single-photo">
         <p ng-if="photo">
           <img src={{photo.content}} width=200 />
-          Created at : {{photo.createdAt}}
+          <p>
+            Created at : {{photo.createdAt}}
+          </p>
           <button data-ng-click="deletePhoto(photo)">Delete Photo</button>
         </p>
       </li>

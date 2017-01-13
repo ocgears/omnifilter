@@ -16,7 +16,7 @@ describe('user API', () => {
 
   before((done) => {
     testUser = new User();
-    testUser.email = 'test@tester.com';
+    testUser.email = 'test3@tester.com';
     testUser.hashPassword('password');
     testUser.save( (err, data) => {
       if (err) throw err;

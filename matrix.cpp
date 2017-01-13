@@ -12,8 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <iostream>
 
-#define MEM_SIZE (210000)
+#define MEM_SIZE (21000000)
 #define MAX_SOURCE_SIZE (0x100000)
 
 using namespace v8;
@@ -61,11 +62,11 @@ NAN_METHOD(Blurry) {
     exit(1);
   }
 
-  int numPixels = width * height * 3;
-  outImg = (int *)malloc(numPixels * sizeof(int));
-  simpleArray = (int *)malloc(numPixels * sizeof(int));
+  int numRGBElements = width * height * 3;
+  outImg = (int *)malloc(numRGBElements * sizeof(int));
+  simpleArray = (int *)malloc(numRGBElements * sizeof(int));
 
-  for (int m = 0; m < numPixels; m++){
+  for (int m = 0; m < numRGBElements; m++){
     simpleArray[m] = (*Arr)[m];
   }
 
@@ -96,14 +97,14 @@ NAN_METHOD(Blurry) {
 
   /* Create Memory Buffer */
   memobjIn  = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numPixels * sizeof(int), NULL, &ret);
+                               numRGBElements * sizeof(int), NULL, &ret);
 
   memobjOut = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numPixels * sizeof(int), NULL, &ret);
+                               numRGBElements * sizeof(int), NULL, &ret);
 
   /* Create Kernel Program from the source */
   program = clCreateProgramWithSource(context, 1, (const char **)&source_str,
-  (const size_t *)&source_size, &ret);
+                                          (const size_t *)&source_size, &ret);
 
   /* Build Kernel Program */
   ret = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
@@ -112,16 +113,15 @@ NAN_METHOD(Blurry) {
   kernel = clCreateKernel(program, "blurry", &ret);
 
   ret = clEnqueueWriteBuffer(command_queue, memobjIn, CL_TRUE, 0,
-                               numPixels * sizeof(int),
+                               numRGBElements * sizeof(int),
                                simpleArray, 0, NULL, NULL);
 
   /* Set OpenCL Kernel Parameters */
-
   ret = clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&memobjIn);
   ret = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&memobjOut);
-  ret = clSetKernelArg(kernel, 2, sizeof(int),    (void *)&numPixels);
-  // ret = clSetKernelArg(kernel, 2, sizeof(int),    (void *)&width);
-  // ret = clSetKernelArg(kernel, 3, sizeof(int),    (void *)&height);
+  ret = clSetKernelArg(kernel, 2, sizeof(int),    (void *)&numRGBElements);
+  ret = clSetKernelArg(kernel, 3, sizeof(int),    (void *)&width);
+  ret = clSetKernelArg(kernel, 4, sizeof(int),    (void *)&height);
   cl_uint work_dim = 1;
   size_t global_item_size[1];
   size_t local_item_size[1];
@@ -154,9 +154,9 @@ NAN_METHOD(Blurry) {
   EscapableHandleScope handle_scope(isolate);
 
   // Create a new empty array.
-  Local<Array> workOut = Array::New(isolate, numPixels);
+  Local<Array> workOut = Array::New(isolate, numRGBElements);
 
-  for(int i = 0; i < numPixels; i++){
+  for(int i = 0; i < numRGBElements; i++){
     workOut->Set(i, Integer::New(isolate, outImg[i]));
   }
 
