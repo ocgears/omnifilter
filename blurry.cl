@@ -1,4 +1,4 @@
-__kernel void blurry(__global int* pixels, __global int* pixelsOut, int numRGBElements, int width, int height){
+__kernel void blurry(__global ushort* pixels, __global ushort* pixelsOut, int numRGBElements, int width, int height){
 
   pixelsOut[0] = 0;
   pixelsOut[1] = 0;

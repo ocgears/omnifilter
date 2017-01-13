@@ -53,7 +53,7 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
   };
 
   MyPixelStream.prototype._end = function(done) {
-    var translatedPixels = new Int32Array(allPixels);
+    var translatedPixels = new Uint8Array(allPixels);
     allPixels = null;
     allPixels = [];
     try {

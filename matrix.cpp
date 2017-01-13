@@ -24,6 +24,14 @@ using Nan::Null;
 using Nan::To;
 
 NAN_METHOD(Blurry) {
+  // if(true){
+  //   printf("The size of an int is : %d \n", sizeof(int) );
+  //   printf("The size of a short unsigned int is : %d \n", sizeof(ushort));
+  //   ushort try1 = 255;
+  //   ushort try2 = 0;
+  //   printf("As a trial here are two unsigned short ints, from the bottom to top of the needed range: %d - %d \n", try2, try1);
+  //   // exit(0);
+  // }
 
   cl_device_id device_id = NULL;
   cl_context context = NULL;
@@ -36,11 +44,11 @@ NAN_METHOD(Blurry) {
   cl_uint ret_num_devices;
   cl_uint ret_num_platforms;
   cl_int ret;
-  int *outImg;
-  int *simpleArray;
+  ushort *outImg;
+  ushort *simpleArray;
 
-  Local<Int32Array> converter = info[0].As<Int32Array>();
-  Nan::TypedArrayContents<int32_t> Arr(converter);
+  Local<Uint8Array> converter = info[0].As<Uint8Array>();
+  Nan::TypedArrayContents<uint8_t> Arr(converter);
 
   Nan::Maybe<int> maybeInt = To<int>(info[1]);
   int width;
@@ -63,12 +71,13 @@ NAN_METHOD(Blurry) {
   }
 
   int numRGBElements = width * height * 3;
-  outImg = (int *)malloc(numRGBElements * sizeof(int));
-  simpleArray = (int *)malloc(numRGBElements * sizeof(int));
+  outImg = (ushort *)malloc(numRGBElements * sizeof(ushort));
+  simpleArray = (ushort *)malloc(numRGBElements * sizeof(ushort));
 
   for (int m = 0; m < numRGBElements; m++){
     simpleArray[m] = (*Arr)[m];
   }
+  free(&Arr);
 
   FILE *fp;
   char fileName[] = "./blurry.cl";
@@ -97,10 +106,10 @@ NAN_METHOD(Blurry) {
 
   /* Create Memory Buffer */
   memobjIn  = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numRGBElements * sizeof(int), NULL, &ret);
+                               numRGBElements * sizeof(ushort), NULL, &ret);
 
   memobjOut = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numRGBElements * sizeof(int), NULL, &ret);
+                               numRGBElements * sizeof(ushort), NULL, &ret);
 
   /* Create Kernel Program from the source */
   program = clCreateProgramWithSource(context, 1, (const char **)&source_str,
@@ -113,7 +122,7 @@ NAN_METHOD(Blurry) {
   kernel = clCreateKernel(program, "blurry", &ret);
 
   ret = clEnqueueWriteBuffer(command_queue, memobjIn, CL_TRUE, 0,
-                               numRGBElements * sizeof(int),
+                               numRGBElements * sizeof(ushort),
                                simpleArray, 0, NULL, NULL);
 
   /* Set OpenCL Kernel Parameters */
@@ -136,7 +145,7 @@ NAN_METHOD(Blurry) {
 
   /* Copy results from the memory buffer */
   ret = clEnqueueReadBuffer(command_queue, memobjOut, CL_TRUE, 0,
-              width * height * 3 * sizeof(int), (void *)outImg, 0, NULL, NULL);
+              width * height * 3 * sizeof(ushort), (void *)outImg, 0, NULL, NULL);
 
   /* Finalization */
   ret = clFlush(command_queue);
@@ -147,6 +156,7 @@ NAN_METHOD(Blurry) {
   ret = clReleaseMemObject(memobjOut);
   ret = clReleaseCommandQueue(command_queue);
   ret = clReleaseContext(context);
+  free(simpleArray);
 
   v8::Isolate* isolate = v8::Isolate::GetCurrent();
 
@@ -162,6 +172,7 @@ NAN_METHOD(Blurry) {
 
   info.GetReturnValue().Set(handle_scope.Escape(workOut));
   free(outImg);
+  free(&workOut);
 
 }
 
