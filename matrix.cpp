@@ -36,11 +36,11 @@ NAN_METHOD(Blurry) {
   cl_uint ret_num_devices;
   cl_uint ret_num_platforms;
   cl_int ret;
-  int *outImg;
-  int *simpleArray;
+  unsigned char *outImg;
+  unsigned char *simpleArray;
 
-  Local<Int32Array> converter = info[0].As<Int32Array>();
-  Nan::TypedArrayContents<int32_t> Arr(converter);
+  Local<Uint8Array> converter = info[0].As<Uint8Array>();
+  Nan::TypedArrayContents<uint8_t> Arr(converter);
 
   Nan::Maybe<int> maybeInt = To<int>(info[1]);
   int width;
@@ -63,12 +63,13 @@ NAN_METHOD(Blurry) {
   }
 
   int numRGBElements = width * height * 3;
-  outImg = (int *)malloc(numRGBElements * sizeof(int));
-  simpleArray = (int *)malloc(numRGBElements * sizeof(int));
+  outImg = (unsigned char *)malloc(numRGBElements * sizeof(unsigned char));
+  simpleArray = (unsigned char *)malloc(numRGBElements * sizeof(unsigned char));
 
   for (int m = 0; m < numRGBElements; m++){
     simpleArray[m] = (*Arr)[m];
   }
+  free(&Arr);
 
   FILE *fp;
   char fileName[] = "./blurry.cl";
@@ -97,10 +98,10 @@ NAN_METHOD(Blurry) {
 
   /* Create Memory Buffer */
   memobjIn  = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numRGBElements * sizeof(int), NULL, &ret);
+                               numRGBElements * sizeof(unsigned char), NULL, &ret);
 
   memobjOut = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numRGBElements * sizeof(int), NULL, &ret);
+                               numRGBElements * sizeof(unsigned char), NULL, &ret);
 
   /* Create Kernel Program from the source */
   program = clCreateProgramWithSource(context, 1, (const char **)&source_str,
@@ -113,7 +114,7 @@ NAN_METHOD(Blurry) {
   kernel = clCreateKernel(program, "blurry", &ret);
 
   ret = clEnqueueWriteBuffer(command_queue, memobjIn, CL_TRUE, 0,
-                               numRGBElements * sizeof(int),
+                               numRGBElements * sizeof(unsigned char),
                                simpleArray, 0, NULL, NULL);
 
   /* Set OpenCL Kernel Parameters */
@@ -126,7 +127,7 @@ NAN_METHOD(Blurry) {
   size_t global_item_size[1];
   size_t local_item_size[1];
 
-  global_item_size[0] = 2;
+  global_item_size[0] = numRGBElements;
   local_item_size[0] = 1;
 
   /* Execute OpenCL Kernel */
@@ -136,7 +137,7 @@ NAN_METHOD(Blurry) {
 
   /* Copy results from the memory buffer */
   ret = clEnqueueReadBuffer(command_queue, memobjOut, CL_TRUE, 0,
-              width * height * 3 * sizeof(int), (void *)outImg, 0, NULL, NULL);
+              width * height * 3 * sizeof(unsigned char), (void *)outImg, 0, NULL, NULL);
 
   /* Finalization */
   ret = clFlush(command_queue);
@@ -147,6 +148,7 @@ NAN_METHOD(Blurry) {
   ret = clReleaseMemObject(memobjOut);
   ret = clReleaseCommandQueue(command_queue);
   ret = clReleaseContext(context);
+  free(simpleArray);
 
   v8::Isolate* isolate = v8::Isolate::GetCurrent();
 
@@ -162,6 +164,7 @@ NAN_METHOD(Blurry) {
 
   info.GetReturnValue().Set(handle_scope.Escape(workOut));
   free(outImg);
+  free(&workOut);
 
 }
 
