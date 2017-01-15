@@ -135,7 +135,7 @@ NAN_METHOD(Blurry) {
   size_t global_item_size[1];
   size_t local_item_size[1];
 
-  global_item_size[0] = 2;
+  global_item_size[0] = numRGBElements;
   local_item_size[0] = 1;
 
   /* Execute OpenCL Kernel */
