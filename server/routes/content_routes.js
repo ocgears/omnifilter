@@ -10,8 +10,6 @@ var Writable = require('stream').Writable;
 var transformBlur = require('bindings')('matrix');
 
 var PixelStream = require('pixel-stream');
-var JPEGDecoder = require('jpg-stream/decoder');
-var JPEGEncoder = require('jpg-stream/encoder');
 var inherits = require('util').inherits;
 
 var contentRouter = module.exports = exports = express.Router();
@@ -33,11 +31,6 @@ contentRouter.get('/getAll', jwtAuth, (req, res) => {
 });
 
 contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
-  if (req.body.content.length > 16000000) {
-    return res.status(500).json( { 'msg': 'Error: image too large' } );
-  }
-  var allPixels = [];
-
   function MyPixelStream() {
     PixelStream.apply(this, arguments);
   }
@@ -57,57 +50,86 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
     allPixels = null;
     allPixels = [];
     try {
-      var newPix = transformBlur.blurry(translatedPixels, this.format.width, this.format.height);
-
+      var newPix = new Int16Array(transformBlur.blurry(translatedPixels,
+        this.format.width, this.format.height));
+      translatedPixels = null;
     } catch (e) {
       console.log('Error in transforming the image: ', e);
       return res.status(500).json( { msg: 'transform failure' } );
     }
-    var bufferLoopLen = translatedPixels.length;
-    translatedPixels = null;
-    var bufTrans = new Buffer(newPix.length);
-    for (var j = 0; j < bufferLoopLen; j++) {
-      bufTrans[j] = newPix[j];
-    }
 
+    var bufTrans = new Buffer(newPix);
     newPix = null;
     this.push(bufTrans);
     bufTrans = null;
     done();
   };
 
-  var newContent = new Content();
-  newContent.user_id = req.user._id;
-  newContent.tOption = req.body.tOption;
+  try {
+    const JPEGDecoder = require('jpg-stream/decoder');
+    const JPEGEncoder = require('jpg-stream/encoder');
 
-  if ( newContent.tOption === 'blur') {
-    var tempBuffer = new Buffer(req.body.content.slice(23), 'base64');
-    var lenOfBodyContent = req.body.content.length;
-    req.body.content = null;
-    var outArray = [];
-    var myStream = Readable();
-    var ws = Writable();
+    if (req.body.content.length > 16000000) {
+      return res.status(500).json( { 'msg': 'Error: image too large' } );
+    }
+    var allPixels = [];
 
-    ws._write = function(chunk, enc, next) {
-      outArray.push(chunk);
-      next();
-    };
+    var newContent = new Content();
+    newContent.user_id = req.user._id;
+    newContent.tOption = req.body.tOption;
 
-    ws.on('finish', function() {
-      var transfer = new Buffer(lenOfBodyContent - 23);
-      var i = 0;
-      for (var k = 0; k < outArray.length; k++) {
-        for (var l = 0; l < outArray[k].length; l++) {
-          if (i < transfer.length) {
-            transfer.writeUInt8(outArray[k][l], i++);
+    if ( newContent.tOption === 'blur') {
+      var tempBuffer = new Buffer(req.body.content.slice(23), 'base64');
+      var lenOfBodyContent = req.body.content.length;
+      req.body.content = null;
+      var outArray = [];
+      var myStream = Readable();
+      var ws = Writable();
+
+      ws._write = function(chunk, enc, next) {
+        outArray.push(chunk);
+        next();
+      };
+
+      ws.on('finish', function() {
+        var transfer = new Buffer(lenOfBodyContent - 23);
+        var i = 0;
+        for (var k = 0; k < outArray.length; k++) {
+          for (var l = 0; l < outArray[k].length; l++) {
+            if (i < transfer.length) {
+              transfer.writeUInt8(outArray[k][l], i++);
+            }
           }
         }
-      }
-      outArray = null;
+        outArray = null;
 
-      newContent.content = 'data:image/jpeg;base64,';
-      newContent.content += transfer.toString('base64');
-      transfer = null;
+        newContent.content = 'data:image/jpeg;base64,';
+        newContent.content += transfer.toString('base64');
+        transfer = null;
+        newContent.save((err, data) => {
+
+          if (err) return handleDBError(err, res);
+
+          res.status(200).json(data);
+        });
+        newContent = null;
+      });
+
+      try {
+        myStream.push(tempBuffer);
+        myStream.push(null);
+        tempBuffer = null;
+        myStream.pipe(new JPEGDecoder())
+        .pipe(new MyPixelStream())
+        .pipe(new JPEGEncoder())
+        .pipe(ws);
+        myStream = null;
+      } catch (e) {
+        console.log('Error in processing image: ', e);
+      }
+
+    } else {
+      newContent.content = req.body.content;
       newContent.save((err, data) => {
 
         if (err) return handleDBError(err, res);
@@ -115,31 +137,11 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, (req, res) => {
         res.status(200).json(data);
       });
       newContent = null;
-    });
-
-    try {
-      myStream.push(tempBuffer);
-      myStream.push(null);
-      tempBuffer = null;
-      myStream.pipe(new JPEGDecoder())
-      .pipe(new MyPixelStream())
-      .pipe(new JPEGEncoder())
-      .pipe(ws);
-      myStream = null;
-    } catch (e) {
-      return console.log('Error in processing image: ', e);
     }
-
-  } else {
-    newContent.content = req.body.content;
-    newContent.save((err, data) => {
-
-      if (err) return handleDBError(err, res);
-
-      res.status(200).json(data);
-    });
-    newContent = null;
+  } catch (bigError) {
+    console.log('Big error in content route: ', bigError);
   }
+
 });
 
 contentRouter.post('/save', jwtAuth, jsonParser, (req, res) => {

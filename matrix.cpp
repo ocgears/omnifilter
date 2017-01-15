@@ -24,14 +24,6 @@ using Nan::Null;
 using Nan::To;
 
 NAN_METHOD(Blurry) {
-  // if(true){
-  //   printf("The size of an int is : %d \n", sizeof(int) );
-  //   printf("The size of a short unsigned int is : %d \n", sizeof(ushort));
-  //   ushort try1 = 255;
-  //   ushort try2 = 0;
-  //   printf("As a trial here are two unsigned short ints, from the bottom to top of the needed range: %d - %d \n", try2, try1);
-  //   // exit(0);
-  // }
 
   cl_device_id device_id = NULL;
   cl_context context = NULL;
@@ -44,8 +36,8 @@ NAN_METHOD(Blurry) {
   cl_uint ret_num_devices;
   cl_uint ret_num_platforms;
   cl_int ret;
-  ushort *outImg;
-  ushort *simpleArray;
+  unsigned char *outImg;
+  unsigned char *simpleArray;
 
   Local<Uint8Array> converter = info[0].As<Uint8Array>();
   Nan::TypedArrayContents<uint8_t> Arr(converter);
@@ -71,8 +63,8 @@ NAN_METHOD(Blurry) {
   }
 
   int numRGBElements = width * height * 3;
-  outImg = (ushort *)malloc(numRGBElements * sizeof(ushort));
-  simpleArray = (ushort *)malloc(numRGBElements * sizeof(ushort));
+  outImg = (unsigned char *)malloc(numRGBElements * sizeof(unsigned char));
+  simpleArray = (unsigned char *)malloc(numRGBElements * sizeof(unsigned char));
 
   for (int m = 0; m < numRGBElements; m++){
     simpleArray[m] = (*Arr)[m];
@@ -106,10 +98,10 @@ NAN_METHOD(Blurry) {
 
   /* Create Memory Buffer */
   memobjIn  = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numRGBElements * sizeof(ushort), NULL, &ret);
+                               numRGBElements * sizeof(unsigned char), NULL, &ret);
 
   memobjOut = clCreateBuffer(context, CL_MEM_READ_WRITE,
-                               numRGBElements * sizeof(ushort), NULL, &ret);
+                               numRGBElements * sizeof(unsigned char), NULL, &ret);
 
   /* Create Kernel Program from the source */
   program = clCreateProgramWithSource(context, 1, (const char **)&source_str,
@@ -122,7 +114,7 @@ NAN_METHOD(Blurry) {
   kernel = clCreateKernel(program, "blurry", &ret);
 
   ret = clEnqueueWriteBuffer(command_queue, memobjIn, CL_TRUE, 0,
-                               numRGBElements * sizeof(ushort),
+                               numRGBElements * sizeof(unsigned char),
                                simpleArray, 0, NULL, NULL);
 
   /* Set OpenCL Kernel Parameters */
@@ -145,7 +137,7 @@ NAN_METHOD(Blurry) {
 
   /* Copy results from the memory buffer */
   ret = clEnqueueReadBuffer(command_queue, memobjOut, CL_TRUE, 0,
-              width * height * 3 * sizeof(ushort), (void *)outImg, 0, NULL, NULL);
+              width * height * 3 * sizeof(unsigned char), (void *)outImg, 0, NULL, NULL);
 
   /* Finalization */
   ret = clFlush(command_queue);
