@@ -1,11 +1,13 @@
 // Geometric distortions. Each kernel works out, for its output pixel, where
-// in the source to look, then reads the source as an image (texture) so the
-// hardware interpolates between pixels and clamps at the edges.
+// in the source to look, then reads the source as an image (texture), which
+// interpolates between pixels and clamps at the edges.
 // Positions are in pixels with pixel centres at +0.5; (cx, cy) is the effect's
-// centre as a fraction of the image size.
+// centre as a fraction of the image size. Sampling is premultiplied (see
+// sample_premul in common.cl), so transparent pixels' hidden colours don't
+// bleed into their neighbours.
 
 float4 sample_at(read_only image2d_t src, float2 p) {
-  return read_imagef(src, LINEAR, p);
+  return sample_rgba(src, p);
 }
 
 // Twists the image around the centre, most strongly in the middle.

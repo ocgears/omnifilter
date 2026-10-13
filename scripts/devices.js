@@ -34,4 +34,4 @@ if (chosen) {
   for (const failure of chosen.skipped) console.log('\nSkipped ' + failure);
   console.log('\n* is the device the filters use (OMNIFILTER_DEVICE=' + (process.env.OMNIFILTER_DEVICE || 'auto') + ').');
 }
-console.log('Set OMNIFILTER_DEVICE to auto, gpu, cpu, a number above, or part of a device name.');
+console.log('Set OMNIFILTER_DEVICE to auto, gpu, cpu, accelerator, a number above, or part of a device name.');

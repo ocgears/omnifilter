@@ -52,7 +52,9 @@ __kernel void color_dodge(__global const uchar4 *base,
 
 // Bilateral filter: a blur that preserves edges. Each neighbour is weighted by
 // how close it is (sigma_s, in pixels) and by how similar its colour is
-// (sigma_r), so pixels across an edge barely contribute.
+// (sigma_r), so pixels across an edge barely contribute. It works on
+// premultiplied colour, with alpha in the colour distance, so transparent
+// pixels add no colour and alpha edges are preserved like colour edges.
 __kernel void bilateral(__global const uchar4 *src,
                         __global uchar4 *dst,
                         const int width,
@@ -63,21 +65,21 @@ __kernel void bilateral(__global const uchar4 *src,
                         const int row0)
 {
   GUARD_BAND;
-  const float3 c0 = to_rgb(src[i]);
+  const float4 c0 = premul_pixel(src[i]);
   const float ks = -0.5f / (sigma_s * sigma_s);
   const float kr = -0.5f / (sigma_r * sigma_r);
-  float3 sum = (float3)(0.0f);
+  float4 sum = (float4)(0.0f);
   float wsum = 0.0f;
   for (int dy = -radius; dy <= radius; dy++) {
     for (int dx = -radius; dx <= radius; dx++) {
-      const float3 c = rgb_at(src, x + dx, y + dy, width, height);
-      const float3 d = c - c0;
+      const float4 c = premul_pixel(pixel_at(src, x + dx, y + dy, width, height));
+      const float4 d = c - c0;
       const float w = exp((dx * dx + dy * dy) * ks + dot(d, d) * kr);
       sum += c * w;
       wsum += w;
     }
   }
-  dst[i] = from_rgb(sum / wsum, src[i].w);
+  dst[i] = from_rgba(unpremultiply(sum / wsum));
 }
 
 // ---- Cartoon ------------------------------------------------------------------
@@ -131,7 +133,9 @@ __kernel void cartoon_combine(__global const uchar4 *colour,
 
 // Kuwahara filter: looks at the four overlapping squares that have this pixel
 // as a corner and outputs the mean colour of the least varied one. Flat areas
-// become flat brush strokes while edges stay sharp.
+// become flat brush strokes while edges stay sharp. Colours are premultiplied
+// and alpha counts towards the variance, so a square straddling an alpha edge
+// is avoided and transparent pixels add no colour.
 __kernel void kuwahara(__global const uchar4 *src,
                        __global uchar4 *dst,
                        const int width,
@@ -140,15 +144,15 @@ __kernel void kuwahara(__global const uchar4 *src,
                        const int row0)
 {
   GUARD_BAND;
-  float3 sum[4], sum2[4];
+  float4 sum[4], sum2[4];
   for (int q = 0; q < 4; q++) {
-    sum[q] = (float3)(0.0f);
-    sum2[q] = (float3)(0.0f);
+    sum[q] = (float4)(0.0f);
+    sum2[q] = (float4)(0.0f);
   }
   for (int dy = -radius; dy <= radius; dy++) {
     for (int dx = -radius; dx <= radius; dx++) {
-      const float3 c = rgb_at(src, x + dx, y + dy, width, height);
-      const float3 c2 = c * c;
+      const float4 c = premul_pixel(pixel_at(src, x + dx, y + dy, width, height));
+      const float4 c2 = c * c;
       if (dx <= 0 && dy <= 0) { sum[0] += c; sum2[0] += c2; }
       if (dx >= 0 && dy <= 0) { sum[1] += c; sum2[1] += c2; }
       if (dx <= 0 && dy >= 0) { sum[2] += c; sum2[2] += c2; }
@@ -157,17 +161,17 @@ __kernel void kuwahara(__global const uchar4 *src,
   }
   const float n = (radius + 1) * (radius + 1);
   float best = MAXFLOAT;
-  float3 out = (float3)(0.0f);
+  float4 out = (float4)(0.0f);
   for (int q = 0; q < 4; q++) {
-    const float3 mean = sum[q] / n;
-    const float3 var = sum2[q] / n - mean * mean;
-    const float v = var.x + var.y + var.z;
+    const float4 mean = sum[q] / n;
+    const float4 var = sum2[q] / n - mean * mean;
+    const float v = var.x + var.y + var.z + var.w;
     if (v < best) {
       best = v;
       out = mean;
     }
   }
-  dst[i] = from_rgb(out, src[i].w);
+  dst[i] = from_rgba(unpremultiply(out));
 }
 
 // Median filter: the middle value of each channel in a square window, which
@@ -175,7 +179,8 @@ __kernel void kuwahara(__global const uchar4 *src,
 // the median one bit at a time (a radix select): for each bit from the top,
 // count how many values are below the candidate and keep the bit if the
 // median must be at least that big. That's 8 passes over the window, with no
-// per-pixel arrays, which suits GPUs.
+// per-pixel arrays, which suits GPUs. Alpha is a channel like the others, but
+// fully transparent pixels are left out of the colour channels' medians.
 __kernel void median(__global const uchar4 *src,
                      __global uchar4 *dst,
                      const int width,
@@ -186,25 +191,33 @@ __kernel void median(__global const uchar4 *src,
   GUARD_BAND;
   const int side = 2 * radius + 1;
   const uint k = (side * side) / 2;
-  uint px = 0, py = 0, pz = 0;
+  uint visible = 0;
+  for (int dy = -radius; dy <= radius; dy++) {
+    for (int dx = -radius; dx <= radius; dx++) visible += (uint)(pixel_at(src, x + dx, y + dy, width, height).w > 0);
+  }
+  if (!visible) {
+    dst[i] = (uchar4)(0);
+    return;
+  }
+  const uint kc = visible / 2;
+  uint4 m = (uint4)(0);
   for (int bit = 7; bit >= 0; bit--) {
-    const uint cx = px | (1u << bit);
-    const uint cy = py | (1u << bit);
-    const uint cz = pz | (1u << bit);
-    uint nx = 0, ny = 0, nz = 0;
+    const uint4 cand = m | (1u << bit);
+    uint4 below = (uint4)(0);
     for (int dy = -radius; dy <= radius; dy++) {
       for (int dx = -radius; dx <= radius; dx++) {
-        const uchar4 p = pixel_at(src, x + dx, y + dy, width, height);
-        nx += p.x < cx;
-        ny += p.y < cy;
-        nz += p.z < cz;
+        const uint4 p = convert_uint4(pixel_at(src, x + dx, y + dy, width, height));
+        const uint shown = (uint)(p.w > 0);
+        below += (uint4)((uint)(p.x < cand.x) & shown, (uint)(p.y < cand.y) & shown,
+                         (uint)(p.z < cand.z) & shown, (uint)(p.w < cand.w));
       }
     }
-    if (nx <= k) px = cx;
-    if (ny <= k) py = cy;
-    if (nz <= k) pz = cz;
+    if (below.x <= kc) m.x = cand.x;
+    if (below.y <= kc) m.y = cand.y;
+    if (below.z <= kc) m.z = cand.z;
+    if (below.w <= k) m.w = cand.w;
   }
-  dst[i] = (uchar4)(px, py, pz, src[i].w);
+  dst[i] = convert_uchar4(m);
 }
 
 // Crosshatching: layers of diagonal pencil lines, with more layers in
@@ -279,7 +292,8 @@ __kernel void tensor_orientation(__global const float4 *tensor,
   orient[i] = (float4)(t, phi, a);
 }
 
-// Pass 3: the filter itself.
+// Pass 3: the filter itself. Samples are weighted by alpha, so transparent
+// pixels add no colour, and each pixel keeps its own alpha.
 __kernel void anisotropic_kuwahara(__global const uchar4 *src,
                                    __global const float4 *orient,
                                    __global uchar4 *dst,
@@ -321,7 +335,9 @@ __kernel void anisotropic_kuwahara(__global const uchar4 *src,
     for (int k = -max_x; k <= max_x; k += stride) {
       float2 v = (float2)(dot(sr0, (float2)(k, j)), dot(sr1, (float2)(k, j)));
       if (dot(v, v) > 0.25f) continue;
-      const float3 c = rgb_at(src, x + k, y + j, width, height);
+      const uchar4 px = pixel_at(src, x + k, y + j, width, height);
+      if (!px.w) continue;
+      const float3 c = to_rgb(px);
       float w[8];
       float sum = 0.0f;
       float vxx = zeta - eta * v.x * v.x;
@@ -338,7 +354,7 @@ __kernel void anisotropic_kuwahara(__global const uchar4 *src,
       z = max(0.0f, -v.x + vyy); w[3] = z * z; sum += w[3];
       z = max(0.0f, -v.y + vxx); w[5] = z * z; sum += w[5];
       z = max(0.0f, v.x + vyy); w[7] = z * z; sum += w[7];
-      const float g = exp(-3.125f * dot(v, v)) / sum;
+      const float g = exp(-3.125f * dot(v, v)) / sum * (px.w * (1.0f / 255.0f));
       for (int n = 0; n < 8; n++) {
         const float wk = w[n] * g;
         m[n] += (float4)(c * wk, wk);
@@ -356,5 +372,5 @@ __kernel void anisotropic_kuwahara(__global const uchar4 *src,
     const float wn = 1.0f / (1.0f + pow(255.0f * sigma2, 0.5f * q));
     out += (float4)(mean * wn, wn);
   }
-  dst[i] = from_rgb(out.xyz / out.w, 255);
+  dst[i] = from_rgb(out.w > 0.0f ? out.xyz / out.w : (float3)(0.0f), src[i].w);
 }

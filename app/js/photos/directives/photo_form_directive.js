@@ -10,9 +10,10 @@ module.exports = function(app) {
         photo: '=',
         save: '&'
       },
-      controller: function($scope) {
+      // Annotated so it survives minification.
+      controller: ['$scope', function($scope) {
         $scope.photo = $scope.photo || null;
-      }
+      }]
     };
   });
 };

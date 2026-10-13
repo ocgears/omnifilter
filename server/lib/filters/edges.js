@@ -49,6 +49,8 @@ module.exports = [
       // Smooth first so the kernel picks up edges rather than noise.
       const plan = P.gaussian(new Plan(w, h), Math.max(0.6, P.px(w, h, 0.05)));
       P.convolve(plan, weights, 3, 3, 0, true);
+      // The smoothing shouldn't soften the outline.
+      plan.step('restore_alpha', buf('src'));
       if (p.style === 'colour') return plan;
       plan.step('color_matrix', data(M.grayscale(1)));
       return p.style === 'outline' ? plan.step('color_matrix', data(M.invert(1))) : plan;
@@ -66,7 +68,7 @@ module.exports = [
     plan(w, h, p) {
       const mode = { white: 0, ink: 1, neon: 2 }[p.style];
       const plan = P.gaussian(new Plan(w, h), Math.max(0.6, P.px(w, h, 0.08)));
-      return plan.step('sobel', float(p.strength), int(mode));
+      return plan.step('sobel', float(p.strength), int(mode)).step('restore_alpha', buf('src'));
     }
   },
   {
@@ -85,7 +87,7 @@ module.exports = [
       const gray = plan.rgba();
       plan.apply('color_matrix', 'src', gray, data(M.multiply(M.invert(1), M.grayscale(1))));
       plan.current = gray;
-      P.gaussian(plan, Math.min(40, Math.max(0.5, P.px(w, h, p.radius))));
+      P.gaussian(plan, Math.max(0.5, P.px(w, h, p.radius)));
       const out = plan.rgba();
       plan.pass('color_dodge', [buf(base), buf(plan.current), buf(out), int(w), int(h)]);
       plan.current = out;

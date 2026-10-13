@@ -14,7 +14,8 @@
 // Histograms of red, green, blue and luma: hist[0..255] is red, [256..511]
 // green, [512..767] blue and [768..1023] luma. Run in 1D with any number of
 // work-groups; each work-item strides through the image so they cover all
-// pixels between them.
+// pixels between them. Fully transparent pixels aren't counted: their colour
+// is hidden, so it shouldn't steer the adjustment.
 __kernel void histogram(__global const uchar4 *src,
                         __global int *hist,
                         const int count)
@@ -27,6 +28,7 @@ __kernel void histogram(__global const uchar4 *src,
 
   for (int p = get_global_id(0); p < count; p += get_global_size(0)) {
     const uchar4 px = src[p];
+    if (!px.w) continue;
     atomic_inc(&local_hist[px.x]);
     atomic_inc(&local_hist[256 + px.y]);
     atomic_inc(&local_hist[512 + px.z]);
@@ -83,10 +85,12 @@ void reduce256_int(__local int *data) {
 }
 
 // Histogram equalization: turns the cumulative luma histogram into a curve
-// that spreads brightness levels evenly. Runs as one work-group.
+// that spreads brightness levels evenly. Runs as one work-group. lut has 257
+// entries: the curve, then how much of it to apply, which is 0 when every
+// counted pixel has the same luma (or there are none), so a flat image is
+// left alone rather than pushed to black.
 __kernel void equalize_lut(__global const int *hist,
-                           __global float *lut,
-                           const int count)
+                           __global float *lut)
 {
   __local int cdf[256];
   __local int scratch[256];
@@ -107,12 +111,15 @@ __kernel void equalize_lut(__global const int *hist,
     cdf_min = m;
   }
   barrier(CLK_LOCAL_MEM_FENCE);
+  const int total = cdf[255];
   for (int i = lid; i < 256; i += lsize) {
-    lut[i] = clamp((float)(cdf[i] - cdf_min) / (float)max(count - cdf_min, 1), 0.0f, 1.0f);
+    lut[i] = clamp((float)(cdf[i] - cdf_min) / (float)max(total - cdf_min, 1), 0.0f, 1.0f);
   }
+  if (lid == 0) lut[256] = total > cdf_min ? 1.0f : 0.0f;
 }
 
-// Remaps each pixel's luma through a 256-entry curve, keeping its colour.
+// Remaps each pixel's luma through a 256-entry curve, keeping its colour;
+// lut[256] scales amount.
 __kernel void apply_luma_lut(__global const uchar4 *src,
                              __global const float *lut,
                              __global uchar4 *dst,
@@ -123,23 +130,25 @@ __kernel void apply_luma_lut(__global const uchar4 *src,
   GUARD;
   const float3 c = to_rgb(src[i]);
   const float3 o = with_luma(c, lut[luma_bin(src[i])]);
-  dst[i] = from_rgb(mix(c, o, amount), src[i].w);
+  dst[i] = from_rgb(mix(c, o, amount * lut[256]), src[i].w);
 }
 
 // Auto levels: finds each channel's darkest and brightest levels, ignoring
 // the `clip` fraction of outlying pixels at each end. With linked set, all
 // channels use the luma histogram (auto contrast, no colour change);
 // otherwise each channel is stretched separately (auto colour, which also
-// removes colour casts). One work-item per channel.
+// removes colour casts). One work-item per channel. clip is a fraction of
+// the pixels counted (the visible ones).
 __kernel void auto_levels_params(__global const int *hist,
                                  __global float *params,
-                                 const int count,
                                  const float clip,
                                  const int linked)
 {
   const int c = get_global_id(0);
   if (c >= 3) return;
   __global const int *h = hist + (linked ? 768 : c * 256);
+  int count = 0;
+  for (int b = 0; b < 256; b++) count += h[b];
   const int limit = (int)(clip * count);
   int low = 0, high = 255, sum = 0;
   for (int b = 0; b < 256; b++) {
@@ -183,7 +192,8 @@ __kernel void apply_levels(__global const uchar4 *src,
 // curve can get (so noise isn't amplified), then blends between the four
 // nearest tiles' curves so no tile edges show.
 
-// One work-group per tile builds that tile's luma histogram.
+// One work-group per tile builds that tile's luma histogram, leaving out
+// fully transparent pixels.
 __kernel void clahe_hist(__global const uchar4 *src,
                          __global int *hists,
                          const int width,
@@ -207,7 +217,8 @@ __kernel void clahe_hist(__global const uchar4 *src,
   for (int b = lid; b < 256; b += lsize) h[b] = 0;
   barrier(CLK_LOCAL_MEM_FENCE);
   for (int p = lid; p < count; p += lsize) {
-    atomic_inc(&h[luma_bin(src[(y0 + p / tw) * width + x0 + p % tw])]);
+    const uchar4 px = src[(y0 + p / tw) * width + x0 + p % tw];
+    if (px.w) atomic_inc(&h[luma_bin(px)]);
   }
   barrier(CLK_LOCAL_MEM_FENCE);
   for (int b = lid; b < 256; b += lsize) hists[tile * 256 + b] = h[b];
@@ -215,7 +226,8 @@ __kernel void clahe_hist(__global const uchar4 *src,
 
 // One work-group per tile: clip the histogram at clip_limit times the
 // average bin height, share the clipped excess out evenly, then scan it into
-// a curve.
+// a curve. A tile with no visible pixels gets a straight line, so it doesn't
+// darken the visible tiles it's blended with.
 __kernel void clahe_lut(__global const int *hists,
                         __global float *luts,
                         const float clip_limit)
@@ -245,7 +257,7 @@ __kernel void clahe_lut(__global const int *hists,
   for (int i = lid; i < 256; i += lsize) curve[i] = min(h[i], limit) + excess / 256.0f;
   barrier(CLK_LOCAL_MEM_FENCE);
   scan256_float(curve, scratch);
-  for (int i = lid; i < 256; i += lsize) luts[tile * 256 + i] = curve[i] / (float)max(total, 1);
+  for (int i = lid; i < 256; i += lsize) luts[tile * 256 + i] = total ? curve[i] / total : i / 255.0f;
 }
 
 __kernel void clahe_apply(__global const uchar4 *src,

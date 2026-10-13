@@ -11,7 +11,7 @@ var handleFailure = function(callback) {
 };
 
 module.exports = exports = function(app) {
-  app.factory('ocResource', ['$http', '$window', 'userAuth', function($http, $window, userAuth) {
+  app.factory('ocResource', ['$http', '$window', 'userAuth', 'apiBase', function($http, $window, userAuth, apiBase) {
     var Resource = function(resourceName) {
       this.resourceName = resourceName;
     };
@@ -19,7 +19,7 @@ module.exports = exports = function(app) {
     Resource.prototype.getAll = function(callback) {
       $http({
         method: 'GET',
-        url: 'http://localhost:3000' + this.resourceName + 'getAll',
+        url: apiBase + this.resourceName + 'getAll',
         headers: {
           token: userAuth.getToken()
         }
@@ -30,7 +30,7 @@ module.exports = exports = function(app) {
     Resource.prototype.getFilters = function(callback) {
       $http({
         method: 'GET',
-        url: 'http://localhost:3000/filters'
+        url: apiBase + '/filters'
       })
         .then(handleSuccess(callback), handleFailure(callback));
     };
@@ -38,7 +38,7 @@ module.exports = exports = function(app) {
     Resource.prototype.getDevice = function(callback) {
       $http({
         method: 'GET',
-        url: 'http://localhost:3000/device'
+        url: apiBase + '/device'
       })
         .then(handleSuccess(callback), handleFailure(callback));
     };
@@ -46,7 +46,7 @@ module.exports = exports = function(app) {
     Resource.prototype.getPresets = function(callback) {
       $http({
         method: 'GET',
-        url: 'http://localhost:3000/presets'
+        url: apiBase + '/presets'
       })
         .then(handleSuccess(callback), handleFailure(callback));
     };
@@ -54,7 +54,7 @@ module.exports = exports = function(app) {
     Resource.prototype.create = function(data, callback) {
       $http({
         method: 'POST',
-        url: 'http://localhost:3000' + this.resourceName + 'newcontent',
+        url: apiBase + this.resourceName + 'newcontent',
         data: data,
         headers: {
           token: userAuth.getToken()
@@ -67,7 +67,7 @@ module.exports = exports = function(app) {
     Resource.prototype.update = function(data, callback) {
       $http({
         method: 'PUT',
-        url: 'http://localhost:3000' + this.resourceName + 'preview/' + data._id,
+        url: apiBase + this.resourceName + 'preview/' + data._id,
         data: { title: data.title, createdOn: data.createdOn, location: data.location, tags: data.tags },
         headers: {
           token: userAuth.getToken()
@@ -79,7 +79,7 @@ module.exports = exports = function(app) {
     Resource.prototype.delete = function(data, callback) {
       $http({
         method: 'DELETE',
-        url: 'http://localhost:3000' + this.resourceName + 'delete/' + data._id,
+        url: apiBase + this.resourceName + 'delete/' + data._id,
         headers: {
           token: userAuth.getToken()
         }
@@ -90,7 +90,7 @@ module.exports = exports = function(app) {
     Resource.prototype.verify = function(callback) {
       $http({
         method: 'GET',
-        url: 'http://localhost:3000/verify',
+        url: apiBase + '/verify',
         headers: {
           token: $window.localStorage.token
         }

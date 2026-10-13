@@ -4,6 +4,10 @@ const User = require(__dirname + '/../models/user');
 const Content = require(__dirname + '/../models/content');
 const secret = require(__dirname + '/../lib/secret');
 const imageCodec = require(__dirname + '/../lib/image_codec');
+const authRouter = require(__dirname + '/../routes/auth_routes');
+const rateLimit = require(__dirname + '/../lib/rate_limit');
+const migrateEmails = require(__dirname + '/../../scripts/migrate-emails');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const sharp = require('sharp');
 var PORT = process.env.PORT || process.env.$PORT || 3000;
@@ -14,11 +18,17 @@ var chaiHTTP = require('chai-http');
 chai.use(chaiHTTP);
 var expect = chai.expect;
 
+// Cost-12 hashes take a moment each, and most tests here make the same two
+// users, so each password is hashed once and the hash reused.
+const hashes = new Map();
 function makeUser(email, password) {
   const user = new User();
   user.email = email;
-  user.hashPassword(password);
-  return user.save();
+  if (!hashes.has(password)) hashes.set(password, user.hashPassword(password));
+  return hashes.get(password).then((hash) => {
+    user.password = hash;
+    return user.save();
+  });
 }
 
 const pngDataUrl = (width, height) =>
@@ -30,6 +40,8 @@ describe('security', () => {
   var aliceToken;
   var bob;
   var bobToken;
+
+  beforeEach(() => authRouter.rateLimiter.reset());
 
   beforeEach(() => clearCollections()
     .then(() => User.syncIndexes())
@@ -231,12 +243,184 @@ describe('security', () => {
 
     it('deletes a user\'s photos along with the account', () => {
       return Content.create({ user_id: alice._id, content: 'data:image/png;base64,AAAA' })
-        .then(() => chai.request(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken }))
+        .then(() => chai.request(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })
+          .send({ currentPassword: 'password1' }))
         .then((res) => {
           expect(res).to.have.status(200);
           return Content.countDocuments({ user_id: alice._id });
         })
         .then((count) => expect(count).to.eql(0));
+    });
+  });
+
+  describe('account details', () => {
+    ['plainaddress', 'no@tld', 'a b@tester.com', 'x@' + 'y'.repeat(250) + '.com'].forEach((email) => {
+      it('refuses to sign up with the email ' + email.slice(0, 20), () => {
+        return chai.request(baseUri).post('/signup').send({ email: email, password: 'password9' })
+          .then((res) => {
+            expect(res).to.have.status(400);
+            expect(res.body.msg).to.match(/valid email/);
+          });
+      });
+    });
+
+    it('refuses a password longer than bcrypt can use', () => {
+      return chai.request(baseUri).post('/signup')
+        .send({ email: 'long@tester.com', password: 'é'.repeat(37) })
+        .then((res) => {
+          expect(res).to.have.status(400);
+          expect(res.body.msg).to.match(/at most 72 bytes/);
+        });
+    });
+
+    it('refuses a bad email or password in a settings change', () => {
+      return chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+        .send({ email: 'not-an-email', currentPassword: 'password1' })
+        .then((res) => {
+          expect(res).to.have.status(400);
+          return chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+            .send({ password: 'x'.repeat(73), currentPassword: 'password1' });
+        })
+        .then((res) => expect(res).to.have.status(400));
+    });
+
+    it('hashes new passwords at cost 12', () => {
+      return User.findById(alice._id).then((user) => expect(bcrypt.getRounds(user.password)).to.eql(12));
+    });
+
+    it('still signs in with an old cost-8 hash, and upgrades it', function() {
+      this.timeout(10000);
+      return User.collection.updateOne({ _id: alice._id }, { $set: { password: bcrypt.hashSync('password1', 8) } })
+        .then(() => chai.request(baseUri).get('/signin').auth('alice@tester.com', 'password1'))
+        .then((res) => {
+          expect(res).to.have.status(200);
+          // The upgrade is saved after the reply.
+          return new Promise((resolve) => setTimeout(resolve, 1000));
+        })
+        .then(() => User.findById(alice._id))
+        .then((user) => {
+          expect(bcrypt.getRounds(user.password)).to.eql(12);
+          // An upgrade isn't a password change, so other sessions stay signed in.
+          return chai.request(baseUri).get('/getAll').set({ token: aliceToken });
+        })
+        .then((res) => expect(res).to.have.status(200));
+    });
+
+    it('signs in to a legacy account saved with a mixed-case email', function() {
+      this.timeout(10000);
+      return User.collection.updateOne({ _id: alice._id }, { $set: { email: 'Alice@Tester.com' } })
+        .then(() => chai.request(baseUri).get('/signin').auth('alice@tester.com', 'password1'))
+        .then((res) => {
+          expect(res).to.have.status(200);
+          return chai.request(baseUri).get('/signin').auth('ALICE@tester.com', 'password1');
+        })
+        .then((res) => expect(res).to.have.status(200));
+    });
+
+    it('does not treat an email as a pattern when ignoring case', () => {
+      return chai.request(baseUri).get('/signin').auth('.*@tester.com', 'password1')
+        .then((res) => expect(res).to.have.status(401));
+    });
+
+    it('takes about as long for an unknown email as for a wrong password', function() {
+      this.timeout(10000);
+      const time = (email) => {
+        const start = Date.now();
+        return chai.request(baseUri).get('/signin').auth(email, 'wrongpassword')
+          .then((res) => {
+            expect(res).to.have.status(401);
+            return Date.now() - start;
+          });
+      };
+      return time('alice@tester.com').then((known) => time('nobody@tester.com')
+        .then((unknown) => expect(unknown).to.be.above(known / 3)));
+    });
+  });
+
+  describe('email migration script', () => {
+    it('lowercases emails and reports ones that clash', () => {
+      return User.collection.insertMany([
+        { email: 'Carol@Tester.com', password: 'x' },
+        { email: 'DAVE@tester.com', password: 'x' }
+      ])
+        .then(() => User.collection.updateOne({ _id: bob._id }, { $set: { email: 'ALICE@tester.com' } }))
+        .then(() => migrateEmails.migrate(User.collection, { dryRun: true }))
+        .then((result) => {
+          expect(result.updated).to.eql(2);
+          return User.countDocuments({ email: 'carol@tester.com' });
+        })
+        .then((count) => {
+          expect(count, 'a dry run changes nothing').to.eql(0);
+          return migrateEmails.migrate(User.collection);
+        })
+        .then((result) => {
+          expect(result.updated).to.eql(2);
+          expect(result.duplicates).to.have.length(1);
+          expect(result.duplicates[0].slice().sort()).to.eql(['ALICE@tester.com', 'alice@tester.com']);
+          return User.collection.countDocuments({ email: { $in: ['carol@tester.com', 'dave@tester.com'] } });
+        })
+        .then((count) => expect(count).to.eql(2));
+    });
+  });
+
+  describe('rate limits', () => {
+    it('slows down repeated sign-in attempts from one address', function() {
+      this.timeout(20000);
+      const attempts = [];
+      for (let i = 0; i < 6; i++) {
+        attempts.push(() => chai.request(baseUri).get('/signin').auth('nobody@tester.com', 'password1'));
+      }
+      return attempts.reduce((p, attempt) => p.then((list) => attempt().then((res) => list.concat([res]))),
+        Promise.resolve([]))
+        .then((results) => {
+          expect(results.slice(0, 5).map((r) => r.status)).to.eql([401, 401, 401, 401, 401]);
+          expect(results[5]).to.have.status(429);
+          expect(Number(results[5].headers['retry-after'])).to.be.above(0);
+          // Sign-ups share the same allowance.
+          return chai.request(baseUri).post('/signup').send({ email: 'new@tester.com', password: 'password9' });
+        })
+        .then((res) => expect(res).to.have.status(429));
+    });
+
+    it('refills over time and forgets idle clients', () => {
+      var clock = 0;
+      const limiter = rateLimit({ perMinute: 60, burst: 2, now: () => clock });
+      const statuses = [];
+      const hit = (ip) => {
+        var status = 200;
+        const res = { set: () => res, status: (s) => { status = s; return res; }, json: () => res };
+        limiter({ ip: ip }, res, () => {});
+        statuses.push(status);
+      };
+      hit('a'); hit('a'); hit('a');
+      clock += 1000; // one more token after a second
+      hit('a'); hit('a');
+      hit('b');
+      expect(statuses).to.eql([200, 200, 429, 200, 429, 200]);
+      expect(limiter.size()).to.eql(2);
+      clock += 120000;
+      hit('c');
+      expect(limiter.size()).to.eql(1);
+    });
+  });
+
+  describe('CORS', () => {
+    it('allows the client\'s origin and answers a preflight', () => {
+      return chai.request(baseUri).options('/signin').set('Origin', 'http://localhost:5000')
+        .then((res) => {
+          expect(res).to.have.status(204);
+          expect(res.headers['access-control-allow-origin']).to.eql('http://localhost:5000');
+          expect(res.headers.vary).to.match(/Origin/);
+        });
+    });
+
+    it('does not allow other origins', () => {
+      return chai.request(baseUri).get('/filters').set('Origin', 'https://evil.example')
+        .then((res) => {
+          expect(res).to.have.status(200);
+          expect(res.headers).to.not.have.property('access-control-allow-origin');
+          expect(res.headers.vary).to.match(/Origin/);
+        });
     });
   });
 

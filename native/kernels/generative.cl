@@ -58,28 +58,49 @@ __kernel void jfa_step(__global const int *in,
   out[i] = best;
 }
 
+// Each cell's sums are CELL_SUMS uints: colour times alpha for red, green and
+// blue, then alpha, each as a 64-bit (low, high) pair so they can't overflow
+// however big the cells get, then the pixel count.
+#define CELL_SUMS 9
+
+// Adds to a 64-bit (low, high) pair of uints with 32-bit atomics: whoever
+// makes the low word wrap round carries one into the high word.
+void atomic_add_u64(volatile __global uint *pair, uint value) {
+  const uint old = atomic_add(pair, value);
+  if (old + value < old) atomic_inc(pair + 1);
+}
+
+float read_u64(__global const uint *pair) {
+  return pair[1] * 4294967296.0f + pair[0];
+}
+
 // Sums every cell's colour with atomic adds, so each cell can be filled with
-// its average colour.
+// its average colour. Colours are weighted by alpha, so transparent pixels
+// add nothing to the colour, only to the cell's mean alpha.
 __kernel void cell_accumulate(__global const uchar4 *src,
                               __global const int *map,
-                              __global int *sums,
+                              volatile __global uint *sums,
                               const int width,
                               const int height)
 {
   GUARD;
   const int s = map[i];
   if (s < 0) return;
-  const uchar4 p = src[i];
-  atomic_add(&sums[s * 4 + 0], p.x);
-  atomic_add(&sums[s * 4 + 1], p.y);
-  atomic_add(&sums[s * 4 + 2], p.z);
-  atomic_inc(&sums[s * 4 + 3]);
+  const uint4 p = convert_uint4(src[i]);
+  volatile __global uint *cell = sums + s * CELL_SUMS;
+  if (p.w) {
+    atomic_add_u64(cell + 0, p.x * p.w);
+    atomic_add_u64(cell + 2, p.y * p.w);
+    atomic_add_u64(cell + 4, p.z * p.w);
+    atomic_add_u64(cell + 6, p.w);
+  }
+  atomic_inc(cell + 8);
 }
 
-// Fills cells with their average colour and draws dark lead lines wherever a
-// neighbour within line_width pixels belongs to another cell.
+// Fills cells with their average colour and mean alpha, and draws dark lead
+// lines wherever a neighbour within line_width pixels belongs to another cell.
 __kernel void stained_glass(__global const int *map,
-                            __global const int *sums,
+                            __global const uint *sums,
                             __global uchar4 *dst,
                             const int width,
                             const int height,
@@ -87,8 +108,11 @@ __kernel void stained_glass(__global const int *map,
 {
   GUARD;
   const int s = map[i];
-  const int n = max(sums[s * 4 + 3], 1);
-  float3 c = (float3)(sums[s * 4], sums[s * 4 + 1], sums[s * 4 + 2]) / (255.0f * n);
+  __global const uint *cell = sums + s * CELL_SUMS;
+  const float alpha_sum = read_u64(cell + 6);
+  const float n = max(cell[8], 1u);
+  float3 c = alpha_sum > 0.0f ?
+    (float3)(read_u64(cell), read_u64(cell + 2), read_u64(cell + 4)) / (255.0f * alpha_sum) : (float3)(0.0f);
 
   float edge = 0.0f;
   for (int a = 0; a < 8; a++) {
@@ -104,7 +128,7 @@ __kernel void stained_glass(__global const int *map,
   const float l = luma(c);
   c = clamp(l + (c - l) * 1.25f, 0.0f, 1.0f);
   c = mix(c, (float3)(0.06f, 0.06f, 0.07f), edge);
-  dst[i] = from_rgb(c, 255);
+  dst[i] = from_rgb(c, convert_uchar_sat_rte(alpha_sum / n));
 }
 
 // ---- Reaction-diffusion (Gray-Scott) -----------------------------------------
@@ -129,7 +153,7 @@ __kernel void rd_init(read_only image2d_t src,
   const int y = get_global_id(1);
   if (x >= gw || y >= gh) return;
   const float2 p = (float2)((x + 0.5f) * width / gw, (y + 0.5f) * height / gh);
-  const float l = luma(read_imagef(src, LINEAR, p).xyz);
+  const float l = luma(sample_rgba(src, p).xyz);
   // Seed V in scattered 3x3 blocks.
   const uint h = hash3(x / 3, y / 3, seed);
   const float v = (h & 0xffff) < 0xffff * 0.08f ? 1.0f : 0.0f;
@@ -164,7 +188,8 @@ __kernel void rd_step(__global const float4 *in,
 
 // Draws the pattern at full size, reading the simulation grid as a float
 // texture so it's smoothly interpolated. mode 0 is ink on paper; mode 1
-// reveals the photo's colours through the pattern.
+// reveals the photo's colours through the pattern. Either way the photo's
+// alpha is kept.
 __kernel void rd_render(read_only image2d_t state,
                         read_only image2d_t src,
                         __global uchar4 *dst,
@@ -178,14 +203,15 @@ __kernel void rd_render(read_only image2d_t state,
   const float2 gp = (float2)((x + 0.5f) * gw / width, (y + 0.5f) * gh / height);
   const float v = read_imagef(state, LINEAR, gp).y;
   const float t = smoothstep(0.15f, 0.35f, v);
+  const float4 photo = read_imagef(src, NEAREST, (float2)(x + 0.5f, y + 0.5f));
   float3 o;
   if (mode == 0) {
     o = mix((float3)(0.96f, 0.94f, 0.88f), (float3)(0.1f, 0.12f, 0.2f), t);
   } else {
-    const float3 c = read_imagef(src, LINEAR, (float2)(x + 0.5f, y + 0.5f)).xyz;
+    const float3 c = photo.xyz;
     const float l = luma(c);
     const float3 vivid = clamp(l + (c - l) * 1.4f, 0.0f, 1.0f);
     o = mix(c * 0.12f, vivid, t);
   }
-  dst[i] = from_rgb(o, 255);
+  dst[i] = from_rgb(o, convert_uchar_sat_rte(photo.w * 255.0f));
 }

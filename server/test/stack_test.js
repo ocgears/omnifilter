@@ -31,9 +31,26 @@ describe('blend kernel', () => {
     });
   }
 
+  it('lays a layer over a transparent base keeping its colour', () => {
+    const red = new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255]);
+    const clear = new Uint8Array(8);
+    return Promise.all(['normal', 'multiply', 'screen', 'difference', 'luminosity'].map((mode) =>
+      stack.blend(red, clear, 2, 1, mode, 50).then((out) => {
+        expect(Array.from(out.slice(0, 4)), mode).to.eql([255, 0, 0, 128]);
+      })));
+  });
+
+  it('keeps a semi-transparent image\'s alpha when a filter keeps it', () => {
+    const half = ref.randomImage(W, H, 31).map((v, i) => (i % 4 === 3 ? 128 : v));
+    return gpu.apply('grayscale', half, W, H, {})
+      .then((grey) => stack.blend(grey, half, W, H, 'multiply', 50))
+      .then((out) => expect(Array.from(out).filter((v, i) => i % 4 === 3).every((a) => a === 128)).to.equal(true));
+  });
+
   it('leaves the base unchanged at strength 0', () => {
+    // Fully transparent pixels come out as transparent black.
     return stack.blend(top, base, W, H, 'multiply', 0)
-      .then((out) => expect(ref.compare(out, base).max).to.equal(0));
+      .then((out) => expect(ref.compare(out, ref.visible(base)).max).to.equal(0));
   });
 });
 

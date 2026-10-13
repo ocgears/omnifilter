@@ -149,6 +149,7 @@ describe('the real device', function() {
       const counts = new Int32Array(out.buffer, out.byteOffset, 1024);
       const expected = new Int32Array(1024);
       for (let p = 0; p < size * size; p++) {
+        if (!src[p * 4 + 3]) continue;  // transparent pixels aren't counted
         expected[src[p * 4]]++;
         expected[256 + src[p * 4 + 1]]++;
         expected[512 + src[p * 4 + 2]]++;

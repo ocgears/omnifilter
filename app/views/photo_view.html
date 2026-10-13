@@ -39,7 +39,7 @@
       <div class="preset-picker" data-ng-if="presets.length">
         <label for="preset">Preset look</label>
         <select id="preset" data-ng-model="selection.preset" data-ng-change="applyPreset()"
-          data-ng-options="p.name as p.label for p in presets">
+          data-ng-options="p.name as presetLabel(p) disable when missingFilters(p).length for p in presets">
           <option value="">Build your own</option>
         </select>
         <span class="filter-description" data-ng-if="selectedPreset()">{{selectedPreset().description}}</span>
@@ -67,21 +67,21 @@
             <label data-ng-repeat="p in layerFilter(layer).params" class="filter-param">
               {{p.label}}
               <input data-ng-if="p.type === 'range'" type="range" min="{{p.min}}" max="{{p.max}}"
-                step="{{p.step}}" data-ng-model="layer.params[p.name]">
+                step="{{p.step}}" data-ng-model="layer.params[p.name]" data-ng-change="stackEdited()">
               <span data-ng-if="p.type === 'range'" class="param-value">{{layer.params[p.name]}}</span>
-              <select data-ng-if="p.type === 'select'" data-ng-model="layer.params[p.name]"
+              <select data-ng-if="p.type === 'select'" data-ng-model="layer.params[p.name]" data-ng-change="stackEdited()"
                 data-ng-options="o.value as o.label for o in p.options"></select>
             </label>
           </div>
           <div class="filter-params layer-blend" data-ng-if="layerFilter(layer) && blendModes">
             <label class="filter-param">
               Strength
-              <input type="range" min="0" max="100" step="1" data-ng-model="layer.amount">
+              <input type="range" min="0" max="100" step="1" data-ng-model="layer.amount" data-ng-change="stackEdited()">
               <span class="param-value">{{layer.amount}}%</span>
             </label>
             <label class="filter-param">
               Blend
-              <select data-ng-model="layer.blend" data-ng-options="o.value as o.label for o in blendModes"></select>
+              <select data-ng-model="layer.blend" data-ng-change="stackEdited()" data-ng-options="o.value as o.label for o in blendModes"></select>
             </label>
           </div>
         </li>

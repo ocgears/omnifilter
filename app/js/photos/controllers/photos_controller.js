@@ -1,14 +1,15 @@
 var angular = require('angular');
 
 module.exports = function(app) {
-  app.controller('PhotosController', ['$scope', '$http', 'ocResource',
-  function($scope, $http, Resource) {
+  app.controller('PhotosController', ['$scope', '$http', 'ocResource', function($scope, $http, Resource) {
     $scope.photos = [];
     $scope.newPhoto = {};
     $scope.errors = [];
     $scope.serverMessages = [];
     $scope.filters = [];
     $scope.presets = [];
+    // Until the filter list arrives, presets can't be checked against it.
+    $scope.filtersLoaded = false;
     $scope.maxLayers = 8;
     // Filters are applied top to bottom, each laid over the result of the
     // ones above with its strength and blend mode. tOption is null (not '')
@@ -35,6 +36,17 @@ module.exports = function(app) {
         $scope.filters = res.filter(function(f) {
           return f.available !== false;
         });
+        $scope.filtersLoaded = true;
+        // Layers filled in before the list arrived (say, from a preset) get
+        // the defaults for whatever settings they didn't give.
+        $scope.layers.forEach(function(layer) {
+          if (layer.tOption) resetParams(layer, layer.params);
+        });
+        var preset = $scope.selectedPreset();
+        if (preset && $scope.missingFilters(preset).length) {
+          $scope.errors.push(missingMessage(preset));
+          $scope.selection.preset = null;
+        }
       });
       photoService.getDevice(function(err, res) {
         $scope.device = err ? null : res;
@@ -68,29 +80,41 @@ module.exports = function(app) {
       return $scope.filterLabel(photo.tOption);
     };
 
-    // Each filter starts from its default settings, plus any given.
+    // Each filter starts from its default settings, plus any given. Before
+    // the filter list has loaded, the given settings are kept as they are.
     function resetParams(layer, given) {
       var filter = findFilter(layer.tOption);
-      layer.params = {};
-      if (filter) {
-        filter.params.forEach(function(p) {
-          layer.params[p.name] = given && given[p.name] !== undefined ? given[p.name] : p.default;
-        });
+      if (!filter) {
+        layer.params = angular.copy(given || {});
+        return;
       }
+      layer.params = {};
+      filter.params.forEach(function(p) {
+        layer.params[p.name] = given && given[p.name] !== undefined ? given[p.name] : p.default;
+      });
     }
 
-    $scope.layerFilterChanged = function(layer) {
-      resetParams(layer);
+    // Any change to the stack means it's no longer the selected preset.
+    $scope.stackEdited = function() {
       $scope.selection.preset = null;
     };
 
+    $scope.layerFilterChanged = function(layer) {
+      resetParams(layer);
+      $scope.stackEdited();
+    };
+
     $scope.addLayer = function() {
-      if ($scope.layers.length < $scope.maxLayers) $scope.layers.push(newLayer());
+      if ($scope.layers.length < $scope.maxLayers) {
+        $scope.layers.push(newLayer());
+        $scope.stackEdited();
+      }
     };
 
     $scope.removeLayer = function(index) {
       $scope.layers.splice(index, 1);
       if (!$scope.layers.length) $scope.layers.push(newLayer());
+      $scope.stackEdited();
     };
 
     $scope.moveLayer = function(index, by) {
@@ -98,6 +122,27 @@ module.exports = function(app) {
       if (to < 0 || to >= $scope.layers.length) return;
       var layer = $scope.layers.splice(index, 1)[0];
       $scope.layers.splice(to, 0, layer);
+      $scope.stackEdited();
+    };
+
+    // The filters a preset uses that this server can't run. Empty until the
+    // filter list has loaded.
+    $scope.missingFilters = function(preset) {
+      if (!$scope.filtersLoaded) return [];
+      return preset.stack.map(function(item) {
+        return item.tOption;
+      }).filter(function(name) {
+        return !findFilter(name);
+      });
+    };
+
+    function missingMessage(preset) {
+      return 'The ' + preset.label + ' preset needs filters this server can\'t run: ' +
+        $scope.missingFilters(preset).join(', ') + '.';
+    }
+
+    $scope.presetLabel = function(preset) {
+      return preset.label + ($scope.missingFilters(preset).length ? ' (not available here)' : '');
     };
 
     // Replaces the layers with a preset's, which can then be adjusted.
@@ -106,6 +151,10 @@ module.exports = function(app) {
         return p.name === $scope.selection.preset;
       });
       if (!preset) return;
+      if ($scope.missingFilters(preset).length) {
+        $scope.selection.preset = null;
+        return $scope.errors.push(missingMessage(preset));
+      }
       $scope.layers = preset.stack.map(function(item) {
         var layer = newLayer();
         layer.tOption = item.tOption;
@@ -154,15 +203,18 @@ module.exports = function(app) {
     $scope.createPhoto = function() {
       var filePicked = document.getElementById('file').files[0];
       var readIt = new FileReader();
+      // FileReader calls back outside Angular's digest, so $apply makes the
+      // error (if any) show up.
       readIt.onloadend = function(e) {
-        var dataFile = e.target.result;
-        if (!dataFile) {
-          dataFile = null;
-          $scope.errors.push('Could not load photo into preview, no data in event. ');
-          return console.log('error');
-        }
-        document.getElementById('preview').src = dataFile;
-        window.previewImg = true;
+        $scope.$apply(function() {
+          var dataFile = e.target.result;
+          if (!dataFile) {
+            $scope.errors.push('Could not load photo into preview, no data in event. ');
+            return console.log('error');
+          }
+          document.getElementById('preview').src = dataFile;
+          window.previewImg = true;
+        });
       };
       try {
         readIt.readAsDataURL(filePicked);

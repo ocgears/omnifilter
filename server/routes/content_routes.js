@@ -1,12 +1,18 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const jsonParser = require('body-parser').json({ limit: 16000000 });
+const bodyParser = require('body-parser');
 const Content = require(__dirname + '/../models/content');
 const handleDBError = require(__dirname + '/../lib/handle_db_error');
 const jwtAuth = require(__dirname + '/../lib/jwt_auth');
 const gpuFilters = require(__dirname + '/../lib/gpu_filters');
 const imageCodec = require(__dirname + '/../lib/image_codec');
 const filterStack = require(__dirname + '/../lib/stack');
+const transformQueue = require(__dirname + '/../lib/transform_queue');
+
+// Photos arrive as data URLs, so /newcontent takes big bodies; everything
+// else gets the small default.
+const photoParser = bodyParser.json({ limit: 16000000 });
+const smallParser = bodyParser.json({ limit: '100kb' });
 
 var contentRouter = module.exports = exports = express.Router();
 
@@ -16,50 +22,60 @@ const asyncRoute = (handler) => (req, res, next) => handler(req, res, next).catc
 
 // A decoded photo takes width * height * 4 bytes (200 MB at the pixel limit)
 // and the GPU runs one job at a time anyway, so only a couple of transforms
-// run at once and the rest wait their turn.
+// run at once and a few more wait their turn; past that the server is busy.
+// Each user gets one transform at a time. See lib/transform_queue.js.
 const MAX_CONCURRENT_TRANSFORMS = 2;
-var runningTransforms = 0;
-const waitingTransforms = [];
-
-function withTransformSlot(fn) {
-  return new Promise((resolve) => {
-    if (runningTransforms < MAX_CONCURRENT_TRANSFORMS) {
-      runningTransforms++;
-      resolve();
-    } else {
-      waitingTransforms.push(resolve);
-    }
-  }).then(fn).finally(() => {
-    const next = waitingTransforms.shift();
-    if (next) next(); // hand the slot straight to the next request
-    else runningTransforms--;
-  });
-}
+const MAX_WAITING_TRANSFORMS = 8;
+const transforms = contentRouter.transforms = transformQueue.create({
+  maxRunning: MAX_CONCURRENT_TRANSFORMS,
+  maxWaiting: MAX_WAITING_TRANSFORMS,
+  maxPerKey: 1
+});
 
 function msSince(start) {
   return Number(process.hrtime.bigint() - start) / 1e6;
 }
 
-// The fields a user may change on a saved photo, and their types.
+// The fields a user may change on a saved photo: their types and the longest
+// value allowed (for tags, the most tags and the longest tag).
 const EDITABLE = {
-  title: 'string',
-  createdOn: 'string',
-  location: 'string',
-  tags: 'string[]'
+  title: { type: 'string', max: 200 },
+  createdOn: { type: 'string', max: 100 },
+  location: { type: 'string', max: 200 },
+  tags: { type: 'string[]', max: 50, maxEach: 50 }
 };
 
+// Resolves the update to make, or { error } describing what's wrong.
 function editableFields(body) {
   const update = {};
   for (const field of Object.keys(EDITABLE)) {
     if (!Object.prototype.hasOwnProperty.call(body, field)) continue;
+    const rule = EDITABLE[field];
     const value = body[field];
-    const ok = EDITABLE[field] === 'string[]' ?
-      Array.isArray(value) && value.every((v) => typeof v === 'string') :
-      typeof value === 'string';
-    if (!ok) return null;
+    if (rule.type === 'string[]') {
+      if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) {
+        return { error: field + ' must be a list of strings' };
+      }
+      if (value.length > rule.max || value.some((v) => v.length > rule.maxEach)) {
+        return { error: 'At most ' + rule.max + ' ' + field + ' of up to ' + rule.maxEach + ' characters each' };
+      }
+    } else {
+      if (typeof value !== 'string') return { error: field + ' must be a string' };
+      if (value.length > rule.max) {
+        return { error: field + ' can be at most ' + rule.max + ' characters' };
+      }
+    }
     update[field] = value;
   }
-  return update;
+  return { update: update };
+}
+
+// The first filter in a stack that the device can't run, with why, or null.
+// /filters marks these available: false.
+function unavailableLayer(layers) {
+  const names = new Set(layers.map((l) => l.tOption));
+  const missing = gpuFilters.list().find((f) => names.has(f.name) && f.available === false);
+  return missing ? missing.label + ' can\'t run on this server: ' + missing.unavailableReason : null;
 }
 
 const validId = (req, res, next) => {
@@ -85,7 +101,8 @@ contentRouter.get('/device', (req, res) => {
       version: device.version.trim()
     });
   } catch (e) {
-    res.status(503).json({ msg: 'No OpenCL device is available: ' + e.message.split('\n')[0] });
+    console.log('No OpenCL device: ' + e.message);
+    res.status(503).json({ msg: 'No OpenCL device is available' });
   }
 });
 
@@ -113,7 +130,7 @@ contentRouter.get('/getAll', jwtAuth, (req, res) => {
 // Saves a photo, after applying either one filter ({ tOption, params }) or a
 // stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }). With
 // neither, the photo is saved as it is.
-contentRouter.post('/newcontent', jwtAuth, jsonParser, asyncRoute(async (req, res) => {
+contentRouter.post('/newcontent', jwtAuth, photoParser, asyncRoute(async (req, res) => {
   const tOption = req.body.tOption || '';
   var content = req.body.content;
 
@@ -142,36 +159,64 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, asyncRoute(async (req, re
   }
 
   if (!layers) {
-    // Saved as is, so at least make sure it's an image.
-    if (!imageCodec.isImageDataUrl(content)) {
-      return res.status(400).json({ msg: 'Expected a base64 image data URL' });
+    // Saved as is, so check it the same way as a photo to transform.
+    try {
+      content = await imageCodec.validateDataUrl(content);
+    } catch (e) {
+      if (!e.status) throw e;
+      return res.status(e.status).json({ msg: e.message });
     }
   } else {
-    const failure = await withTransformSlot(async () => {
-      var image;
-      try {
-        image = await imageCodec.decodeDataUrl(content);
-      } catch (e) {
-        return { status: 400, msg: 'Could not read the image: ' + e.message };
-      }
+    const unavailable = unavailableLayer(layers);
+    if (unavailable) return res.status(400).json({ msg: unavailable });
 
-      try {
-        const start = process.hrtime.bigint();
-        image.data = await filterStack.applyStack(layers, image.data, image.width, image.height);
-        console.log('Applied ' + layers.map((l) => l.tOption).join(' + ') + ' to ' +
-          image.width + 'x' + image.height + ' image in ' + msSince(start).toFixed(1) + 'ms');
-      } catch (e) {
-        console.log('Error in transforming the image: ', e);
-        return { status: 500, msg: 'transform failure' };
-      }
-
-      try {
-        content = await imageCodec.encodeDataUrl(image);
-      } catch (e) {
-        console.log('Error in encoding the image: ', e);
-        return { status: 500, msg: 'Could not encode the transformed image' };
-      }
+    // If the client goes away while the transform is waiting, drop it.
+    const cancel = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) cancel.abort();
     });
+
+    var failure;
+    try {
+      failure = await transforms.run(String(req.user._id), async () => {
+        var image;
+        try {
+          image = await imageCodec.decodeDataUrl(content);
+        } catch (e) {
+          if (!e.status) console.log('Error in decoding the image: ', e);
+          return { status: 400, msg: 'Could not read the image' + (e.status ? ': ' + e.message : '') };
+        }
+
+        try {
+          const start = process.hrtime.bigint();
+          image.data = await filterStack.applyStack(layers, image.data, image.width, image.height);
+          console.log('Applied ' + layers.map((l) => l.tOption).join(' + ') + ' to ' +
+            image.width + 'x' + image.height + ' image in ' + msSince(start).toFixed(1) + 'ms');
+        } catch (e) {
+          // The device can't run this filter, at all or at this size.
+          if (e.code === 'UNSUPPORTED') return { status: e.status || 400, msg: e.message };
+          if (e.code === 'NO_DEVICE') {
+            console.log('No OpenCL device for a transform: ' + e.message);
+            return { status: 503, msg: 'No OpenCL device is available to run filters' };
+          }
+          console.log('Error in transforming the image: ', e);
+          return { status: 500, msg: 'transform failure' };
+        }
+
+        try {
+          content = await imageCodec.encodeDataUrl(image);
+        } catch (e) {
+          if (e.status) return { status: e.status, msg: e.message };
+          console.log('Error in encoding the image: ', e);
+          return { status: 500, msg: 'Could not encode the transformed image' };
+        }
+      }, cancel.signal);
+    } catch (e) {
+      if (e.aborted) return; // nobody is listening
+      if (!e.status) throw e;
+      if (e.retryAfter) res.set('Retry-After', String(e.retryAfter));
+      return res.status(e.status).json({ msg: e.message });
+    }
     if (failure) return res.status(failure.status).json({ msg: failure.msg });
   }
 
@@ -185,10 +230,11 @@ contentRouter.post('/newcontent', jwtAuth, jsonParser, asyncRoute(async (req, re
   res.status(200).json(data);
 }));
 
-contentRouter.put('/preview/:id', jwtAuth, validId, jsonParser, (req, res) => {
-  const update = editableFields(req.body);
-  if (!update) return res.status(400).json({ msg: 'Invalid value for a photo field' });
-  Content.updateOne({ _id: req.params.id, user_id: req.user._id }, { $set: update })
+contentRouter.put('/preview/:id', jwtAuth, validId, smallParser, (req, res) => {
+  const fields = editableFields(req.body);
+  if (fields.error) return res.status(400).json({ msg: fields.error });
+  if (!Object.keys(fields.update).length) return res.status(400).json({ msg: 'Nothing to update' });
+  Content.updateOne({ _id: req.params.id, user_id: req.user._id }, { $set: fields.update })
     .then((result) => {
       if (!result.matchedCount) return res.status(404).json({ msg: 'No such content' });
       res.status(200).json({ msg: 'Successfully updated content' });

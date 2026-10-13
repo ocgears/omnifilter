@@ -53,6 +53,45 @@ uchar4 from_rgba(float4 c) {
   return convert_uchar4_sat_rte(c * 255.0f);
 }
 
+// ---- Transparency ------------------------------------------------------------
+// Pixels are stored with straight (non-premultiplied) alpha: a fully
+// transparent pixel can hold any colour, often black. Averaging straight
+// colours lets that hidden colour bleed into visible neighbours (dark halos
+// round cut-outs), so anything that mixes pixels does it premultiplied:
+// colour times alpha, mixed together with alpha, then divided back out.
+
+float4 to_rgba(uchar4 p) {
+  return convert_float4(p) * (1.0f / 255.0f);
+}
+
+float4 premultiply(float4 c) {
+  return (float4)(c.xyz * c.w, c.w);
+}
+
+// Back to straight alpha; fully transparent results come out as (0, 0, 0, 0).
+float4 unpremultiply(float4 c) {
+  return c.w > 0.0f ? (float4)(c.xyz / c.w, c.w) : (float4)(0.0f);
+}
+
+// Bilinear sampling, premultiplied. The texture hardware's own LINEAR filter
+// blends straight colours, so this reads the four nearest pixels itself.
+float4 sample_premul(read_only image2d_t img, float2 p) {
+  const float2 q = p - 0.5f;
+  const float2 f = floor(q);
+  const float2 t = q - f;
+  const float2 c = f + 0.5f;
+  const float4 a = premultiply(read_imagef(img, NEAREST, c));
+  const float4 b = premultiply(read_imagef(img, NEAREST, c + (float2)(1.0f, 0.0f)));
+  const float4 d = premultiply(read_imagef(img, NEAREST, c + (float2)(0.0f, 1.0f)));
+  const float4 e = premultiply(read_imagef(img, NEAREST, c + (float2)(1.0f, 1.0f)));
+  return mix(mix(a, b, t.x), mix(d, e, t.x), t.y);
+}
+
+// The same, back in straight alpha.
+float4 sample_rgba(read_only image2d_t img, float2 p) {
+  return unpremultiply(sample_premul(img, p));
+}
+
 // Rec. 709 luma: perceived brightness.
 float luma(float3 c) {
   return dot(c, (float3)(0.2126f, 0.7152f, 0.0722f));
@@ -61,6 +100,11 @@ float luma(float3 c) {
 // Luma as an integer 0-255, for histograms.
 int luma_bin(uchar4 p) {
   return clamp((int)(0.2126f * p.x + 0.7152f * p.y + 0.0722f * p.z + 0.5f), 0, 255);
+}
+
+// A straight-alpha pixel premultiplied, as floats from 0 to 1.
+float4 premul_pixel(uchar4 p) {
+  return premultiply(to_rgba(p));
 }
 
 // Reads a pixel, clamping coordinates to the image (extends the border).

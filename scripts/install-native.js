@@ -10,7 +10,7 @@
 // its SHA-256 and that it loads, and otherwise compiles the addon with
 // node-gyp, which needs a C++ compiler and the OpenCL headers.
 //
-//   OMNIFILTER_BUILD_FROM_SOURCE=1   always compile
+//   OMNIFILTER_BUILD_FROM_SOURCE=1   always compile (also true or yes)
 //   OMNIFILTER_PREBUILD_URL=...      where to download from (see DEFAULT_URL)
 //   node scripts/install-native.js --key   prints this source's key
 
@@ -44,17 +44,46 @@ async function download(url) {
 
 // Whether a binary loads here, checked in a child process so a crash can't
 // take down the install. Returns null if it does, or the error.
+// Only the error's message is reported, not its stack.
 function loadError(file) {
-  const check = 'const a = require(' + JSON.stringify(file) + ');' +
-    'if (typeof a.filter !== "function" || typeof a.devices !== "function") throw new Error("not the addon");';
+  const check = 'try {' +
+    'const a = require(' + JSON.stringify(file) + ');' +
+    'if (typeof a.filter !== "function" || typeof a.devices !== "function") throw new Error("not the addon");' +
+    '} catch (e) { process.stderr.write(String(e && e.message)); process.exit(1); }';
   const result = spawnSync(process.execPath, ['-e', check], { encoding: 'utf8' });
-  return result.status === 0 ? null : (result.stderr || 'exit code ' + result.status);
+  return result.status === 0 ? null : (result.stderr || result.signal || 'exit code ' + result.status);
+}
+
+// Whether OpenCL.dll is where Windows would find it: System32 or the PATH.
+function openCLDllPresent() {
+  const dirs = [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')]
+    .concat((process.env.PATH || '').split(path.delimiter).filter(Boolean));
+  return dirs.some((dir) => fs.existsSync(path.join(dir, 'OpenCL.dll')));
 }
 
 // A binary that only fails to load because the OpenCL runtime (libOpenCL,
-// OpenCL.dll) is missing is still the right one: compiling wouldn't help.
-const missingOpenCL = (error) => /OpenCL/i.test(error) ||
-  (process.platform === 'win32' && /specified module could not be found/i.test(error));
+// OpenCL.dll, OpenCL.framework) is missing is still the right one: compiling
+// wouldn't help. The error usually names the addon's own path, which
+// mustn't count (a checkout in ~/opencl/ would match anything), so that's
+// removed first. Windows doesn't say which DLL is missing: it's only OpenCL's
+// fault if OpenCL.dll can't be found (otherwise it may be the VC++ runtime).
+//   options.file      the addon's path
+//   options.platform  process.platform
+//   options.dllFound  () => whether OpenCL.dll is present (Windows)
+function missingOpenCL(error, options) {
+  options = options || {};
+  const platform = options.platform || process.platform;
+  var message = String(error);
+  for (const p of [options.file, options.file && path.dirname(options.file), ROOT]) {
+    if (p) message = message.split(p).join('<addon>');
+  }
+  if (/libOpenCL\.so|OpenCL\.dll|OpenCL\.framework|libOpenCL\.dylib/i.test(message)) return true;
+  return platform === 'win32' && /specified module could not be found/i.test(message) &&
+    !(options.dllFound || openCLDllPresent)();
+}
+
+// Whether OMNIFILTER_BUILD_FROM_SOURCE asks to compile: 1, true or yes.
+const wantsSourceBuild = (value) => /^(1|true|yes)$/i.test(String(value || '').trim());
 
 async function tryPrebuilt() {
   const base = (process.env.OMNIFILTER_PREBUILD_URL || DEFAULT_URL).replace(/\/$/, '');
@@ -77,7 +106,7 @@ async function tryPrebuilt() {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(file, binary);
   const error = loadError(file);
-  if (error && missingOpenCL(error)) {
+  if (error && missingOpenCL(error, { file: file })) {
     console.log('omnifilter: installed the prebuilt addon for ' + PLATFORM + ', but no OpenCL runtime was found. ' +
       'Filters need one: it comes with GPU drivers, or install pocl.');
     return true;
@@ -107,10 +136,15 @@ async function main() {
   // A local build wins over a prebuilt one (see server/lib/native.js), so
   // drop any stale one first.
   fs.rmSync(path.join(ROOT, 'build'), { recursive: true, force: true });
-  if (process.env.OMNIFILTER_BUILD_FROM_SOURCE || !(await tryPrebuilt())) compile();
+  if (wantsSourceBuild(process.env.OMNIFILTER_BUILD_FROM_SOURCE) || !(await tryPrebuilt())) compile();
 }
 
-module.exports = { sourceKey: sourceKey, assetName: assetName };
+module.exports = {
+  sourceKey: sourceKey,
+  assetName: assetName,
+  missingOpenCL: missingOpenCL,
+  wantsSourceBuild: wantsSourceBuild
+};
 
 if (require.main === module) {
   main().catch((e) => {
