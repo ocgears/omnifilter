@@ -8,14 +8,25 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { Alerts } from '../alerts/alerts';
-import { errorMessage } from '../auth.service';
+import { AuthService, errorMessage } from '../auth.service';
 import { Gallery } from '../gallery/gallery';
-import { Device, Filter, FilterParam, Layer, ParamValues, Photo, Preset } from '../models';
+import { GuestPhotos, isLocal } from '../guest-photos';
+import {
+  Device,
+  Filter,
+  FilterParam,
+  GuestSettings,
+  Layer,
+  ParamValues,
+  Photo,
+  Preset,
+} from '../models';
 import { PhotoApi } from '../photo-api.service';
 import { LiveCamera, cameraSupported } from './live-camera';
 import { LivePreview } from './live-preview';
-import { PhotoFileError, imageFrom, readPhoto } from './photo-file';
+import { PhotoFileError, fitPhoto, imageFrom, readPhoto } from './photo-file';
 import { DraftStore } from './draft-store';
 import { EditHistory, StackState } from './history';
 import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
@@ -41,9 +52,12 @@ const THUMB_SIZE = 160;
 
 // The main page: pick a photo, build a stack of filters (or start from a
 // preset look), transform it on the server, and see the saved results.
+// Without an account it works as a guest: the server filters the photos but
+// doesn't keep them, so they're kept in this browser, and can be added to an
+// account later.
 @Component({
   selector: 'of-editor',
-  imports: [Alerts, Gallery, ImageDataCanvas, LiveCamera, LivePreview],
+  imports: [Alerts, Gallery, ImageDataCanvas, LiveCamera, LivePreview, RouterLink],
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
   host: {
@@ -58,6 +72,17 @@ export class Editor {
   private readonly api = inject(PhotoApi);
   private readonly previewEngine = inject(PreviewEngine);
   private readonly drafts = inject(DraftStore);
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  private readonly guestStore = inject(GuestPhotos);
+
+  // Signed in, or trying it out as a guest.
+  readonly signedIn = computed(() => !!this.auth.token());
+  readonly guest = signal<GuestSettings | null>(null);
+  // Photos made as a guest that are still in this browser, once signed in.
+  readonly waitingPhotos = signal<Photo[]>([]);
+  readonly importing = signal(false);
+  readonly confirmDiscard = signal(false);
 
   readonly errors = signal<string[]>([]);
   readonly messages = signal<string[]>([]);
@@ -110,6 +135,7 @@ export class Editor {
   private draftTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
+    if (!this.signedIn()) this.loadGuestSettings();
     this.loadFilters();
     this.loadPhotos();
     this.restoreDraft();
@@ -194,11 +220,67 @@ export class Editor {
   }
 
   private async loadPhotos(): Promise<void> {
+    const local = await this.guestStore.list();
+    if (!this.signedIn()) {
+      this.photos.set(local);
+      return;
+    }
+    this.waitingPhotos.set(local);
     try {
       this.photos.set(await this.api.all());
     } catch (err) {
       this.addError(errorMessage(err, 'Could not load your photos.'));
     }
+  }
+
+  // A server that doesn't take guests sends them to sign in.
+  private async loadGuestSettings(): Promise<void> {
+    try {
+      const settings = await this.api.guest();
+      this.guest.set(settings);
+      if (!settings.enabled) this.router.navigateByUrl('/signin');
+    } catch {
+      this.router.navigateByUrl('/signin');
+    }
+  }
+
+  // ---- photos made as a guest, once signed in ----
+
+  async importPhotos(): Promise<void> {
+    if (this.importing()) return;
+    this.importing.set(true);
+    let added = 0;
+    try {
+      // Oldest first, so they keep their order.
+      for (const photo of [...this.waitingPhotos()].reverse()) {
+        try {
+          const saved = await this.api.import(photo);
+          await this.guestStore.remove(photo);
+          this.waitingPhotos.update((list) => list.filter((p) => p !== photo));
+          this.photos.update((list) =>
+            [saved, ...list].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
+          );
+          added++;
+        } catch (err) {
+          this.addError(errorMessage(err, 'Could not add a photo to your account.'));
+          break;
+        }
+      }
+    } finally {
+      this.importing.set(false);
+    }
+    if (added) {
+      this.messages.update((list) => [
+        ...list,
+        'Added ' + added + ' photo' + (added > 1 ? 's' : '') + ' to your account.',
+      ]);
+    }
+  }
+
+  async discardPhotos(): Promise<void> {
+    for (const photo of this.waitingPhotos()) await this.guestStore.remove(photo);
+    this.waitingPhotos.set([]);
+    this.confirmDiscard.set(false);
   }
 
   // ---- the draft: the photo and stack, kept in the browser ----
@@ -516,12 +598,25 @@ export class Editor {
     }
     if (this.transforming()) return;
     const body = transformRequest(source, this.layers());
+    // Guests have nothing to save a photo to, so there's no point without a filter.
+    if (body.tOption === '' && !this.signedIn()) {
+      this.addError('Choose a filter first.');
+      return;
+    }
     if (body.tOption === '') {
       this.messages.update((list) => [...list, 'No filter chosen, so the original was saved.']);
     }
     this.transforming.set(true);
     try {
-      const photo = await this.api.transform(body);
+      let photo: Photo;
+      if (this.signedIn()) {
+        photo = await this.api.transform(body);
+      } else {
+        // Guests' photos go to the server only up to a smaller size.
+        const max = this.guest()?.maxPixels;
+        if (max) body.content = await fitPhoto(body.content, max);
+        photo = await this.guestStore.add(await this.api.preview(body));
+      }
       this.photos.update((photos) => [photo, ...photos]);
       this.latestId.set(photo._id);
     } catch (err) {
@@ -532,6 +627,11 @@ export class Editor {
   }
 
   async deletePhoto(photo: Photo): Promise<void> {
+    if (isLocal(photo)) {
+      await this.guestStore.remove(photo);
+      this.photos.update((photos) => photos.filter((p) => p !== photo));
+      return;
+    }
     try {
       const res = await this.api.delete(photo);
       this.photos.update((photos) => photos.filter((p) => p !== photo));

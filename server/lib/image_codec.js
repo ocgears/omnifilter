@@ -51,11 +51,12 @@ function codecError(status, msg) {
 
 const UNREADABLE = 'Unsupported or corrupt image';
 
-function readError(err) {
+const tooManyPixels = (maxPixels) =>
+  codecError(400, 'images can be at most ' + maxPixels / 1e6 + ' megapixels');
+
+function readError(err, maxPixels) {
   if (err.status) return err;
-  if (/pixel limit/.test(err.message)) {
-    return codecError(400, 'images can be at most ' + MAX_PIXELS / 1e6 + ' megapixels');
-  }
+  if (/pixel limit/.test(err.message)) return tooManyPixels(maxPixels || MAX_PIXELS);
   console.log('Could not decode an image: ' + err.message);
   return codecError(400, UNREADABLE);
 }
@@ -63,9 +64,10 @@ function readError(err) {
 // Whether a string looks like an image data URL (without decoding it).
 exports.isImageDataUrl = (value) => typeof value === 'string' && DATA_URL.test(value);
 
-// Reads just the header: checks the format and size limits. Resolves with
-// { sharp, meta, bytes }.
-function inspect(dataUrl) {
+// Reads just the header: checks the format and size limits (maxPixels, or
+// MAX_PIXELS). Resolves with { sharp, meta, bytes }.
+function inspect(dataUrl, maxPixels) {
+  const limit = Math.min(maxPixels || MAX_PIXELS, MAX_PIXELS);
   const match = typeof dataUrl === 'string' && DATA_URL.exec(dataUrl);
   if (!match) {
     return Promise.reject(codecError(400, 'Expected a base64 image data URL'));
@@ -73,9 +75,9 @@ function inspect(dataUrl) {
   const bytes = Buffer.from(dataUrl.slice(match[0].length), 'base64');
   var image;
   try {
-    image = sharp(bytes, { limitInputPixels: MAX_PIXELS });
+    image = sharp(bytes, { limitInputPixels: limit });
   } catch (e) {
-    return Promise.reject(readError(e));
+    return Promise.reject(readError(e, limit));
   }
   return image.metadata().then((meta) => {
     if (!PHOTO_FORMATS.includes(meta.format)) {
@@ -85,12 +87,10 @@ function inspect(dataUrl) {
     if (Math.max(meta.width, meta.height) > MAX_SIDE) {
       throw codecError(400, 'images can be at most ' + MAX_SIDE + ' pixels wide or tall');
     }
-    if (meta.width * meta.height > MAX_PIXELS) {
-      throw codecError(400, 'images can be at most ' + MAX_PIXELS / 1e6 + ' megapixels');
-    }
+    if (meta.width * meta.height > limit) throw tooManyPixels(limit);
     return { sharp: image, meta: meta, bytes: bytes };
   }, (err) => {
-    throw readError(err);
+    throw readError(err, limit);
   });
 }
 
@@ -117,9 +117,11 @@ exports.validateDataUrl = function(dataUrl) {
 // Resolves with { mime, width, height, data } where data is width * height * 4
 // bytes of RGBA. mime is the format the result should be saved in: JPEGs stay
 // JPEGs, and anything else (PNG, WebP, GIF, ...) becomes a PNG so transparency
-// survives. Rejects if the data URL isn't an allowed image sharp can decode.
-exports.decodeDataUrl = function(dataUrl) {
-  return inspect(dataUrl).then((found) => found.sharp
+// survives. Rejects if the data URL isn't an allowed image sharp can decode,
+// or has more than options.maxPixels pixels (at most MAX_PIXELS).
+exports.decodeDataUrl = function(dataUrl, options) {
+  const maxPixels = options && options.maxPixels;
+  return inspect(dataUrl, maxPixels).then((found) => found.sharp
     .rotate() // apply the EXIF orientation, so phone photos stay upright
     .ensureAlpha()
     .raw()
@@ -130,7 +132,7 @@ exports.decodeDataUrl = function(dataUrl) {
       height: result.info.height,
       data: result.data
     }), (err) => {
-      throw readError(err);
+      throw readError(err, maxPixels);
     }));
 };
 

@@ -1,6 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FILTERS, PRESETS } from '../../testing/fixtures';
+import { Router, provideRouter } from '@angular/router';
+import { AuthService } from '../auth.service';
+import { GuestPhotos } from '../guest-photos';
 import { Photo } from '../models';
 import { PhotoApi } from '../photo-api.service';
 import { DraftStore } from './draft-store';
@@ -12,6 +16,8 @@ describe('Editor', () => {
   let el: HTMLElement;
   let api: { [K in keyof PhotoApi]: ReturnType<typeof vi.fn> };
   let drafts: { [K in keyof DraftStore]: ReturnType<typeof vi.fn> };
+  let guestPhotos: { [K in keyof GuestPhotos]: ReturnType<typeof vi.fn> };
+  let token: ReturnType<typeof signal<string | null>>;
 
   const saved: Photo = { _id: 'p1', content: 'data:image/png;base64,AA==', tOption: 'invert' };
 
@@ -35,7 +41,16 @@ describe('Editor', () => {
       all: vi.fn().mockResolvedValue([saved]),
       transform: vi.fn(),
       delete: vi.fn(),
+      guest: vi.fn().mockResolvedValue({ enabled: true, maxPixels: 16e6 }),
+      preview: vi.fn(),
+      import: vi.fn(),
     };
+    guestPhotos = {
+      list: vi.fn().mockResolvedValue([]),
+      add: vi.fn(async (p: Omit<Photo, '_id'>) => ({ ...p, _id: 'local-1' })),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    token = signal<string | null>('tok');
     drafts = {
       load: vi.fn().mockResolvedValue({ photo: null, stack: null }),
       savePhoto: vi.fn().mockResolvedValue(undefined),
@@ -45,8 +60,11 @@ describe('Editor', () => {
     TestBed.configureTestingModule({
       imports: [Editor],
       providers: [
+        provideRouter([]),
         { provide: PhotoApi, useValue: api },
         { provide: DraftStore, useValue: drafts },
+        { provide: GuestPhotos, useValue: guestPhotos },
+        { provide: AuthService, useValue: { token } },
       ],
     });
   });
@@ -369,6 +387,105 @@ describe('Editor', () => {
         'Layer 1: Invert',
         'Added a layer',
       ]);
+    });
+  });
+
+  describe('as a guest', () => {
+    beforeEach(() => {
+      token.set(null);
+      // No size limit, so photos aren't scaled (jsdom can't decode images).
+      api.guest.mockResolvedValue({ enabled: true, maxPixels: 0 });
+    });
+
+    it('shows the photos kept in this browser, and says how to keep them', async () => {
+      guestPhotos.list.mockResolvedValue([{ ...saved, _id: 'local-9' }]);
+      await create();
+      expect(api.all).not.toHaveBeenCalled();
+      expect(editor.photos().map((p) => p._id)).toEqual(['local-9']);
+      expect(el.querySelector('.banner.guest')?.textContent).toContain('trying OmniFilter as a guest');
+      expect(el.querySelector('.banner.guest a[href$="/signup"]')).not.toBeNull();
+    });
+
+    it("filters on the server without saving, and keeps the result here", async () => {
+      await create();
+      api.preview.mockResolvedValue({ content: 'data:image/jpeg;base64,EE==', tOption: 'invert' });
+      editor.source.set('data:image/png;base64,BB==');
+      editor.setFilter(0, 'invert');
+      await editor.transform();
+      expect(api.transform).not.toHaveBeenCalled();
+      expect(api.preview).toHaveBeenCalledWith({
+        content: 'data:image/png;base64,BB==',
+        tOption: 'invert',
+        params: {},
+      });
+      expect(guestPhotos.add).toHaveBeenCalled();
+      expect(editor.photos()[0]._id).toBe('local-1');
+
+      await editor.deletePhoto(editor.photos()[0]);
+      expect(guestPhotos.remove).toHaveBeenCalled();
+      expect(api.delete).not.toHaveBeenCalled();
+    });
+
+    it('needs a filter to transform', async () => {
+      await create();
+      editor.source.set('data:image/png;base64,BB==');
+      await editor.transform();
+      expect(api.preview).not.toHaveBeenCalled();
+      expect(editor.errors()).toEqual(['Choose a filter first.']);
+    });
+
+    it("goes to sign in when the server doesn't take guests", async () => {
+      api.guest.mockResolvedValue({ enabled: false, maxPixels: 0 });
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      await create();
+      expect(navigate).toHaveBeenCalledWith('/signin');
+    });
+  });
+
+  describe('photos made as a guest, once signed in', () => {
+    const older = { ...saved, _id: 'local-a', createdAt: '2026-10-01T00:00:00.000Z' };
+    const newer = { ...saved, _id: 'local-b', createdAt: '2026-10-02T00:00:00.000Z' };
+
+    it('adds them to the account, oldest first', async () => {
+      guestPhotos.list.mockResolvedValue([newer, older]);
+      api.import.mockImplementation(async (p: Photo) => ({ ...p, _id: 'saved-' + p._id }));
+      await create();
+      expect(el.querySelector('.banner.waiting')?.textContent).toContain('2 photos');
+      await editor.importPhotos();
+      expect(api.import.mock.calls.map((c) => c[0]._id)).toEqual(['local-a', 'local-b']);
+      expect(guestPhotos.remove).toHaveBeenCalledTimes(2);
+      expect(editor.waitingPhotos()).toEqual([]);
+      expect(editor.photos().map((p) => p._id)).toEqual(['saved-local-b', 'saved-local-a', 'p1']);
+      expect(editor.messages()).toEqual(['Added 2 photos to your account.']);
+      await fixture.whenStable();
+      expect(el.querySelector('.banner.waiting')).toBeNull();
+    });
+
+    it('stops at a failure and keeps the rest', async () => {
+      guestPhotos.list.mockResolvedValue([newer, older]);
+      api.import.mockRejectedValue(
+        new HttpErrorResponse({ status: 413, error: { msg: 'The photo is too large to save' } }),
+      );
+      await create();
+      await editor.importPhotos();
+      expect(api.import).toHaveBeenCalledTimes(1);
+      expect(editor.waitingPhotos().length).toBe(2);
+      expect(editor.errors()).toEqual(['The photo is too large to save']);
+    });
+
+    it('deletes them after asking', async () => {
+      guestPhotos.list.mockResolvedValue([older]);
+      await create();
+      const banner = () => el.querySelector('.banner.waiting');
+      Array.from(banner()!.querySelectorAll('button'))
+        .find((b) => b.textContent?.trim() === 'Delete')!
+        .click();
+      await fixture.whenStable();
+      expect(banner()?.textContent).toContain("can't be undone");
+      banner()!.querySelector<HTMLButtonElement>('button.danger')!.click();
+      await fixture.whenStable();
+      expect(guestPhotos.remove).toHaveBeenCalledWith(older);
+      expect(banner()).toBeNull();
     });
   });
 });

@@ -211,13 +211,15 @@ button:disabled {
   opacity: 0.45;
 }
 
-button.primary {
+button.primary,
+.button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-button.primary:hover:not(:disabled) {
+button.primary:hover:not(:disabled),
+.button.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }

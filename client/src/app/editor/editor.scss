@@ -387,3 +387,31 @@ summary {
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.3);
   }
 }
+
+// Guest mode, and photos from it waiting to be added to the account.
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: var(--gap);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.banner p {
+  flex: 1 1 18rem;
+  margin: 0;
+}
+
+.banner.waiting {
+  border-color: var(--accent);
+}
+
+.banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

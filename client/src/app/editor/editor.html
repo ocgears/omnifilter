@@ -1,3 +1,43 @@
+@if (!signedIn()) {
+  <aside class="banner guest" aria-label="Guest mode">
+    <p>
+      You're trying OmniFilter as a guest. The photos you make stay in this browser;
+      <a routerLink="/signup">create an account</a> to keep them, or
+      <a routerLink="/signin">sign in</a>.
+    </p>
+  </aside>
+} @else if (waitingPhotos().length; as count) {
+  <aside class="banner waiting" aria-label="Photos made as a guest">
+    @if (confirmDiscard()) {
+      <p>
+        Delete the {{ count }} photo{{ count > 1 ? 's' : '' }} you made as a guest? This can't be
+        undone.
+      </p>
+      <div class="banner-actions">
+        <button type="button" class="danger" (click)="discardPhotos()">Delete</button>
+        <button type="button" (click)="confirmDiscard.set(false)">Keep</button>
+      </div>
+    } @else {
+      <p>
+        {{ count }} photo{{ count > 1 ? 's' : '' }} you made before signing in
+        {{ count > 1 ? 'are' : 'is' }} still in this browser.
+      </p>
+      <div class="banner-actions">
+        <button type="button" class="primary" (click)="importPhotos()" [disabled]="importing()">
+          @if (importing()) {
+            <span class="spinner" aria-hidden="true"></span> Adding…
+          } @else {
+            Add to my account
+          }
+        </button>
+        <button type="button" (click)="confirmDiscard.set(true)" [disabled]="importing()">
+          Delete
+        </button>
+      </div>
+    }
+  </aside>
+}
+
 <of-alerts [items]="errors()" (dismiss)="dismissError($event)" />
 <of-alerts [items]="messages()" kind="info" (dismiss)="dismissMessage($event)" />
 

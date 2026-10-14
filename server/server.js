@@ -30,6 +30,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Behind a proxy or load balancer (Heroku's router, nginx), the visitor's
+// address comes in X-Forwarded-For. TRUST_PROXY says which proxies to believe,
+// as Express's 'trust proxy' setting: a number of hops (Heroku: 1), or
+// addresses. Without it, rate limits see the proxy's address for everyone.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
+}
+
 const contentRouter = require(__dirname + '/routes/content_routes');
 const authRouter = require(__dirname + '/routes/auth_routes');
 const userRouter = require(__dirname + '/routes/user_routes');

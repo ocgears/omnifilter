@@ -1,6 +1,7 @@
 // The main paths through the app in a real browser, at desktop and phone
-// sizes (see the projects in playwright.config.js): signing up and in,
-// filtering a photo on the OpenCL device, a preset stack, the saved photos
+// sizes (see the projects in playwright.config.js): trying it as a guest,
+// signing up and in, filtering a photo on the OpenCL device, a preset stack,
+// undo and the work in progress surviving a reload, the saved photos
 // surviving a reload, deleting, and signing out.
 const { test, expect } = require('@playwright/test');
 const sharp = require('sharp');
@@ -62,13 +63,16 @@ async function expectNoSidewaysScroll(page) {
 
 test.describe.configure({ mode: 'serial' });
 
-test('the start page asks to sign in', async ({ page }) => {
+test('the start page opens the editor, as a guest', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/OmniFilter/);
-  await expect(page).toHaveURL(/#\/signin$/);
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page).toHaveURL(/#\/home$/);
+  await expect(page.locator('.banner.guest')).toContainText('trying OmniFilter as a guest');
+  await expect(page.locator('header').getByRole('link', { name: 'Sign in' })).toBeVisible();
   await expect(page.locator('footer')).toContainText('MIT license');
   await expectNoSidewaysScroll(page);
+  await page.locator('header').getByRole('link', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 });
 
 test('signs up and lands on the photo page', async ({ page }) => {
@@ -102,9 +106,39 @@ test('refuses a wrong password', async ({ page }) => {
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toHaveCount(0);
 });
 
-test('sends the photo page to sign in without an account', async ({ page }) => {
-  await page.goto('/#/home');
-  await expect(page).toHaveURL(/#\/signin$/);
+test('makes photos as a guest, then adds them to a new account', async ({ page }) => {
+  await page.goto('/');
+  await choosePhoto(page);
+  await page.locator('#filter-0').selectOption({ label: 'Invert' });
+  await page.locator('#transform').click();
+  await expect(photos(page)).toHaveCount(1);
+  await expect(photos(page).first()).toContainText('Invert');
+  await expectNoSidewaysScroll(page);
+
+  // Kept in this browser, across a reload.
+  await page.reload();
+  await expect(photos(page)).toHaveCount(1);
+
+  await page.locator('.banner.guest').getByRole('link', { name: 'create an account' }).click();
+  await page.locator('#email').fill('guest-' + email());
+  await page.locator('#password').fill(password);
+  await page.locator('#confirmation').fill(password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/#\/home$/);
+
+  const banner = page.locator('.banner.waiting');
+  await expect(banner).toContainText('1 photo you made before signing in');
+  await expect(photos(page)).toHaveCount(0);
+  await banner.getByRole('button', { name: 'Add to my account' }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(photos(page)).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: 'Added 1 photo' })).toBeVisible();
+
+  // Now it's on the server.
+  await page.reload();
+  await expect(photos(page)).toHaveCount(1);
+  await expect(photos(page).first()).toContainText('Invert');
+  await expect(page.locator('.banner')).toHaveCount(0);
 });
 
 test('filters a photo on the device and shows the result', async ({ page }) => {
@@ -292,6 +326,8 @@ test('signs out', async ({ page }) => {
   await expect.poll(() => savedSteps(page)).toBeNull();
   await page.reload();
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toHaveCount(0);
+  // The photo page is the guest's now: none of the account's photos.
   await page.goto('/#/home');
-  await expect(page).toHaveURL(/#\/signin$/);
+  await expect(page.locator('.banner.guest')).toBeVisible();
+  await expect(photos(page)).toHaveCount(0);
 });

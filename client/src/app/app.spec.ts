@@ -50,4 +50,20 @@ describe('App', () => {
     expect(el.querySelector('.offline')?.textContent).toContain("Can't reach the server");
     expect(el.querySelector('.account button')?.textContent).toContain('Sign out');
   });
+
+  it('offers a guest the way to sign in or create an account', async () => {
+    auth.token.set(null);
+    auth.email.set(null);
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const links = Array.from(el.querySelectorAll('.account a')).map((a) => [
+      a.textContent?.trim(),
+      a.getAttribute('href'),
+    ]);
+    expect(links).toEqual([
+      ['Sign in', '/signin'],
+      ['Create account', '/signup'],
+    ]);
+  });
 });
