@@ -48,6 +48,25 @@ const pixelUsage = () => GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUB
 
 const align4 = (n: number) => Math.max(4, Math.ceil(n / 4) * 4);
 
+// Turns a frame copied into a texture (a video frame, a bitmap) into an
+// RGBA8 buffer image, scaled to the buffer's size with bilinear filtering.
+// Browsers hand over video frames with straight alpha (copyExternalImage-
+// ToTexture's default).
+const FROM_TEXTURE = /* wgsl */ `
+@group(0) @binding(0) var tex: texture_2d<f32>;
+@group(0) @binding(1) var smp: sampler;
+@group(0) @binding(2) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(3) var<uniform> size: vec2u;
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  if (gid.x >= size.x || gid.y >= size.y) { return; }
+  let uv = (vec2f(gid.xy) + 0.5) / vec2f(size);
+  let c = textureSampleLevel(tex, smp, uv, 0.0);
+  let v = vec4u(round(clamp(c * 255.0, vec4f(0.0), vec4f(255.0))));
+  dst[gid.y * size.x + gid.x] = v.x | (v.y << 8u) | (v.z << 16u) | (v.w << 24u);
+}
+`;
+
 const PRESENT = /* wgsl */ `
 @group(0) @binding(0) var<storage, read> img: array<u32>;
 @group(0) @binding(1) var<uniform> size: vec2u;
@@ -70,6 +89,8 @@ export class GpuEngine {
     { pipeline: GPUComputePipeline; layout: GPUBindGroupLayout }
   >();
   private presentPipeline: { pipeline: GPURenderPipeline; format: GPUTextureFormat } | null = null;
+  private fromTexture: { pipeline: GPUComputePipeline; sampler: GPUSampler } | null = null;
+  private frameTexture: GPUTexture | null = null;
   // Set when the device is lost (driver reset, tab in the background too
   // long on some phones); the owner should make a new engine.
   lost = false;
@@ -365,6 +386,74 @@ export class GpuEngine {
     pass.end();
     this.device.queue.submit([encoder.finish()]);
     size.destroy();
+  }
+
+  // Copies a video frame (or bitmap, or canvas) to the GPU as an image of
+  // width x height, scaling it there. Reuses `into` when it's that size.
+  imageFromFrame(
+    source: HTMLVideoElement | ImageBitmap | HTMLCanvasElement | OffscreenCanvas | VideoFrame,
+    sourceWidth: number,
+    sourceHeight: number,
+    width: number,
+    height: number,
+    into?: GpuImage | null,
+  ): GpuImage {
+    const { device } = this;
+    let texture = this.frameTexture;
+    if (!texture || texture.width !== sourceWidth || texture.height !== sourceHeight) {
+      texture?.destroy();
+      texture = this.frameTexture = device.createTexture({
+        size: [sourceWidth, sourceHeight],
+        format: 'rgba8unorm',
+        usage:
+          GPUTextureUsage.TEXTURE_BINDING |
+          GPUTextureUsage.COPY_DST |
+          GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+    }
+    device.queue.copyExternalImageToTexture({ source }, { texture }, [sourceWidth, sourceHeight]);
+    if (!this.fromTexture) {
+      const module = device.createShaderModule({ code: FROM_TEXTURE, label: 'from texture' });
+      this.fromTexture = {
+        pipeline: device.createComputePipeline({
+          label: 'from texture',
+          layout: 'auto',
+          compute: { module, entryPoint: 'main' },
+        }),
+        sampler: device.createSampler({ magFilter: 'linear', minFilter: 'linear' }),
+      };
+    }
+    const image =
+      into && into.width === width && into.height === height
+        ? into
+        : this.createImage(width, height);
+    if (image !== into) this.release(into);
+    const size = device.createBuffer({
+      size: 8,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(size, 0, new Uint32Array([width, height]));
+    const { pipeline, sampler } = this.fromTexture;
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(
+      0,
+      device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: texture.createView() },
+          { binding: 1, resource: sampler },
+          { binding: 2, resource: { buffer: image.buffer } },
+          { binding: 3, resource: { buffer: size } },
+        ],
+      }),
+    );
+    pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    size.destroy();
+    return image;
   }
 
   // Resolves once the GPU has finished everything submitted so far.

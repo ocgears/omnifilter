@@ -29,9 +29,12 @@ export class StackRenderer {
 
   // blendModes: the blend mode names in the server's order (the order of
   // the blend options in GET /presets), which is how blend.cl numbers them.
+  // maxWorkingSide caps the size filters with a working size run at, for
+  // quick approximations (thumbnails); by default they match the server.
   constructor(
     readonly engine: GpuEngine,
     private blendModes: readonly string[],
+    private readonly maxWorkingSide = Infinity,
   ) {}
 
   setBlendModes(modes: readonly string[]): void {
@@ -53,6 +56,16 @@ export class StackRenderer {
     this.clearCache();
     this.engine.release(this.source);
     this.source = this.engine.createImage(width, height, rgba);
+    this.fullWidth = fullWidth;
+    this.fullHeight = fullHeight;
+  }
+
+  // The same with an image already on the GPU, which the renderer then owns
+  // (camera frames: see GpuEngine.imageFromFrame).
+  setSourceImage(image: GpuImage, fullWidth = image.width, fullHeight = image.height): void {
+    this.clearCache();
+    if (this.source !== image) this.engine.release(this.source);
+    this.source = image;
     this.fullWidth = fullWidth;
     this.fullHeight = fullHeight;
   }
@@ -128,9 +141,17 @@ export class StackRenderer {
     // The server runs these on a copy of the full photo at the working size
     // and scales the result back up; the preview does the same from its
     // smaller copy, so a radius in pixels covers the same part of the photo.
-    const size = def.workingSize
+    let size = def.workingSize
       ? workingSize(def, params, this.fullWidth, this.fullHeight)
       : { width: input.width, height: input.height };
+    const longest = Math.max(size.width, size.height);
+    if (longest > this.maxWorkingSide) {
+      const k = this.maxWorkingSide / longest;
+      size = {
+        width: Math.max(1, Math.round(size.width * k)),
+        height: Math.max(1, Math.round(size.height * k)),
+      };
+    }
     const resized = size.width !== input.width || size.height !== input.height;
     const at = resized ? this.resize(input, size.width, size.height) : input;
     const built = buildPlan(layer.tOption, at.width, at.height, layer.params);

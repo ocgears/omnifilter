@@ -75,6 +75,12 @@
   margin: 0;
 }
 
+.camera-row {
+  display: flex;
+  justify-content: center;
+  padding: 0 1rem 1rem;
+}
+
 figcaption {
   display: flex;
   align-items: center;

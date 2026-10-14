@@ -171,6 +171,26 @@ test('previews filters live on this device\'s GPU, and compares with the origina
   await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
 });
 
+test('filters the live camera, and takes a photo with it', async ({ page }) => {
+  await signIn(page);
+  await page.waitForFunction(() => window.omnifilterGpu);
+  const gpu = await page.evaluate(() => window.omnifilterGpu.available());
+  await page.getByRole('button', { name: /Live camera/ }).click();
+  const camera = page.locator('of-live-camera');
+  if (!gpu) {
+    await expect(camera).toContainText('need a browser with WebGPU');
+    await camera.getByRole('button', { name: 'Close' }).click();
+    return;
+  }
+  await page.getByRole('button', { name: 'Neon night' }).click();
+  await expect(camera.locator('.status')).toContainText(/Live · \d+ ms a frame/);
+  await camera.getByRole('button', { name: 'Take photo' }).click();
+  await expect(camera).toHaveCount(0);
+  await expect(page.locator('.file-name')).toHaveText('Camera photo');
+  await expect(page.locator('#preview')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
+  await expect(page.locator('of-live-preview .status')).toContainText(/Live preview.* ms/);
+});
+
 test('applies a preset stack', async ({ page }) => {
   await signIn(page);
   await choosePhoto(page);

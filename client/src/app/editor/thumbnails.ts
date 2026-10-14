@@ -4,6 +4,10 @@ import { PreviewPhoto } from './preview-engine';
 
 // Small previews of whole stacks (the preset looks) on the user's photo,
 // rendered one after another on the GPU and read back as ImageData.
+// Painterly filters run at a capped size rather than the server's working
+// size: a little less faithful, much quicker, and it doesn't show at
+// thumbnail size.
+const MAX_WORKING_SIDE = 480;
 export async function renderThumbnails(
   engine: GpuEngine,
   photo: PreviewPhoto,
@@ -11,7 +15,7 @@ export async function renderThumbnails(
   blendModes: readonly string[],
 ): Promise<Map<string, ImageData>> {
   const out = new Map<string, ImageData>();
-  const renderer = new StackRenderer(engine, blendModes);
+  const renderer = new StackRenderer(engine, blendModes, MAX_WORKING_SIDE);
   try {
     renderer.setSource(photo.rgba, photo.width, photo.height, photo.fullWidth, photo.fullHeight);
     for (const { key, layers } of stacks) {

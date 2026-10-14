@@ -20,7 +20,7 @@ function testImage() {
       rgba[i + 1] = Math.floor(y * 255 / (H - 1));
       rgba[i + 2] = Math.floor((Math.sin(x * 0.4) * Math.cos(y * 0.3) + 1) * 127);
       const d = Math.hypot(x - W * 0.8, y - H * 0.2);
-      rgba[i + 3] = d < 6 ? 0 : d < 10 ? Math.floor((d - 6) / 4 * 255) : 255;
+      rgba[i + 3] = Math.floor(Math.min(1, Math.max(0, (d - 6) / 4)) * 255);
     }
   }
   return rgba;
@@ -72,6 +72,12 @@ test.beforeAll(async ({ browser }) => {
   await page.goto('/#/signin');
   await page.waitForFunction(() => window.omnifilterGpu);
   available = await page.evaluate(() => window.omnifilterGpu.available());
+  const adapter = await page.evaluate(async () => {
+    const a = navigator.gpu && await navigator.gpu.requestAdapter();
+    return a ? [a.info.vendor, a.info.architecture, a.info.isFallbackAdapter ? '(software)' : ''].join(' ') : 'none';
+  });
+  // Shows in the GitHub Actions summary which GPU, if any, the browser had.
+  if (process.env.GITHUB_ACTIONS) console.log('::notice title=WebGPU in the e2e browser::' + adapter);
   if (!available && process.env.E2E_REQUIRE_WEBGPU) {
     throw new Error('This browser has no WebGPU, and E2E_REQUIRE_WEBGPU is set');
   }

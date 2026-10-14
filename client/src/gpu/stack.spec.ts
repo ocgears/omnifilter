@@ -79,6 +79,18 @@ describe('StackRenderer', () => {
     ]);
   });
 
+  it('can cap the working size, for quick thumbnails', () => {
+    const { engine, runs } = fakeEngine();
+    const r = new StackRenderer(engine, MODES, 200);
+    r.setSource(new Uint8Array(100 * 75 * 4), 100, 75, 4000, 3000);
+    r.render([layer('bilateral', { params: { detail: 1000 } })]);
+    expect(runs.map((x) => x.kernels[0] + ' ' + x.size)).toEqual([
+      'resize 100x75',
+      'bilateral 200x150',
+      'resize 200x150',
+    ]);
+  });
+
   it('frees what it made', () => {
     const { engine, live } = fakeEngine();
     const r = new StackRenderer(engine, MODES);

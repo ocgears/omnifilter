@@ -13,13 +13,19 @@ const oldMac = process.platform === 'darwin' && parseInt(os.release(), 10) < 22;
 // WebGPU, for the live preview (e2e/gpu.spec.js). Chrome has it on macOS and
 // Windows; on Linux it's behind a flag, and machines without a GPU (CI) use
 // SwiftShader, Chrome's software GPU, through the full Chromium build.
-const browser = oldMac ? { channel: 'chrome' } : process.platform === 'linux' ? {
-  channel: 'chromium',
-  launchOptions: {
-    args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
-      '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader']
-  }
-} : {};
+// The live camera tests use Chrome's fake camera, a moving test pattern.
+const args = ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
+let browser = { launchOptions: { args: args } };
+if (oldMac) browser = Object.assign(browser, { channel: 'chrome' });
+if (process.platform === 'linux') {
+  browser = {
+    channel: 'chromium',
+    launchOptions: {
+      args: args.concat(['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+        '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader'])
+    }
+  };
+}
 
 module.exports = defineConfig({
   testDir: 'e2e',
@@ -35,7 +41,8 @@ module.exports = defineConfig({
   use: {
     baseURL: 'http://localhost:' + PORT,
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure'
+    screenshot: 'only-on-failure',
+    permissions: ['camera']
   },
   projects: [
     { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], browser) },

@@ -4,6 +4,7 @@ import { errorMessage } from '../auth.service';
 import { Gallery } from '../gallery/gallery';
 import { Device, Filter, FilterParam, Layer, ParamValues, Photo, Preset } from '../models';
 import { PhotoApi } from '../photo-api.service';
+import { LiveCamera, cameraSupported } from './live-camera';
 import { LivePreview } from './live-preview';
 import { PhotoFileError, imageFrom, readPhoto } from './photo-file';
 import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
@@ -26,7 +27,7 @@ const THUMB_SIZE = 160;
 // preset look), transform it on the server, and see the saved results.
 @Component({
   selector: 'of-editor',
-  imports: [Alerts, Gallery, ImageDataCanvas, LivePreview],
+  imports: [Alerts, Gallery, ImageDataCanvas, LiveCamera, LivePreview],
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
   host: {
@@ -59,6 +60,9 @@ export class Editor {
   readonly sourceName = signal('');
   readonly dragging = signal(false);
   readonly transforming = signal(false);
+  // The live camera (where the browser can open one).
+  readonly camera = cameraSupported();
+  readonly cameraOn = signal(false);
 
   readonly photos = signal<Photo[]>([]);
   // The photo just made, to point it out.
@@ -209,6 +213,13 @@ export class Editor {
       event.preventDefault();
       this.usePhoto(file);
     }
+  }
+
+  // A photo taken with the live camera.
+  useCapture(dataUrl: string): void {
+    this.source.set(dataUrl);
+    this.sourceName.set('Camera photo');
+    this.cameraOn.set(false);
   }
 
   clearPhoto(): void {

@@ -9,7 +9,7 @@
     (dragleave)="dragging.set(false)"
     (drop)="onDrop($event)"
     [class.dragging]="dragging()"
-    [class.has-photo]="!!source()"
+    [class.has-photo]="!!source() || cameraOn()"
   >
     <input
       type="file"
@@ -19,12 +19,22 @@
       class="visually-hidden"
       (change)="onFilePicked($event)"
     />
-    @if (source(); as src) {
+    @if (cameraOn()) {
+      <of-live-camera
+        [layers]="layers()"
+        [blendModes]="blendModeNames()"
+        (captured)="useCapture($event)"
+        (closed)="cameraOn.set(false)"
+      />
+    } @else if (source(); as src) {
       <figure class="preview">
         <of-live-preview [source]="src" [layers]="layers()" [blendModes]="blendModeNames()" />
         <figcaption>
           <span class="file-name">{{ sourceName() }}</span>
           <label for="file" class="button">Change</label>
+          @if (camera) {
+            <button type="button" (click)="cameraOn.set(true)">Camera</button>
+          }
           <button type="button" (click)="clearPhoto()">Remove</button>
         </figcaption>
       </figure>
@@ -39,6 +49,11 @@
         <span class="dropzone-title">Choose a photo</span>
         <span class="dropzone-hint">or take one, drop one here, or paste</span>
       </label>
+      @if (camera) {
+        <div class="camera-row">
+          <button type="button" (click)="cameraOn.set(true)">Live camera, with the filters</button>
+        </div>
+      }
     }
   </section>
 
