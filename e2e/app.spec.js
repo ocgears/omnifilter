@@ -63,6 +63,17 @@ async function expectNoSidewaysScroll(page) {
 
 test.describe.configure({ mode: 'serial' });
 
+// Errors the page logged or threw during each test, for the report below.
+const pageErrors = new WeakMap();
+test.beforeEach(async ({ page }) => {
+  const errors = [];
+  pageErrors.set(page, errors);
+  page.on('pageerror', (e) => errors.push('uncaught: ' + e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push('console: ' + m.text());
+  });
+});
+
 // When a test fails, say where the page was and what it showed, as an
 // annotation on the GitHub Actions run (the full logs need sign-in).
 test.afterEach(async ({ page }, testInfo) => {
@@ -72,8 +83,13 @@ test.afterEach(async ({ page }, testInfo) => {
     headings: Array.from(document.querySelectorAll('h1, h2')).map((h) => h.textContent.trim()),
     alerts: Array.from(document.querySelectorAll('[role=alert], [role=status]'))
       .map((a) => a.textContent.trim()).filter(Boolean),
-    disabled: Array.from(document.querySelectorAll('button:disabled')).map((b) => b.textContent.trim())
+    disabled: Array.from(document.querySelectorAll('button:disabled')).map((b) => b.textContent.trim()),
+    // Lengths, not values: these may be passwords.
+    inputs: Array.from(document.querySelectorAll('input:not([type=file])'))
+      .map((i) => (i.id || i.name || i.type) + ':' + i.value.length),
+    fieldErrors: Array.from(document.querySelectorAll('.field-error')).map((e) => e.textContent.trim())
   })).catch((e) => ({ error: e.message }));
+  state.errors = (pageErrors.get(page) || []).slice(0, 8).map((e) => e.slice(0, 300));
   const where = testInfo.project.name + ' / ' + testInfo.title;
   const message = JSON.stringify(state).replace(/%/g, '%25').replace(/\r?\n/g, '%0A');
   console.log(process.env.GITHUB_ACTIONS ? '::warning title=Page when "' + where + '" failed::' + message :
