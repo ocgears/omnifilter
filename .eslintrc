@@ -2,7 +2,7 @@
   "root": true,
   "ignorePatterns": [
     "dist/", "build/", "db/", "models/", "prebuilds/", "app/test/bndl/",
-    "app/test/integration/"
+    "test-results/", "playwright-report/"
   ],
   "parserOptions": {
     "ecmaVersion": 2022

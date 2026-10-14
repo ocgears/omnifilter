@@ -142,6 +142,43 @@ jobs:
       - name: Client tests (headless Firefox)
         run: bash .github/run-and-annotate.sh npm run test:client
 
+  # The whole app in a real browser (Playwright, Chromium): sign up, filter a
+  # photo on pocl, presets, reloads, deleting, signing out. See e2e/.
+  e2e:
+    runs-on: ubuntu-24.04
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      OMNIFILTER_DEVICE: pocl
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install the OpenCL loader, headers and pocl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: bash .github/run-and-annotate.sh npx playwright test
+      - name: Keep the report and traces of failed tests
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   docker:
     runs-on: ubuntu-24.04
     steps:

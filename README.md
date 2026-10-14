@@ -80,7 +80,9 @@ Any Docker runtime works (Docker Desktop, OrbStack, [Colima](https://github.com/
 ```
 npm test             # server tests (mocha), starts MongoDB from ./db if it isn't running
 npm run test:client  # Angular unit tests (karma, headless Firefox; set KARMA_BROWSERS=ChromeHeadless for Chrome)
+npm run test:e2e     # the whole app in a browser (Playwright): sign up, filter photos, presets, delete, sign out
 ```
+The end-to-end tests build the client, start the API on port 3930 serving it, and use the `omnifilter_e2e` database, which they empty first. Install the browser once with `npx playwright install chromium`; on macOS 12, which Playwright's Chromium doesn't support, they use the installed Google Chrome instead.
 The GPU tests compare every filter's output against a plain JavaScript implementation of the same convolution, pixel by pixel.
 
 # Filters

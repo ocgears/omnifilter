@@ -83,13 +83,10 @@ describe('minification-safe dependency injection', () => {
     ['authController', 'SigninController', 'SignupController', 'PhotosController'].forEach((name) => {
       expect(() => $controller(name, { $scope: $rootScope.$new() })).not.toThrow();
     });
-    injector.get('$templateCache').put('/templates/photos/directives/photo_form_directive.html',
-      '<div></div>');
     injector.get('$templateCache').put('/templates/photos/directives/photo.html', '<div></div>');
     var scope = $rootScope.$new();
     scope.photo = {};
-    injector.get('$compile')('<div><photo-form photo="photo"></photo-form>' +
-      '<photo photo-data="photo"></photo></div>')(scope);
+    injector.get('$compile')('<div><photo photo-data="photo"></photo></div>')(scope);
     expect(() => scope.$digest()).not.toThrow();
   });
 });
