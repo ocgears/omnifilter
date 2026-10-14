@@ -2,15 +2,14 @@
 
 // Colour grades ("looks") applied through 3D lookup tables, plus vignette.
 // The built-in looks are baked from the colour functions below. Any .cube
-// file dropped into server/luts/ also appears as a look.
+// file dropped into server/luts/ also appears as a look (cube_looks.js).
+// Plain JavaScript with no Node modules, so the web client can bundle it.
 
-const path = require('path');
 const P = require('./plan');
 const { Plan, img3d, int, float, data, range } = P;
 const lut = require('./lut');
 
 const GROUP = 'Looks';
-const LUT_DIR = path.join(__dirname, '..', '..', 'luts');
 
 const luma = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 const mixc = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
@@ -92,12 +91,7 @@ function lutFilter(name, label, description, table) {
   };
 }
 
-// Any .cube files in server/luts/, as looks.
-const cubeFilters = () => lut.loadCubeDir(LUT_DIR).map((c) =>
-  lutFilter(c.name, c.table.title || c.base, 'Your LUT from server/luts/' + c.file + '.', c.table));
-
 module.exports = LOOKS.map((look) => lutFilter(look.name, look.label, look.description, lut.bake(look.fn)))
-  .concat(cubeFilters())
   .concat([{
     name: 'vignette',
     label: 'Vignette',
@@ -111,3 +105,5 @@ module.exports = LOOKS.map((look) => lutFilter(look.name, look.label, look.descr
     plan: (w, h, p) => new Plan(w, h).step('vignette',
       float(p.strength / 100), float(p.radius / 100), float(p.softness / 100))
   }]);
+
+module.exports.lutFilter = lutFilter;

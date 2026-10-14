@@ -1,10 +1,12 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Alerts } from '../alerts/alerts';
 import { errorMessage } from '../auth.service';
 import { Gallery } from '../gallery/gallery';
 import { Device, Filter, FilterParam, Layer, ParamValues, Photo, Preset } from '../models';
 import { PhotoApi } from '../photo-api.service';
+import { LivePreview } from './live-preview';
 import { PhotoFileError, imageFrom, readPhoto } from './photo-file';
+import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
 import {
   findFilter,
   groupFilters,
@@ -14,12 +16,17 @@ import {
   paramsFor,
   transformRequest,
 } from './stack';
+import { ImageDataCanvas, renderThumbnails } from './thumbnails';
+
+// The longer side of the preset thumbnails, in pixels (they show at 72 CSS
+// pixels, so this is sharp on 2x screens).
+const THUMB_SIZE = 160;
 
 // The main page: pick a photo, build a stack of filters (or start from a
 // preset look), transform it on the server, and see the saved results.
 @Component({
   selector: 'of-editor',
-  imports: [Alerts, Gallery],
+  imports: [Alerts, Gallery, ImageDataCanvas, LivePreview],
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
   host: {
@@ -28,6 +35,7 @@ import {
 })
 export class Editor {
   private readonly api = inject(PhotoApi);
+  private readonly previewEngine = inject(PreviewEngine);
 
   readonly errors = signal<string[]>([]);
   readonly messages = signal<string[]>([]);
@@ -39,6 +47,7 @@ export class Editor {
   readonly presets = signal<Preset[]>([]);
   readonly maxLayers = signal(8);
   readonly blendModes = signal<{ value: string; label: string }[]>([]);
+  readonly blendModeNames = computed(() => this.blendModes().map((b) => b.value));
   readonly device = signal<Device | null>(null);
 
   readonly layers = signal<Layer[]>([newLayer()]);
@@ -55,6 +64,11 @@ export class Editor {
   // The photo just made, to point it out.
   readonly latestId = signal<string | null>(null);
 
+  // Each preset look on the user's photo, by preset name ('' for the photo
+  // as it is), rendered on this device's GPU where there is one.
+  readonly thumbnails = signal<Map<string, ImageData>>(new Map());
+  private thumbnailRun = 0;
+
   readonly deviceKind = computed(() => {
     const type = this.device()?.type;
     if (type === 'gpu') return 'GPU';
@@ -65,6 +79,40 @@ export class Editor {
   constructor() {
     this.loadFilters();
     this.loadPhotos();
+    effect(() => {
+      const source = this.source();
+      const presets = this.presets();
+      const loaded = this.filtersLoaded();
+      const modes = this.blendModeNames();
+      untracked(() => this.renderThumbnails(source, presets, loaded, modes));
+    });
+  }
+
+  private async renderThumbnails(
+    source: string | null,
+    presets: Preset[],
+    loaded: boolean,
+    modes: string[],
+  ): Promise<void> {
+    const run = ++this.thumbnailRun;
+    if (!source || !presets.length || !loaded || !modes.length) {
+      this.thumbnails.set(new Map());
+      return;
+    }
+    try {
+      const engine = await this.previewEngine.get();
+      if (!engine || run !== this.thumbnailRun) return;
+      const photo = await decodePhoto(source, THUMB_SIZE);
+      const stacks = [{ key: '', layers: [] as ReturnType<typeof stackLayers> }].concat(
+        presets
+          .filter((p) => !this.missing(p).length)
+          .map((p) => ({ key: p.name, layers: stackLayers(layersFromPreset(this.filters(), p)) })),
+      );
+      const images = await renderThumbnails(engine, photo, stacks, modes);
+      if (run === this.thumbnailRun) this.thumbnails.set(images);
+    } catch (err) {
+      console.error('Thumbnails:', err);
+    }
   }
 
   private addError(message: string): void {

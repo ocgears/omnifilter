@@ -7,10 +7,10 @@
 // blue (the same order as .cube files). domain is the input colour at the
 // cube's first and last entries, [rMin, gMin, bMin, rMax, gMax, bMax].
 
-const DEFAULT_DOMAIN = [0, 0, 0, 1, 1, 1];
+// Plain JavaScript with no Node modules, so the web client can bundle it
+// (client/src/gpu/filters.ts); reading .cube files is in lut_files.js.
 
-const fs = require('fs');
-const path = require('path');
+const DEFAULT_DOMAIN = [0, 0, 0, 1, 1, 1];
 
 // Builds a LUT by evaluating fn([r, g, b]) -> [r, g, b] on the grid.
 function bake(fn, size) {
@@ -73,42 +73,4 @@ function parseCube(text) {
   return { size: size, table: table, title: title, domain: min.concat(max) };
 }
 
-function loadCube(path) {
-  return parseCube(fs.readFileSync(path, 'utf8'));
-}
-
-// Loads every .cube file in a directory, as [{ name, base, file, table }]
-// sorted by file name, where name is a filter name ('lut_' and the file name
-// in lower case, other characters as underscores). Files that would get the
-// same name ("My LUT.cube", "my_lut.cube") are numbered (lut_my_lut_2), and
-// files that can't be parsed are skipped, with a message either way, so a
-// stray file can't stop the server.
-function loadCubeDir(dir) {
-  let files = [];
-  try {
-    files = fs.readdirSync(dir).filter((f) => /\.cube$/i.test(f)).sort();
-  } catch (e) {
-    return [];
-  }
-  const taken = new Set();
-  const cubes = [];
-  for (const file of files) {
-    const base = file.replace(/\.cube$/i, '');
-    let table;
-    try {
-      table = loadCube(path.join(dir, file));
-    } catch (e) {
-      console.log('Skipping LUT ' + file + ': ' + e.message);
-      continue;
-    }
-    const wanted = 'lut_' + base.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    let name = wanted;
-    for (let n = 2; taken.has(name); n++) name = wanted + '_' + n;
-    if (name !== wanted) console.log('LUT ' + file + ' is listed as ' + name + ', as ' + wanted + ' is taken');
-    taken.add(name);
-    cubes.push({ name: name, base: base, file: file, table: table });
-  }
-  return cubes;
-}
-
-module.exports = { bake: bake, parseCube: parseCube, loadCube: loadCube, loadCubeDir: loadCubeDir };
+module.exports = { bake: bake, parseCube: parseCube };

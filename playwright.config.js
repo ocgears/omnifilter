@@ -10,6 +10,17 @@ const PORT = Number(process.env.E2E_PORT) || 3930;
 // the installed Google Chrome there.
 const oldMac = process.platform === 'darwin' && parseInt(os.release(), 10) < 22;
 
+// WebGPU, for the live preview (e2e/gpu.spec.js). Chrome has it on macOS and
+// Windows; on Linux it's behind a flag, and machines without a GPU (CI) use
+// SwiftShader, Chrome's software GPU, through the full Chromium build.
+const browser = oldMac ? { channel: 'chrome' } : process.platform === 'linux' ? {
+  channel: 'chromium',
+  launchOptions: {
+    args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+      '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader']
+  }
+} : {};
+
 module.exports = defineConfig({
   testDir: 'e2e',
   globalSetup: require.resolve('./e2e/global_setup'),
@@ -27,9 +38,10 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure'
   },
   projects: [
-    { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], oldMac ? { channel: 'chrome' } : {}) },
-    // A phone-sized touch screen (Chromium, as Playwright's iPhones need WebKit).
-    { name: 'phone', use: Object.assign({}, devices['Pixel 7'], oldMac ? { channel: 'chrome' } : {}) }
+    { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], browser) },
+    // A phone-sized touch screen (Chromium, as Playwright's iPhones need
+    // WebKit). The WebGPU comparisons don't depend on the screen.
+    { name: 'phone', use: Object.assign({}, devices['Pixel 7'], browser), testIgnore: /gpu\.spec/ }
   ],
   webServer: {
     // Builds the client into dist/ (installing its packages the first time),

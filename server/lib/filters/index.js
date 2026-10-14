@@ -15,6 +15,7 @@ const definitions = [].concat(
   require('./edges'),
   require('./colour'),
   require('./looks'),
+  require('./cube_looks'),
   require('./stylize'),
   require('./retro'),
   require('./distort'),

@@ -132,6 +132,45 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
   expect(data[0]).toBeGreaterThan(200);
 });
 
+// The red channel at the left edge of an element's screenshot, halfway down.
+async function leftEdgeRed(locator) {
+  const png = await locator.screenshot();
+  const image = sharp(png);
+  const { height } = await image.metadata();
+  const { data } = await image.extract({ left: 2, top: Math.floor(height / 2), width: 2, height: 2 })
+    .raw().toBuffer({ resolveWithObject: true });
+  return data[0];
+}
+
+test('previews filters live on this device\'s GPU, and compares with the original', async ({ page }) => {
+  await signIn(page);
+  await choosePhoto(page);
+  const status = page.locator('of-live-preview .status');
+  await page.waitForFunction(() => window.omnifilterGpu);
+  if (!(await page.evaluate(() => window.omnifilterGpu.available()))) {
+    await expect(status).toContainText('needs a browser with WebGPU');
+    return;
+  }
+  await expect(status).toContainText(/Live preview.* ms/);
+  // A thumbnail of each preset look on the photo, and of the photo itself.
+  const presets = await page.locator('.chips .chip').count();
+  await expect(page.locator('canvas.thumb')).toHaveCount(presets);
+
+  // The left edge of the gradient is dark; inverted live, it's light.
+  const canvas = page.locator('of-live-preview canvas');
+  await page.locator('#filter-0').selectOption({ label: 'Invert' });
+  await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
+
+  // Holding the compare button shows the original.
+  const compare = page.getByRole('button', { name: 'Hold to compare' });
+  const box = await compare.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect.poll(() => leftEdgeRed(canvas)).toBeLessThan(60);
+  await page.mouse.up();
+  await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
+});
+
 test('applies a preset stack', async ({ page }) => {
   await signIn(page);
   await choosePhoto(page);

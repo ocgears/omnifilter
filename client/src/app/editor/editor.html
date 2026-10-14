@@ -9,6 +9,7 @@
     (dragleave)="dragging.set(false)"
     (drop)="onDrop($event)"
     [class.dragging]="dragging()"
+    [class.has-photo]="!!source()"
   >
     <input
       type="file"
@@ -20,7 +21,7 @@
     />
     @if (source(); as src) {
       <figure class="preview">
-        <img id="preview" [src]="src" alt="Your photo" />
+        <of-live-preview [source]="src" [layers]="layers()" [blendModes]="blendModeNames()" />
         <figcaption>
           <span class="file-name">{{ sourceName() }}</span>
           <label for="file" class="button">Change</label>
@@ -44,14 +45,22 @@
   <section class="controls" aria-label="Filters">
     @if (presets().length) {
       <h2>Looks</h2>
-      <div class="chips" role="group" aria-label="Preset looks">
+      <div
+        class="chips"
+        [class.looks]="thumbnails().size > 0"
+        role="group"
+        aria-label="Preset looks"
+      >
         <button
           type="button"
           class="chip"
           [attr.aria-pressed]="!selectedPreset()"
           (click)="applyPreset(null)"
         >
-          Build your own
+          @if (thumbnails().size) {
+            <canvas class="thumb" [ofImageData]="thumbnails().get('')" aria-hidden="true"></canvas>
+          }
+          <span>Build your own</span>
         </button>
         @for (p of presets(); track p.name) {
           <button
@@ -62,7 +71,14 @@
             [attr.title]="missing(p).length ? 'Not available on this server' : null"
             (click)="applyPreset(p)"
           >
-            {{ p.label }}
+            @if (thumbnails().size) {
+              <canvas
+                class="thumb"
+                [ofImageData]="thumbnails().get(p.name)"
+                aria-hidden="true"
+              ></canvas>
+            }
+            <span>{{ p.label }}</span>
           </button>
         }
       </div>
