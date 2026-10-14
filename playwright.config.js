@@ -1,6 +1,6 @@
 // End-to-end tests (`npm run test:e2e`): a real browser drives the built
 // client, served by the API server itself, against a real database and the
-// OpenCL device. See e2e/.
+// OpenCL device, once at desktop size and once as a phone. See e2e/.
 const os = require('os');
 const { defineConfig, devices } = require('@playwright/test');
 
@@ -27,10 +27,13 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure'
   },
   projects: [
-    { name: 'chromium', use: Object.assign({}, devices['Desktop Chrome'], oldMac ? { channel: 'chrome' } : {}) }
+    { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], oldMac ? { channel: 'chrome' } : {}) },
+    // A phone-sized touch screen (Chromium, as Playwright's iPhones need WebKit).
+    { name: 'phone', use: Object.assign({}, devices['Pixel 7'], oldMac ? { channel: 'chrome' } : {}) }
   ],
   webServer: {
-    // Builds the client into dist/, which the API serves when it exists.
+    // Builds the client into dist/ (installing its packages the first time),
+    // which the API serves when it exists.
     command: 'npm run build && node server/server.js',
     url: 'http://localhost:' + PORT + '/device',
     timeout: 180000,

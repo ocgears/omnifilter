@@ -1,0 +1,262 @@
+// One column on phones; the photo beside the controls on wider screens, with
+// the photo staying in view while the controls scroll.
+.workspace {
+  display: grid;
+  // minmax(0, …) so a wide child (the swipeable preset row) can't widen the page.
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+  align-items: start;
+}
+
+@media (min-width: 860px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr);
+  }
+  .stage {
+    position: sticky;
+    top: calc(var(--header-height) + var(--gap));
+  }
+}
+
+.stage {
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.stage.dragging {
+  outline: 3px dashed var(--accent);
+  outline-offset: -3px;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  min-height: min(50vh, 22rem);
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.dropzone:hover,
+.stage:focus-within .dropzone {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.stage:focus-within:has(.dropzone) {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.dropzone-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.preview {
+  margin: 0;
+}
+
+.preview img {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+
+figcaption {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+// Preset looks: one swipeable row on phones, wrapping on wider screens.
+.chips {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 860px) {
+  .chips {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+
+.chip {
+  flex: none;
+  scroll-snap-align: start;
+  border-radius: 999px;
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.description {
+  margin: 0 0 var(--gap);
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.layers {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.layer {
+  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.layer .description {
+  margin: 0.5rem 0 0;
+}
+
+.layer-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+// The filter menu keeps a readable width; on narrow phones the buttons
+// wrap onto their own row, on the right.
+.layer-header select {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.layer-header select + .icon-button {
+  margin-left: auto;
+}
+
+.layer-number {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.params {
+  display: grid;
+  gap: 0.25rem 1rem;
+  margin-top: 0.5rem;
+}
+
+@media (min-width: 560px) {
+  .params {
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  }
+}
+
+// Label, then the control and its value on one row.
+.param {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 0.75rem;
+}
+
+.param-label {
+  grid-column: 1 / -1;
+  font-size: 0.9375rem;
+}
+
+.param select {
+  grid-column: 1 / -1;
+}
+
+output {
+  min-width: 3.5ch;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.mix {
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.25rem;
+}
+
+summary {
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.add-layer {
+  width: 100%;
+}
+
+// Transform stays on screen at the bottom while the filters scroll.
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: var(--gap) calc(-1 * var(--gutter)) 0;
+  padding: 0.75rem var(--gutter) calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--bg-translucent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border);
+}
+
+@media (min-width: 860px) {
+  .action-bar {
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+}
+
+.device-info {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+  text-align: center;
+}

@@ -1,10 +1,13 @@
-// The main paths through the app in a real browser: signing up and in,
+// The main paths through the app in a real browser, at desktop and phone
+// sizes (see the projects in playwright.config.js): signing up and in,
 // filtering a photo on the OpenCL device, a preset stack, the saved photos
 // surviving a reload, deleting, and signing out.
 const { test, expect } = require('@playwright/test');
 const sharp = require('sharp');
 
-const email = 'e2e-' + Date.now() + '@example.com';
+// Each project (desktop, phone) gets its own account.
+const run = Date.now();
+const email = () => 'e2e-' + run + '-' + test.info().project.name + '@example.com';
 const password = 'correct horse battery';
 
 // The page calls the API on port 3000 of its own host unless told otherwise;
@@ -31,61 +34,77 @@ async function gradientJpeg(width, height) {
 
 async function signIn(page) {
   await page.goto('/#/signin');
-  await page.locator('input[name=email]').fill(email);
-  await page.locator('input[name=password]').fill(password);
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.locator('header')).toContainText('Hello ' + email);
+  await page.locator('#email').fill(email());
+  await page.locator('#password').fill(password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/#\/home$/);
+  await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toBeVisible();
 }
 
-// Picks the test image and waits for the preview.
+// Picking a file shows it straight away.
 async function choosePhoto(page) {
   await page.locator('#file').setInputFiles({
     name: 'gradient.jpg',
     mimeType: 'image/jpeg',
     buffer: await gradientJpeg(96, 64)
   });
-  await page.getByRole('button', { name: 'Upload for Preview' }).click();
   await expect(page.locator('#preview')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
 }
 
-const photos = (page) => page.locator('li.single-photo');
+const photos = (page) => page.locator('.photo-card');
+
+// Nothing sticks out sideways, so the page never scrolls horizontally.
+async function expectNoSidewaysScroll(page) {
+  const [scrollWidth, width] = await page.evaluate(() =>
+    [document.documentElement.scrollWidth, window.innerWidth]);
+  expect(scrollWidth).toBeLessThanOrEqual(width);
+}
 
 test.describe.configure({ mode: 'serial' });
 
 test('the start page asks to sign in', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('OmniFilter');
+  await expect(page).toHaveTitle(/OmniFilter/);
   await expect(page).toHaveURL(/#\/signin$/);
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   await expect(page.locator('footer')).toContainText('MIT license');
+  await expectNoSidewaysScroll(page);
 });
 
 test('signs up and lands on the photo page', async ({ page }) => {
   await page.goto('/#/signup');
-  await page.locator('input[name=email]').fill(email);
-  await page.locator('input[name=password]').fill(password);
-  await page.locator('input[name=confirmation]').fill(password);
-  await page.getByRole('button', { name: 'Create New User' }).click();
+  await page.locator('#email').fill(email());
+  await page.locator('#password').fill(password);
+  await page.locator('#confirmation').fill(password);
+  await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/#\/home$/);
-  await expect(page.locator('header')).toContainText('Hello ' + email);
+  await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toBeVisible();
   await expect(page.locator('.device-info')).toContainText('Filters run on');
+  await expectNoSidewaysScroll(page);
 });
 
 test('refuses a second account with the same email', async ({ page }) => {
   await page.goto('/#/signup');
-  await page.locator('input[name=email]').fill(email.toUpperCase());
-  await page.locator('input[name=password]').fill(password);
-  await page.locator('input[name=confirmation]').fill(password);
-  await page.getByRole('button', { name: 'Create New User' }).click();
-  await expect(page.locator('.errors-section')).toContainText('already exists');
+  await page.locator('#email').fill(email().toUpperCase());
+  await page.locator('#password').fill(password);
+  await page.locator('#confirmation').fill(password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('alert')).toContainText('already exists');
 });
 
 test('refuses a wrong password', async ({ page }) => {
   await page.goto('/#/signin');
-  await page.locator('input[name=email]').fill(email);
-  await page.locator('input[name=password]').fill('not the password');
-  await page.getByRole('button', { name: 'Sign In' }).click();
-  await expect(page.locator('.errors-section')).toBeVisible();
-  await expect(page.locator('header')).not.toContainText('Hello');
+  await page.locator('#email').fill(email());
+  await page.locator('#password').fill('not the password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page).toHaveURL(/#\/signin$/);
+  await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toHaveCount(0);
+});
+
+test('sends the photo page to sign in without an account', async ({ page }) => {
+  await page.goto('/#/home');
+  await expect(page).toHaveURL(/#\/signin$/);
 });
 
 test('filters a photo on the device and shows the result', async ({ page }) => {
@@ -93,6 +112,10 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
   await expect(photos(page)).toHaveCount(0);
   await choosePhoto(page);
   await page.locator('#filter-0').selectOption({ label: 'Invert' });
+
+  // The Transform button stays on screen, even on a phone.
+  await expect(page.locator('#transform')).toBeInViewport();
+  await expectNoSidewaysScroll(page);
   await page.locator('#transform').click();
 
   await expect(photos(page)).toHaveCount(1);
@@ -100,6 +123,7 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
   await expect(result).toContainText('Invert');
   const src = await result.locator('img').getAttribute('src');
   expect(src).toMatch(/^data:image\/jpeg;base64,/);
+  await expect(result.getByRole('link', { name: 'Save' })).toHaveAttribute('download', /\.jpg$/);
 
   // The left edge of the gradient is dark, so inverted it's light.
   const image = sharp(Buffer.from(src.split(',')[1], 'base64'));
@@ -111,11 +135,12 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
 test('applies a preset stack', async ({ page }) => {
   await signIn(page);
   await choosePhoto(page);
-  await page.locator('#preset').selectOption({ label: 'Toy camera' });
+  await page.getByRole('button', { name: 'Toy camera' }).click();
   await expect(page.locator('li.layer')).toHaveCount(3);
+  await expectNoSidewaysScroll(page);
   await page.locator('#transform').click();
   await expect(photos(page)).toHaveCount(2);
-  await expect(page.locator('.errors-section')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('keeps the saved photos after a reload, and deletes one', async ({ page }) => {
@@ -123,9 +148,12 @@ test('keeps the saved photos after a reload, and deletes one', async ({ page }) 
   await page.reload();
   await expect(photos(page)).toHaveCount(2);
 
-  await photos(page).filter({ hasText: 'Invert' }).getByRole('button', { name: 'Delete Photo' }).click();
+  const card = photos(page).filter({ hasText: 'Invert' });
+  await card.getByRole('button', { name: 'Delete' }).click();
+  await expect(card).toContainText('Delete this photo?');
+  await card.getByRole('button', { name: 'Delete' }).click();
   await expect(photos(page)).toHaveCount(1);
-  await expect(page.locator('.server-msg')).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('deleted');
 
   await page.reload();
   await expect(photos(page)).toHaveCount(1);
@@ -133,8 +161,10 @@ test('keeps the saved photos after a reload, and deletes one', async ({ page }) 
 
 test('signs out', async ({ page }) => {
   await signIn(page);
-  await page.locator('header').getByText('logout').click();
-  await expect(page.locator('header')).not.toContainText('Hello');
+  await page.locator('header').getByRole('button', { name: 'Sign out' }).click();
+  await expect(page).toHaveURL(/#\/signin$/);
   await page.reload();
-  await expect(page.locator('header')).not.toContainText('Hello');
+  await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toHaveCount(0);
+  await page.goto('/#/home');
+  await expect(page).toHaveURL(/#\/signin$/);
 });

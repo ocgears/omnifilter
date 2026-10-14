@@ -1,0 +1,76 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--header-height);
+  padding: env(safe-area-inset-top) var(--gutter) 0;
+  background: var(--bg-translucent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--touch);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand img {
+  border-radius: 6px;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.email,
+.offline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+// On narrow phones there's only room for the button.
+@media (max-width: 479px) {
+  .email {
+    display: none;
+  }
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding: var(--gap) var(--gutter) 0;
+}
+
+.site-footer {
+  padding: 1.5rem var(--gutter) calc(1.5rem + env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.site-footer p {
+  margin: 0;
+}

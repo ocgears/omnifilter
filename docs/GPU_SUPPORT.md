@@ -118,7 +118,8 @@ OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it 
 With WGSL kernels from Phase 3, the page can run filters on the viewer's own GPU through WebGPU. It's now in Chrome/Edge, in Safari 26, and in Firefox on Windows and on Apple Silicon Macs. Firefox on Linux and older hardware still lag, so this is an enhancement, with the server as the fallback ([status summary](https://svilenkovic.com/3d/webgpu-adoption-2026)).
 
 * **Live preview:** filter a screen-sized copy in the browser as sliders move, then send the stack to the server for the full-resolution result. This also gives the before/after slider idea from the effects list for free.
-* **Shared code:** move each kernel's WGSL into files both the server and the client bundle load, so a fix applies to both.
+* **Shared code:** move each kernel's WGSL into files both the server and the client bundle load, so a fix applies to both. The client is an Angular 22 app (`client/`); keep the WebGPU code in a module of its own (say `client/src/gpu/`) that knows nothing about Angular, so it can be tested and reused on its own.
+* **Phones:** WebGPU is on by default in Safari on iOS 26 and in Chrome on most Android phones (not yet Samsung's Exynos GPUs). Phone browser tabs get little memory, so preview at screen size and leave full-size results to the server.
 * **Fallback:** browsers without WebGPU keep the current flow, where the server does everything.
 
 ## Phase 5: neural styles on the GPU

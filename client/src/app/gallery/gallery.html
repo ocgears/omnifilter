@@ -1,0 +1,40 @@
+@if (photos().length) {
+  <section class="gallery" aria-labelledby="gallery-title">
+    <h2 id="gallery-title">
+      Your photos <span class="count">{{ photos().length }}</span>
+    </h2>
+    @if (shareError(); as message) {
+      <p class="share-error" role="alert">{{ message }}</p>
+    }
+    <ul class="grid">
+      @for (photo of photos(); track photo._id) {
+        <li
+          class="photo-card"
+          [id]="'photo-' + photo._id"
+          [class.latest]="photo._id === highlight()"
+        >
+          <img [src]="photo.content" [alt]="label(photo)" loading="lazy" decoding="async" />
+          <div class="caption">
+            <span class="label">{{ label(photo) }}</span>
+            @if (photo.createdAt) {
+              <time [attr.datetime]="photo.createdAt">{{ photo.createdAt | date: 'medium' }}</time>
+            }
+          </div>
+          <div class="actions">
+            @if (confirming() === photo._id) {
+              <span class="confirm-text">Delete this photo?</span>
+              <button type="button" class="danger" (click)="confirmDelete(photo)">Delete</button>
+              <button type="button" (click)="confirming.set(null)">Keep</button>
+            } @else {
+              <a class="button" [href]="photo.content" [download]="fileName(photo)">Save</a>
+              @if (canShare) {
+                <button type="button" (click)="share(photo)">Share</button>
+              }
+              <button type="button" (click)="confirming.set(photo._id)">Delete</button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  </section>
+}

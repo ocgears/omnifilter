@@ -121,29 +121,34 @@ jobs:
         run: |
           node -e "const g = require('./server/lib/gpu_filters'); console.log(g.list().length + ' filters'); try { g.deviceInfo(); } catch (e) { console.log('as expected: ' + e.message.split('\\n')[0]); }"
 
+  # The Angular client: a production build (which type-checks the templates
+  # too) and the unit tests (Vitest, jsdom).
   client:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - name: Install the OpenCL loader and headers (the addon builds on npm ci)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
       - run: npm ci
-      # Errors fail the job; style warnings don't.
+        working-directory: client
+      - run: node scripts/client.js build --production
+      - name: Client tests
+        run: bash .github/run-and-annotate.sh node scripts/client.js test
+      # The end-to-end tests and build scripts. The root packages are only
+      # needed for eslint here, so the native addon isn't built.
+      - run: npm ci --ignore-scripts
       - run: npm run lint:client
-      - run: npm run build
-      - name: Client tests (headless Firefox)
-        run: bash .github/run-and-annotate.sh npm run test:client
 
-  # The whole app in a real browser (Playwright, Chromium): sign up, filter a
-  # photo on pocl, presets, reloads, deleting, signing out. See e2e/.
+  # The whole app in a real browser (Playwright, Chromium), at desktop and
+  # phone sizes: sign up, filter a photo on pocl, presets, reloads, deleting,
+  # signing out. See e2e/.
   e2e:
     runs-on: ubuntu-24.04
     services:
@@ -165,7 +170,12 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
       - run: npm ci
+      - run: npm ci
+        working-directory: client
       - run: npx playwright install --with-deps chromium
       - name: End-to-end tests
         run: bash .github/run-and-annotate.sh npx playwright test
@@ -192,4 +202,4 @@ jobs:
       - name: The image finds an OpenCL device
         run: docker run --rm omnifilter npm run devices
       - name: The image has the production client, without source maps
-        run: docker run --rm omnifilter sh -c 'test -s dist/bundle.js && ! ls dist/*.map dist/sass/*.map 2>/dev/null'
+        run: docker run --rm omnifilter sh -c 'test -s dist/index.html && ls dist/main-*.js && ! ls dist/*.map 2>/dev/null'
