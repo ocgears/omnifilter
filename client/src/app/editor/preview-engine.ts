@@ -21,29 +21,28 @@ export function stackLayers(layers: readonly Layer[]): StackLayer[] {
 }
 
 // Decodes a photo (a data URL) to pixels whose longer side is at most
-// maxSide. The browser applies the EXIF orientation, as the server does.
+// maxSide. The browser applies the EXIF orientation, as the server does, and
+// decodes straight to the smaller size, which matters for 24-megapixel phone
+// photos in a phone browser's memory.
 export async function decodePhoto(dataUrl: string, maxSide: number): Promise<PreviewPhoto> {
-  const blob = await (await fetch(dataUrl)).blob();
-  const full = await createImageBitmap(blob);
-  const fullWidth = full.width;
-  const fullHeight = full.height;
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode();
+  const fullWidth = img.naturalWidth;
+  const fullHeight = img.naturalHeight;
   const scale = Math.min(1, maxSide / Math.max(fullWidth, fullHeight));
   const width = Math.max(1, Math.round(fullWidth * scale));
   const height = Math.max(1, Math.round(fullHeight * scale));
-  const bitmap =
-    scale < 1
-      ? await createImageBitmap(blob, {
-          resizeWidth: width,
-          resizeHeight: height,
-          resizeQuality: 'high',
-        })
-      : full;
+  const bitmap = await createImageBitmap(img, {
+    resizeWidth: width,
+    resizeHeight: height,
+    resizeQuality: 'high',
+  });
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
   const rgba = ctx.getImageData(0, 0, width, height).data;
-  full.close();
-  if (bitmap !== full) bitmap.close();
   return { rgba, width, height, fullWidth, fullHeight };
 }
 

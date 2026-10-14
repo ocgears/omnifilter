@@ -78,7 +78,7 @@ export class LiveCamera implements OnDestroy {
       const engine = this.engine ?? (await this.engines.get());
       if (!engine) throw new Error('Live camera filters need a browser with WebGPU.');
       this.engine = engine;
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
           facingMode: this.facing(),
@@ -86,6 +86,12 @@ export class LiveCamera implements OnDestroy {
           height: { ideal: 1080 },
         },
       });
+      // Closed while the camera was opening: turn it straight off again.
+      if (this.stopped) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
+      this.stream = stream;
       const devices = await navigator.mediaDevices.enumerateDevices();
       this.canFlip.set(devices.filter((d) => d.kind === 'videoinput').length > 1);
       const video = this.video().nativeElement;

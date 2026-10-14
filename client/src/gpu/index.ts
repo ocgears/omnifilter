@@ -32,6 +32,8 @@ export function gpuEngine(): Promise<GpuEngine | null> {
 // and for trying kernels out from the console.
 export interface GpuDebugApi {
   available(): Promise<boolean>;
+  // Destroys the GPU device, as a driver reset would, to test recovery.
+  loseDevice(): Promise<void>;
   // The filters bundled into the client, and whether each can be previewed.
   filters(): string[];
   previewable(name: string): boolean;
@@ -60,6 +62,11 @@ export function installDebugApi(win: Window & { omnifilterGpu?: GpuDebugApi }): 
   };
   win.omnifilterGpu = {
     available: async () => !!(await gpuEngine()),
+    async loseDevice() {
+      const e = await engine();
+      e.device.destroy();
+      await e.device.lost;
+    },
     filters: () => allFilterNames(),
     previewable: (name) => previewable(name),
     async compileAll() {

@@ -45,6 +45,8 @@ export class LivePreview implements OnDestroy {
   readonly renderMs = signal<number | null>(null);
   // The first layer the browser can't run (1-based), and why.
   readonly stoppedAt = signal<{ layer: number; reason: string } | null>(null);
+  // Set when the last update failed (the stack still shows as it was).
+  readonly failed = signal(false);
   readonly software = signal(false);
 
   readonly status = computed(() => {
@@ -54,6 +56,7 @@ export class LivePreview implements OnDestroy {
       case 'static':
         return 'Live preview needs a browser with WebGPU. Transform shows the result.';
       default: {
+        if (this.failed()) return "The preview couldn't show these settings. Transform still can.";
         const stopped = this.stoppedAt();
         if (stopped) {
           return (
@@ -105,6 +108,7 @@ export class LivePreview implements OnDestroy {
       }
       this.engine = engine;
       this.software.set(engine.adapterInfo.fallback);
+      this.failed.set(false);
       const photo = await decodePhoto(src, PREVIEW_SIZE);
       if (token !== this.loading || this.destroyed) return;
       if (!this.renderer) this.renderer = new StackRenderer(engine, this.blendModes());
@@ -131,6 +135,14 @@ export class LivePreview implements OnDestroy {
   }
 
   private async frame(): Promise<void> {
+    // A lost GPU device (a driver reset, or a phone reclaiming memory from a
+    // background tab) gets a new engine.
+    if (this.engine?.lost) {
+      this.engine = null;
+      this.renderer = null;
+      this.load(this.source());
+      return;
+    }
     const renderer = this.renderer;
     const engine = this.engine;
     if (!this.dirty || this.running || !renderer || !engine || this.destroyed) return;
@@ -152,9 +164,11 @@ export class LivePreview implements OnDestroy {
       if (image) engine.present(image, this.canvas().nativeElement);
       await engine.done();
       if (!this.comparing()) this.renderMs.set(performance.now() - start);
+      this.failed.set(false);
     } catch (err) {
+      // Say so, and carry on with the next change.
       console.error('Live preview:', err);
-      this.mode.set('static');
+      this.failed.set(true);
     } finally {
       this.running = false;
       if (this.dirty) requestAnimationFrame(() => this.frame());

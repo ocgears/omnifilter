@@ -169,6 +169,13 @@ test('previews filters live on this device\'s GPU, and compares with the origina
   await expect.poll(() => leftEdgeRed(canvas)).toBeLessThan(60);
   await page.mouse.up();
   await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
+
+  // If the GPU device is lost (a driver reset, a phone reclaiming memory),
+  // the next change gets a new one.
+  await page.evaluate(() => window.omnifilterGpu.loseDevice());
+  await page.locator('#filter-0').selectOption({ label: 'Threshold' });
+  await expect(status).toContainText(/Live preview.* ms/);
+  await expect.poll(() => leftEdgeRed(canvas)).toBeLessThan(60);
 });
 
 test('filters the live camera, and takes a photo with it', async ({ page }) => {
