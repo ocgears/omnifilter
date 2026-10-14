@@ -50,6 +50,8 @@ const THUMB_SIZE = 160;
     '(document:paste)': 'onPaste($event)',
     '(document:keydown)': 'onKeydown($event)',
     '(document:pointerdown)': 'closeHistory($event)',
+    '(window:pagehide)': 'flushDraft()',
+    '(document:visibilitychange)': 'flushDraft()',
   },
 })
 export class Editor {
@@ -223,10 +225,16 @@ export class Editor {
   private saveStackDraft(): void {
     this.touched = true;
     clearTimeout(this.draftTimer);
-    this.draftTimer = setTimeout(
-      () => this.drafts.saveStack({ steps: this.history.steps(), index: this.history.index() }),
-      DRAFT_SAVE_MS,
-    );
+    this.draftTimer = setTimeout(() => this.flushDraft(), DRAFT_SAVE_MS);
+  }
+
+  // Saves the stack now if a save is waiting, e.g. as the page is closed or
+  // goes into the background (where a phone may unload it).
+  flushDraft(): void {
+    if (this.draftTimer === undefined) return;
+    clearTimeout(this.draftTimer);
+    this.draftTimer = undefined;
+    this.drafts.saveStack({ steps: this.history.steps(), index: this.history.index() });
   }
 
   // ---- undo and redo ----

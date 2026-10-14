@@ -344,6 +344,17 @@ describe('Editor', () => {
       });
     });
 
+    it('saves straight away when the page is hidden', async () => {
+      await create();
+      editor.addLayer();
+      window.dispatchEvent(new Event('pagehide'));
+      expect(drafts.saveStack).toHaveBeenCalledTimes(1);
+      // Nothing more to save.
+      window.dispatchEvent(new Event('pagehide'));
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      expect(drafts.saveStack).toHaveBeenCalledTimes(1);
+    });
+
     it('saves the stack shortly after each edit', async () => {
       await create();
       editor.setFilter(0, 'invert');

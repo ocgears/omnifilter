@@ -209,13 +209,14 @@ test('applies a preset stack', async ({ page }) => {
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
-// The stack's history as saved in the browser, or null.
+// The stack's history as saved in the browser ({ labels, index }), or null.
 const savedSteps = (page) => page.evaluate(() => new Promise((resolve) => {
   const req = indexedDB.open('omnifilter');
   req.onerror = () => resolve(null);
   req.onsuccess = () => {
     const get = req.result.transaction('draft').objectStore('draft').get('stack');
-    get.onsuccess = () => resolve(get.result ? get.result.steps.map((s) => s.label) : null);
+    get.onsuccess = () => resolve(get.result ?
+      { labels: get.result.steps.map((s) => s.label), index: get.result.index } : null);
     get.onerror = () => resolve(null);
   };
 }));
@@ -247,7 +248,7 @@ test('undoes edits, and keeps the work in progress after a reload', async ({ pag
   await expectNoSidewaysScroll(page);
 
   // A reload (which phones do to tabs in the background) loses nothing.
-  await expect.poll(() => savedSteps(page)).toHaveLength(4);
+  await expect.poll(async () => (await savedSteps(page) || {}).index).toBe(1);
   await page.reload();
   await expect(page.locator('#preview')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
   await expect(page.locator('.file-name')).toHaveText('gradient.jpg');
