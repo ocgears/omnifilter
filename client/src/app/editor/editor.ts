@@ -1,16 +1,42 @@
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { Alerts } from '../alerts/alerts';
-import { errorMessage } from '../auth.service';
+import { AuthService, errorMessage } from '../auth.service';
 import { Gallery } from '../gallery/gallery';
-import { Device, Filter, FilterParam, Layer, ParamValues, Photo, Preset } from '../models';
+import { GuestPhotos, isLocal } from '../guest-photos';
+import {
+  Device,
+  Filter,
+  FilterParam,
+  GuestSettings,
+  Layer,
+  ParamValues,
+  Photo,
+  Preset,
+} from '../models';
 import { PhotoApi } from '../photo-api.service';
 import { LiveCamera, cameraSupported } from './live-camera';
 import { LivePreview } from './live-preview';
-import { PhotoFileError, imageFrom, readPhoto } from './photo-file';
+import { PhotoFileError, fitPhoto, imageFrom, readPhoto } from './photo-file';
+import { DraftStore } from './draft-store';
+import { EditHistory, StackState } from './history';
 import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
 import {
+  filterLabel,
   findFilter,
   groupFilters,
+  layersFromPhoto,
   layersFromPreset,
   missingFilters,
   newLayer,
@@ -19,24 +45,47 @@ import {
 } from './stack';
 import { ImageDataCanvas, renderThumbnails } from './thumbnails';
 
+// How long after an edit the draft is saved.
+const DRAFT_SAVE_MS = 300;
+
 // The longer side of the preset thumbnails, in pixels (they show at 72 CSS
 // pixels, so this is sharp on 2x screens).
 const THUMB_SIZE = 160;
 
 // The main page: pick a photo, build a stack of filters (or start from a
 // preset look), transform it on the server, and see the saved results.
+// Without an account it works as a guest: the server filters the photos but
+// doesn't keep them, so they're kept in this browser, and can be added to an
+// account later.
 @Component({
   selector: 'of-editor',
-  imports: [Alerts, Gallery, ImageDataCanvas, LiveCamera, LivePreview],
+  imports: [Alerts, Gallery, ImageDataCanvas, LiveCamera, LivePreview, RouterLink],
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
   host: {
     '(document:paste)': 'onPaste($event)',
+    '(document:keydown)': 'onKeydown($event)',
+    '(document:pointerdown)': 'closeHistory($event)',
+    '(window:pagehide)': 'flushDraft()',
+    '(document:visibilitychange)': 'flushDraft()',
   },
 })
 export class Editor {
   private readonly api = inject(PhotoApi);
   private readonly previewEngine = inject(PreviewEngine);
+  private readonly drafts = inject(DraftStore);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+  private readonly guestStore = inject(GuestPhotos);
+
+  // Signed in, or trying it out as a guest.
+  readonly signedIn = computed(() => !!this.auth.token());
+  readonly guest = signal<GuestSettings | null>(null);
+  // Photos made as a guest that are still in this browser, once signed in.
+  readonly waitingPhotos = signal<Photo[]>([]);
+  readonly importing = signal(false);
+  readonly confirmDiscard = signal(false);
 
   readonly errors = signal<string[]>([]);
   readonly messages = signal<string[]>([]);
@@ -54,6 +103,11 @@ export class Editor {
   readonly layers = signal<Layer[]>([newLayer()]);
   readonly selectedPreset = signal<string | null>(null);
   readonly preset = computed(() => this.presets().find((p) => p.name === this.selectedPreset()));
+  // Undo and redo for the stack, and the list of edits.
+  readonly history = new EditHistory(this.stackState());
+  private readonly historyMenu = viewChild<ElementRef<HTMLDetailsElement>>('historyMenu');
+  private readonly stage = viewChild.required<ElementRef<HTMLElement>>('stage');
+  private readonly actionBar = viewChild.required<ElementRef<HTMLElement>>('actionBar');
 
   // The picked photo, as a data URL.
   readonly source = signal<string | null>(null);
@@ -80,9 +134,17 @@ export class Editor {
     return type || 'server';
   });
 
+  // Whether the photo or stack has changed since the page opened, so a draft
+  // that arrives late doesn't replace them.
+  private touched = false;
+  private draftTimer: ReturnType<typeof setTimeout> | undefined;
+
   constructor() {
+    if (!this.signedIn()) this.loadGuestSettings();
     this.loadFilters();
     this.loadPhotos();
+    this.restoreDraft();
+    afterNextRender(() => this.trackStickyParts());
     effect(() => {
       const source = this.source();
       const presets = this.presets();
@@ -150,13 +212,9 @@ export class Editor {
       const filters = (await this.api.filters()).filter((f) => f.available !== false);
       this.filters.set(filters);
       this.filtersLoaded.set(true);
-      // Layers filled in before the list arrived (say, from a preset) get the
-      // defaults for whatever settings they didn't give.
-      this.layers.update((layers) =>
-        layers.map((l) =>
-          l.tOption ? { ...l, params: paramsFor(filters, l.tOption, l.params) } : l,
-        ),
-      );
+      // Layers filled in before the list arrived (say, from a preset or a
+      // draft) get the defaults for whatever settings they didn't give.
+      this.checkHistory();
       const preset = this.preset();
       if (preset && this.missing(preset).length) {
         this.addError(this.missingMessage(preset));
@@ -168,10 +226,214 @@ export class Editor {
   }
 
   private async loadPhotos(): Promise<void> {
+    const local = await this.guestStore.list();
+    if (!this.signedIn()) {
+      this.photos.set(local);
+      return;
+    }
+    this.waitingPhotos.set(local);
     try {
       this.photos.set(await this.api.all());
     } catch (err) {
       this.addError(errorMessage(err, 'Could not load your photos.'));
+    }
+  }
+
+  // A server that doesn't take guests sends them to sign in.
+  private async loadGuestSettings(): Promise<void> {
+    try {
+      const settings = await this.api.guest();
+      this.guest.set(settings);
+      if (!settings.enabled) this.router.navigateByUrl('/signin');
+    } catch {
+      this.router.navigateByUrl('/signin');
+    }
+  }
+
+  // ---- photos made as a guest, once signed in ----
+
+  async importPhotos(): Promise<void> {
+    if (this.importing()) return;
+    this.importing.set(true);
+    let added = 0;
+    try {
+      // Oldest first, so they keep their order.
+      for (const photo of [...this.waitingPhotos()].reverse()) {
+        try {
+          const saved = await this.api.import(photo);
+          await this.guestStore.remove(photo);
+          this.waitingPhotos.update((list) => list.filter((p) => p !== photo));
+          this.photos.update((list) =>
+            [saved, ...list].sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '')),
+          );
+          added++;
+        } catch (err) {
+          this.addError(errorMessage(err, 'Could not add a photo to your account.'));
+          break;
+        }
+      }
+    } finally {
+      this.importing.set(false);
+    }
+    if (added) {
+      this.messages.update((list) => [
+        ...list,
+        'Added ' + added + ' photo' + (added > 1 ? 's' : '') + ' to your account.',
+      ]);
+    }
+  }
+
+  async discardPhotos(): Promise<void> {
+    for (const photo of this.waitingPhotos()) await this.guestStore.remove(photo);
+    this.waitingPhotos.set([]);
+    this.confirmDiscard.set(false);
+  }
+
+  // ---- layout ----
+
+  // On phones the photo stays at the top of the screen, and everywhere the
+  // Transform bar stays at the bottom. Their heights go to the page's scroll
+  // padding (styles.scss), so the browser never scrolls a control under them.
+  private trackStickyParts(): void {
+    if (typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement.style;
+    const phone = window.matchMedia?.('(max-width: 859px)');
+    const update = () => {
+      const stage = this.stage().nativeElement;
+      const pinned = !!phone?.matches && stage.classList.contains('has-photo');
+      root.setProperty('--sticky-top', pinned ? stage.offsetHeight + 'px' : '0px');
+      root.setProperty('--sticky-bottom', this.actionBar().nativeElement.offsetHeight + 'px');
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(this.stage().nativeElement);
+    observer.observe(this.actionBar().nativeElement);
+    phone?.addEventListener('change', update);
+    this.destroyRef.onDestroy(() => {
+      observer.disconnect();
+      phone?.removeEventListener('change', update);
+      root.removeProperty('--sticky-top');
+      root.removeProperty('--sticky-bottom');
+    });
+  }
+
+  // ---- the draft: the photo and stack, kept in the browser ----
+
+  private async restoreDraft(): Promise<void> {
+    const draft = await this.drafts.load();
+    if (this.touched) return;
+    if (draft.photo?.source) {
+      this.source.set(draft.photo.source);
+      this.sourceName.set(draft.photo.name);
+    }
+    if (draft.stack && this.history.restore(draft.stack.steps, draft.stack.index)) {
+      if (this.filtersLoaded()) this.checkHistory();
+      this.show(this.history.current()!.state);
+    }
+  }
+
+  private savePhotoDraft(): void {
+    this.touched = true;
+    const source = this.source();
+    this.drafts.savePhoto(source ? { source, name: this.sourceName() } : null);
+  }
+
+  private saveStackDraft(): void {
+    this.touched = true;
+    clearTimeout(this.draftTimer);
+    this.draftTimer = setTimeout(() => this.flushDraft(), DRAFT_SAVE_MS);
+  }
+
+  // Saves the stack now if a save is waiting, e.g. as the page is closed or
+  // goes into the background (where a phone may unload it).
+  flushDraft(): void {
+    if (this.draftTimer === undefined) return;
+    clearTimeout(this.draftTimer);
+    this.draftTimer = undefined;
+    this.drafts.saveStack({ steps: this.history.steps(), index: this.history.index() });
+  }
+
+  // ---- undo and redo ----
+
+  private stackState(): StackState {
+    return { layers: this.layers(), preset: this.selectedPreset() };
+  }
+
+  private show(state: StackState): void {
+    this.layers.set(state.layers);
+    this.selectedPreset.set(state.preset);
+  }
+
+  // Records the stack as it is now as an edit.
+  private commit(label: string, key?: string): void {
+    this.history.record(label, this.stackState(), key);
+    this.saveStackDraft();
+  }
+
+  undo(): void {
+    const state = this.history.undo();
+    if (state) this.show(state);
+    this.saveStackDraft();
+  }
+
+  redo(): void {
+    const state = this.history.redo();
+    if (state) this.show(state);
+    this.saveStackDraft();
+  }
+
+  goTo(index: number): void {
+    const state = this.history.jump(index);
+    if (state) this.show(state);
+    this.saveStackDraft();
+  }
+
+  // The history list closes on a tap or click anywhere else, or Escape.
+  closeHistory(event: Event): void {
+    const menu = this.historyMenu()?.nativeElement;
+    if (menu?.open && !menu.contains(event.target as Node)) menu.open = false;
+  }
+
+  // Ctrl+Z (Cmd+Z on a Mac) undoes; with Shift, or Ctrl+Y, redoes. Left to the
+  // browser in text boxes, which have their own undo.
+  onKeydown(event: KeyboardEvent): void {
+    const menu = this.historyMenu()?.nativeElement;
+    if (event.key === 'Escape' && menu?.open) {
+      menu.open = false;
+      menu.querySelector('summary')?.focus();
+      return;
+    }
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('textarea, [contenteditable]')) return;
+    if (target instanceof HTMLInputElement && !['range', 'file'].includes(target.type)) return;
+    const key = event.key.toLowerCase();
+    if (key === 'z' && !event.shiftKey) this.undo();
+    else if ((key === 'z' && event.shiftKey) || key === 'y') this.redo();
+    else return;
+    event.preventDefault();
+  }
+
+  // Once the filter list is known: every step's layers get the defaults for
+  // settings they didn't give, and filters this server doesn't have are taken
+  // out (a draft could come from before a filter went away).
+  private checkHistory(): void {
+    const filters = this.filters();
+    const gone = new Set<string>();
+    const fill = (layers: Layer[]): Layer[] =>
+      layers.map((l) => {
+        if (!l.tOption) return l;
+        if (!findFilter(filters, l.tOption)) {
+          gone.add(l.tOption);
+          return { ...l, tOption: null, params: {} };
+        }
+        return { ...l, params: paramsFor(filters, l.tOption, l.params) };
+      });
+    this.history.mapStates((state) => ({ ...state, layers: fill(state.layers) }));
+    this.layers.update(fill);
+    if (gone.size) {
+      this.addError(
+        "This server can't run " + [...gone].join(', ') + ', so it was taken out of the stack.',
+      );
     }
   }
 
@@ -182,6 +444,7 @@ export class Editor {
     try {
       this.source.set(await readPhoto(file));
       this.sourceName.set(file.name);
+      this.savePhotoDraft();
     } catch (err) {
       this.addError(err instanceof PhotoFileError ? err.message : 'Could not read that file.');
     }
@@ -220,11 +483,13 @@ export class Editor {
     this.source.set(dataUrl);
     this.sourceName.set('Camera photo');
     this.cameraOn.set(false);
+    this.savePhotoDraft();
   }
 
   clearPhoto(): void {
     this.source.set(null);
     this.sourceName.set('');
+    this.savePhotoDraft();
   }
 
   // ---- presets and layers ----
@@ -247,6 +512,7 @@ export class Editor {
   applyPreset(preset: Preset | null): void {
     if (!preset) {
       this.selectedPreset.set(null);
+      this.commit('Build your own');
       return;
     }
     if (this.missing(preset).length) {
@@ -256,6 +522,26 @@ export class Editor {
     }
     this.layers.set(layersFromPreset(this.filters(), preset));
     this.selectedPreset.set(preset.name);
+    this.commit(preset.label + ' look');
+  }
+
+  // The stack a saved photo was made with, to use on this photo.
+  useSettings(photo: Photo): void {
+    const layers = layersFromPhoto(this.filters(), photo).slice(0, this.maxLayers());
+    if (!layers.length) return;
+    this.layers.set(layers);
+    this.selectedPreset.set(null);
+    this.commit('Settings from a saved photo');
+    this.messages.update((list) => [
+      ...list,
+      'Using the settings from that photo. Undo puts back the ones you had.',
+    ]);
+  }
+
+  // How an edit to a layer is described in the history, e.g. "Sepia: Amount 60".
+  private layerName(index: number): string {
+    const name = this.layers()[index]?.tOption;
+    return name ? filterLabel(this.filters(), name) : 'Layer ' + (index + 1);
   }
 
   filterOf(layer: Layer): Filter | undefined {
@@ -272,22 +558,34 @@ export class Editor {
   setFilter(index: number, name: string): void {
     const tOption = name || null;
     this.updateLayer(index, (l) => ({ ...l, tOption, params: paramsFor(this.filters(), tOption) }));
+    this.commit('Layer ' + (index + 1) + ': ' + filterLabel(this.filters(), tOption));
   }
 
-  setParam(index: number, param: FilterParam, raw: string): void {
+  // Sliders change the stack as they move (for the live preview) with
+  // done = false, and are recorded as an edit when let go.
+  setParam(index: number, param: FilterParam, raw: string, done = true): void {
     const value = param.type === 'range' ? Number(raw) : raw;
     this.updateLayer(index, (l) => ({
       ...l,
       params: { ...l.params, [param.name]: value } as ParamValues,
     }));
+    if (!done) return;
+    const shown =
+      param.type === 'select' ? (param.options.find((o) => o.value === value)?.label ?? raw) : raw;
+    this.commit(
+      this.layerName(index) + ': ' + param.label + ' ' + shown,
+      'param:' + index + ':' + param.name,
+    );
   }
 
-  setAmount(index: number, raw: string): void {
+  setAmount(index: number, raw: string, done = true): void {
     this.updateLayer(index, (l) => ({ ...l, amount: Number(raw) }));
+    if (done) this.commit(this.layerName(index) + ': strength ' + raw + '%', 'amount:' + index);
   }
 
   setBlend(index: number, blend: string): void {
     this.updateLayer(index, (l) => ({ ...l, blend }));
+    this.commit(this.layerName(index) + ': ' + this.blendLabel(blend) + ' blend');
   }
 
   blendLabel(value: string): string {
@@ -298,24 +596,29 @@ export class Editor {
     if (this.layers().length >= this.maxLayers()) return;
     this.layers.update((layers) => [...layers, newLayer()]);
     this.selectedPreset.set(null);
+    this.commit('Added a layer');
   }
 
   removeLayer(index: number): void {
+    const name = this.layerName(index);
     this.layers.update((layers) => {
       const rest = layers.filter((_, i) => i !== index);
       return rest.length ? rest : [newLayer()];
     });
     this.selectedPreset.set(null);
+    this.commit('Removed ' + name);
   }
 
   moveLayer(index: number, by: number): void {
     const to = index + by;
     const layers = [...this.layers()];
     if (to < 0 || to >= layers.length) return;
+    const name = this.layerName(index);
     const [layer] = layers.splice(index, 1);
     layers.splice(to, 0, layer);
     this.layers.set(layers);
     this.selectedPreset.set(null);
+    this.commit('Moved ' + name + (by < 0 ? ' up' : ' down'));
   }
 
   // ---- transforming ----
@@ -328,12 +631,25 @@ export class Editor {
     }
     if (this.transforming()) return;
     const body = transformRequest(source, this.layers());
+    // Guests have nothing to save a photo to, so there's no point without a filter.
+    if (body.tOption === '' && !this.signedIn()) {
+      this.addError('Choose a filter first.');
+      return;
+    }
     if (body.tOption === '') {
       this.messages.update((list) => [...list, 'No filter chosen, so the original was saved.']);
     }
     this.transforming.set(true);
     try {
-      const photo = await this.api.transform(body);
+      let photo: Photo;
+      if (this.signedIn()) {
+        photo = await this.api.transform(body);
+      } else {
+        // Guests' photos go to the server only up to a smaller size.
+        const max = this.guest()?.maxPixels;
+        if (max) body.content = await fitPhoto(body.content, max);
+        photo = await this.guestStore.add(await this.api.preview(body));
+      }
       this.photos.update((photos) => [photo, ...photos]);
       this.latestId.set(photo._id);
     } catch (err) {
@@ -344,6 +660,11 @@ export class Editor {
   }
 
   async deletePhoto(photo: Photo): Promise<void> {
+    if (isLocal(photo)) {
+      await this.guestStore.remove(photo);
+      this.photos.update((photos) => photos.filter((p) => p !== photo));
+      return;
+    }
     try {
       const res = await this.api.delete(photo);
       this.photos.update((photos) => photos.filter((p) => p !== photo));

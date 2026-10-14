@@ -1,14 +1,11 @@
-import { inject } from '@angular/core';
-import { Router, Routes } from '@angular/router';
+import { Routes } from '@angular/router';
 import { AuthPage } from './auth/auth-page';
-import { AuthService } from './auth.service';
 import { NotFound } from './not-found/not-found';
 
-// The photo page needs an account; without a token, go and sign in.
-const signedIn = () => !!inject(AuthService).token() || inject(Router).parseUrl('/signin');
-
+// The photo page opens straight away, with an account or as a guest (unless
+// the server doesn't take guests; see the editor).
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'signin' },
+  { path: '', pathMatch: 'full', redirectTo: 'home' },
   { path: 'signin', component: AuthPage, title: 'Sign in · OmniFilter' },
   {
     path: 'signup',
@@ -18,7 +15,6 @@ export const routes: Routes = [
   },
   {
     path: 'home',
-    canActivate: [signedIn],
     loadComponent: () => import('./editor/editor').then((m) => m.Editor),
     title: 'OmniFilter',
   },

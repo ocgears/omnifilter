@@ -63,4 +63,20 @@ describe('Gallery', () => {
       .click();
     expect(removed).toEqual([photo]);
   });
+
+  it('offers the settings a photo was made with, but not for an unfiltered one', async () => {
+    const reused: Photo[] = [];
+    fixture.componentInstance.reuse.subscribe((p) => reused.push(p));
+    const plain: Photo = { _id: 'plain', content: 'data:image/png;base64,AA==', tOption: '' };
+    fixture.componentRef.setInput('photos', [photo, plain]);
+    await fixture.whenStable();
+    const [first, second] = Array.from(el.querySelectorAll('.photo-card'));
+    const use = (card: Element) =>
+      Array.from(card.querySelectorAll('button')).find(
+        (b) => b.textContent?.trim() === 'Use settings',
+      );
+    use(first)!.click();
+    expect(reused).toEqual([photo]);
+    expect(use(second)).toBeUndefined();
+  });
 });

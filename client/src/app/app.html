@@ -1,5 +1,5 @@
-<header class="site-header">
-  <a class="brand" [routerLink]="auth.token() ? '/home' : '/signin'">
+<header class="site-header" [class.guest]="!auth.token()">
+  <a class="brand" routerLink="/home">
     <img src="/images/logo_omnifilter_70.png" alt="" width="35" height="35" />
     <span>OmniFilter</span>
   </a>
@@ -13,6 +13,11 @@
       <span class="offline">Can't reach the server</span>
       <button type="button" (click)="signOut()">Sign out</button>
     </div>
+  } @else if (!auth.token()) {
+    <nav class="account" aria-label="Account">
+      <a routerLink="/signin" class="sign-in">Sign in</a>
+      <a routerLink="/signup" class="button primary">Create account</a>
+    </nav>
   }
 </header>
 

@@ -8,6 +8,7 @@ const gpuFilters = require(__dirname + '/../lib/gpu_filters');
 const imageCodec = require(__dirname + '/../lib/image_codec');
 const filterStack = require(__dirname + '/../lib/stack');
 const transformQueue = require(__dirname + '/../lib/transform_queue');
+const rateLimit = require(__dirname + '/../lib/rate_limit');
 
 // Photos arrive as data URLs, so /newcontent takes big bodies.
 const photoParser = bodyParser.json({ limit: 16000000 });
@@ -85,105 +86,227 @@ contentRouter.get('/getAll', jwtAuth, (req, res) => {
     .catch((err) => handleDBError(err, res));
 });
 
+// What a request asks to be applied: either one filter ({ tOption, params })
+// or a stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }).
+// Resolves with { tOption, tParams, tStack, layers } (layers null for none),
+// or an Error with a status and a message for the client.
+function readRecipe(body) {
+  const tOption = body.tOption || '';
+  if (typeof tOption !== 'string') {
+    return { error: 'tOption must be the name of a filter' };
+  }
+  if (body.stack !== undefined) {
+    try {
+      const layers = filterStack.normalizeStack(body.stack);
+      return { tOption: '', tParams: undefined, tStack: layers, layers: layers };
+    } catch (e) {
+      return { error: e.message };
+    }
+  }
+  if (!tOption) return { tOption: '', tParams: undefined, tStack: [], layers: null };
+  if (!gpuFilters.has(tOption)) return { error: 'Unknown transformation: ' + tOption };
+  const tParams = gpuFilters.normalizeParams(tOption, body.params);
+  return {
+    tOption: tOption,
+    tParams: tParams,
+    tStack: [],
+    layers: [{ tOption: tOption, tParams: tParams, amount: 100, blend: 'normal' }]
+  };
+}
+
+// Applies the recipe's filters to the photo in req.body.content, waiting its
+// turn in `queue` under `key`. Resolves with the new data URL, or with
+// undefined once it has sent an error reply (or the client has gone).
+// A recipe with no filters checks the photo and returns it as it is.
+async function transformPhoto(req, res, recipe, options) {
+  const content = req.body.content;
+  if (!recipe.layers) {
+    // Saved as is, so check it the same way as a photo to transform.
+    try {
+      return await imageCodec.validateDataUrl(content);
+    } catch (e) {
+      if (!e.status) throw e;
+      res.status(e.status).json({ msg: e.message });
+      return undefined;
+    }
+  }
+
+  const layers = recipe.layers;
+  const unavailable = unavailableLayer(layers);
+  if (unavailable) {
+    res.status(400).json({ msg: unavailable });
+    return undefined;
+  }
+
+  // If the client goes away while the transform is waiting, drop it.
+  const cancel = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) cancel.abort();
+  });
+
+  var result;
+  try {
+    result = await options.queue.run(options.key, async () => {
+      var image;
+      try {
+        image = await imageCodec.decodeDataUrl(content, { maxPixels: options.maxPixels });
+      } catch (e) {
+        if (!e.status) console.log('Error in decoding the image: ', e);
+        return { status: 400, msg: 'Could not read the image' + (e.status ? ': ' + e.message : '') };
+      }
+
+      try {
+        const start = process.hrtime.bigint();
+        image.data = await filterStack.applyStack(layers, image.data, image.width, image.height);
+        console.log('Applied ' + layers.map((l) => l.tOption).join(' + ') + ' to ' +
+          image.width + 'x' + image.height + ' image in ' + msSince(start).toFixed(1) + 'ms' +
+          (options.guest ? ' for a guest' : ''));
+      } catch (e) {
+        // The device can't run this filter, at all or at this size.
+        if (e.code === 'UNSUPPORTED') return { status: e.status || 400, msg: e.message };
+        if (e.code === 'NO_DEVICE') {
+          console.log('No OpenCL device for a transform: ' + e.message);
+          return { status: 503, msg: 'No OpenCL device is available to run filters' };
+        }
+        console.log('Error in transforming the image: ', e);
+        return { status: 500, msg: 'transform failure' };
+      }
+
+      try {
+        return { content: await imageCodec.encodeDataUrl(image) };
+      } catch (e) {
+        if (e.status) return { status: e.status, msg: e.message };
+        console.log('Error in encoding the image: ', e);
+        return { status: 500, msg: 'Could not encode the transformed image' };
+      }
+    }, cancel.signal);
+  } catch (e) {
+    if (e.aborted) return undefined; // nobody is listening
+    if (!e.status) throw e;
+    if (e.retryAfter) res.set('Retry-After', String(e.retryAfter));
+    res.status(e.status).json({ msg: e.message });
+    return undefined;
+  }
+  if (result.status) {
+    res.status(result.status).json({ msg: result.msg });
+    return undefined;
+  }
+  return result.content;
+}
+
+function checkContent(req, res) {
+  const content = req.body.content;
+  if (typeof content !== 'string' || !content.length) {
+    res.status(400).json({ msg: 'No image content was sent' });
+    return false;
+  }
+  return true;
+}
+
 // Saves a photo, after applying either one filter ({ tOption, params }) or a
 // stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }). With
 // neither, the photo is saved as it is.
 contentRouter.post('/newcontent', jwtAuth, photoParser, asyncRoute(async (req, res) => {
-  const tOption = req.body.tOption || '';
-  var content = req.body.content;
+  if (!checkContent(req, res)) return;
+  const recipe = readRecipe(req.body);
+  if (recipe.error) return res.status(400).json({ msg: recipe.error });
 
-  if (typeof content !== 'string' || !content.length) {
-    return res.status(400).json({ msg: 'No image content was sent' });
-  }
-  if (typeof tOption !== 'string') {
-    return res.status(400).json({ msg: 'tOption must be the name of a filter' });
-  }
-
-  const isStack = req.body.stack !== undefined;
-  var tParams;
-  var layers = null;
-  if (isStack) {
-    try {
-      layers = filterStack.normalizeStack(req.body.stack);
-    } catch (e) {
-      return res.status(400).json({ msg: e.message });
-    }
-  } else if (tOption) {
-    if (!gpuFilters.has(tOption)) {
-      return res.status(400).json({ msg: 'Unknown transformation: ' + tOption });
-    }
-    tParams = gpuFilters.normalizeParams(tOption, req.body.params);
-    layers = [{ tOption: tOption, tParams: tParams, amount: 100, blend: 'normal' }];
-  }
-
-  if (!layers) {
-    // Saved as is, so check it the same way as a photo to transform.
-    try {
-      content = await imageCodec.validateDataUrl(content);
-    } catch (e) {
-      if (!e.status) throw e;
-      return res.status(e.status).json({ msg: e.message });
-    }
-  } else {
-    const unavailable = unavailableLayer(layers);
-    if (unavailable) return res.status(400).json({ msg: unavailable });
-
-    // If the client goes away while the transform is waiting, drop it.
-    const cancel = new AbortController();
-    res.on('close', () => {
-      if (!res.writableFinished) cancel.abort();
-    });
-
-    var failure;
-    try {
-      failure = await transforms.run(String(req.user._id), async () => {
-        var image;
-        try {
-          image = await imageCodec.decodeDataUrl(content);
-        } catch (e) {
-          if (!e.status) console.log('Error in decoding the image: ', e);
-          return { status: 400, msg: 'Could not read the image' + (e.status ? ': ' + e.message : '') };
-        }
-
-        try {
-          const start = process.hrtime.bigint();
-          image.data = await filterStack.applyStack(layers, image.data, image.width, image.height);
-          console.log('Applied ' + layers.map((l) => l.tOption).join(' + ') + ' to ' +
-            image.width + 'x' + image.height + ' image in ' + msSince(start).toFixed(1) + 'ms');
-        } catch (e) {
-          // The device can't run this filter, at all or at this size.
-          if (e.code === 'UNSUPPORTED') return { status: e.status || 400, msg: e.message };
-          if (e.code === 'NO_DEVICE') {
-            console.log('No OpenCL device for a transform: ' + e.message);
-            return { status: 503, msg: 'No OpenCL device is available to run filters' };
-          }
-          console.log('Error in transforming the image: ', e);
-          return { status: 500, msg: 'transform failure' };
-        }
-
-        try {
-          content = await imageCodec.encodeDataUrl(image);
-        } catch (e) {
-          if (e.status) return { status: e.status, msg: e.message };
-          console.log('Error in encoding the image: ', e);
-          return { status: 500, msg: 'Could not encode the transformed image' };
-        }
-      }, cancel.signal);
-    } catch (e) {
-      if (e.aborted) return; // nobody is listening
-      if (!e.status) throw e;
-      if (e.retryAfter) res.set('Retry-After', String(e.retryAfter));
-      return res.status(e.status).json({ msg: e.message });
-    }
-    if (failure) return res.status(failure.status).json({ msg: failure.msg });
-  }
+  const content = await transformPhoto(req, res, recipe, {
+    queue: transforms,
+    key: String(req.user._id)
+  });
+  if (content === undefined) return;
 
   const data = await Content.create({
     user_id: req.user._id,
-    tOption: isStack ? '' : tOption,
-    tParams: tParams,
-    tStack: isStack ? layers : [],
+    tOption: recipe.tOption,
+    tParams: recipe.tParams,
+    tStack: recipe.tStack,
     content: content
+  });
+  res.status(200).json(data);
+}));
+
+// Guest mode: anyone can try the filters without an account. Their photos
+// aren't saved here (the page keeps them in the browser), and since anyone
+// can call this, guests get a smaller share of the server: one transform at
+// a time each and one for all guests together, a few a minute per IP address
+// (set TRUST_PROXY behind a proxy, so that's the visitor's address), and a
+// smaller photo size (16 megapixels takes a 12-megapixel phone photo; the page
+// scales down bigger ones first). OMNIFILTER_GUESTS=off turns it off.
+const GUESTS_ON = !/^(off|false|0|no)$/i.test(process.env.OMNIFILTER_GUESTS || '');
+const GUEST_MAX_PIXELS = Number(process.env.OMNIFILTER_GUEST_MAX_PIXELS) || 16e6;
+const guestTransforms = contentRouter.guestTransforms = transformQueue.create({
+  maxRunning: 1,
+  maxWaiting: 4,
+  maxPerKey: 1
+});
+const guestLimiter = contentRouter.guestLimiter = rateLimit({
+  perMinute: Number(process.env.GUEST_RATE_PER_MINUTE) || 6,
+  burst: Number(process.env.GUEST_RATE_BURST) || 3,
+  message: 'You have made a lot of photos; wait a minute, or create an account to carry on'
+});
+
+// The settings for guest mode, for the page.
+contentRouter.get('/guest', (req, res) => {
+  res.status(200).json({
+    enabled: GUESTS_ON,
+    maxPixels: Math.min(GUEST_MAX_PIXELS, imageCodec.MAX_PIXELS)
+  });
+});
+
+// Applies filters as /newcontent does, but saves nothing: replies with the
+// photo and what was applied, in the shape of a saved photo without an _id.
+contentRouter.post('/transform', (req, res, next) => {
+  if (!GUESTS_ON) return res.status(403).json({ msg: 'Sign in to use the filters on this server' });
+  next();
+}, guestLimiter, photoParser, asyncRoute(async (req, res) => {
+  if (!checkContent(req, res)) return;
+  const recipe = readRecipe(req.body);
+  if (recipe.error) return res.status(400).json({ msg: recipe.error });
+  if (!recipe.layers) return res.status(400).json({ msg: 'Choose a filter to apply' });
+
+  const content = await transformPhoto(req, res, recipe, {
+    queue: guestTransforms,
+    key: 'guest:' + req.ip,
+    maxPixels: GUEST_MAX_PIXELS,
+    guest: true
+  });
+  if (content === undefined) return;
+  res.status(200).json({
+    tOption: recipe.tOption,
+    tParams: recipe.tParams,
+    tStack: recipe.tStack,
+    content: content,
+    createdAt: new Date()
+  });
+}));
+
+// Saves a photo that was made before signing in (by /transform, kept in the
+// browser), with the filters it says it was made with. The photo is checked
+// as one saved without a filter is; the filters are only a description, so
+// they're checked to be real but not applied.
+contentRouter.post('/import', jwtAuth, photoParser, asyncRoute(async (req, res) => {
+  if (!checkContent(req, res)) return;
+  const recipe = readRecipe(req.body);
+  if (recipe.error) return res.status(400).json({ msg: recipe.error });
+
+  var content;
+  try {
+    content = await imageCodec.validateDataUrl(req.body.content);
+  } catch (e) {
+    if (!e.status) throw e;
+    return res.status(e.status).json({ msg: e.message });
+  }
+  const made = new Date(req.body.createdAt);
+  const data = await Content.create({
+    user_id: req.user._id,
+    tOption: recipe.tOption,
+    tParams: recipe.tParams,
+    tStack: recipe.tStack,
+    content: content,
+    // When it was made, if that's believable.
+    createdAt: made.getTime() > 0 && made <= new Date() ? made : new Date()
   });
   res.status(200).json(data);
 }));

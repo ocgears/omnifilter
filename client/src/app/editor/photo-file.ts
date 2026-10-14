@@ -51,6 +51,33 @@ export async function readPhoto(file: File): Promise<string> {
   return dataUrl;
 }
 
+function load(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new PhotoFileError('Could not read that photo.'));
+    img.src = dataUrl;
+  });
+}
+
+// The photo scaled down to at most maxPixels pixels, as a JPEG, or as it is
+// if it's no bigger than that. For guests, whose photos the server takes
+// only up to a smaller size.
+export async function fitPhoto(dataUrl: string, maxPixels: number): Promise<string> {
+  const img = await load(dataUrl);
+  const pixels = img.naturalWidth * img.naturalHeight;
+  if (!pixels || pixels <= maxPixels) return dataUrl;
+  const scale = Math.sqrt(maxPixels / pixels);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.floor(img.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.floor(img.naturalHeight * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return dataUrl;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
 // The first image file in a drop or paste, if any.
 export function imageFrom(items: DataTransfer | null): File | null {
   if (!items) return null;
