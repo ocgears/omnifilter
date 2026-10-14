@@ -49,6 +49,23 @@
   color: var(--muted);
 }
 
+.account a {
+  white-space: nowrap;
+}
+
+// A guest's header has two links; on narrow phones the name makes way for
+// them (screen readers still hear it).
+@media (max-width: 419px) {
+  .guest .brand span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 // On narrow phones there's only room for the button.
 @media (max-width: 479px) {
   .email {

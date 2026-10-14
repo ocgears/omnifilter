@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from './auth.service';
+import { DraftStore } from './editor/draft-store';
 
 // The page around every view: the header with the account, and the footer.
 @Component({
@@ -12,6 +13,7 @@ import { AuthService } from './auth.service';
 export class App {
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
+  private readonly drafts = inject(DraftStore);
   protected readonly year = new Date().getFullYear();
 
   constructor() {
@@ -30,6 +32,8 @@ export class App {
 
   signOut(): void {
     this.auth.signOut();
+    // Someone else may use this browser next.
+    this.drafts.clear();
     this.router.navigateByUrl('/signin');
   }
 }

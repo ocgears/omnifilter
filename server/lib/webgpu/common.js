@@ -1,3 +1,5 @@
+'use strict';
+
 // WGSL helpers shared by every kernel: native/kernels/common.cl's, with the
 // same names where possible.
 //
@@ -6,7 +8,7 @@
 // to bytes, half to even like OpenCL's convert_uchar4_sat_rte (WGSL's
 // round() rounds half to even), so results match the server's byte for byte
 // wherever the float maths does.
-export const COMMON = /* wgsl */ `
+exports.COMMON = /* wgsl */ `
 const PI = 3.14159265358979;
 const MAXFLOAT = 0x1.fffffep+127f;
 

@@ -7,9 +7,9 @@ import {
   previewable,
   workingSize,
 } from './filters';
-import { COMMON } from './common';
-import { makeKernel, parseArgs } from './kernel';
-import { KERNELS } from './kernels';
+import { COMMON } from '../../../server/lib/webgpu/common';
+import { makeKernel, parseArgs } from '../../../server/lib/webgpu/kernel';
+import KERNELS from '../../../server/lib/webgpu/kernels';
 
 // Every combination of a filter's choices, with the other settings at their
 // defaults: different choices can use different kernels.

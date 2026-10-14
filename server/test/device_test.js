@@ -114,6 +114,9 @@ describe('fitting filters to a device', () => {
 describe('the real device', function() {
   this.timeout(30000);
 
+  // With the WebGPU backend, setting up the device is asynchronous.
+  before(() => gpu.ready());
+
   it('is listed, chosen and described', () => {
     const devices = gpu.devices();
     expect(devices.length).to.be.at.least(1);

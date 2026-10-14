@@ -30,6 +30,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Behind a proxy or load balancer (Heroku's router, nginx), the visitor's
+// address comes in X-Forwarded-For. TRUST_PROXY says which proxies to believe,
+// as Express's 'trust proxy' setting: a number of hops (Heroku: 1), or
+// addresses. Without it, rate limits see the proxy's address for everyone.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
+}
+
 const contentRouter = require(__dirname + '/routes/content_routes');
 const authRouter = require(__dirname + '/routes/auth_routes');
 const userRouter = require(__dirname + '/routes/user_routes');
@@ -52,21 +61,24 @@ app.use((err, req, res, next) => {
   res.status(status).json({ msg: status === 500 ? 'Server Error' : err.message });
 });
 
-try {
-  const gpuFilters = require(__dirname + '/lib/gpu_filters');
+// Sets up the device now (OpenCL compiles its kernels here; WebGPU in the
+// background), and says what the filters will run on.
+const gpuFilters = require(__dirname + '/lib/gpu_filters');
+gpuFilters.ready().then(() => {
   const device = gpuFilters.deviceInfo();
   for (const failure of device.skipped) console.log('Skipped OpenCL device ' + failure);
   const others = gpuFilters.devices().length - 1;
+  const units = device.computeUnits ? ', ' + device.computeUnits + ' compute units' : '';
   console.log('Filters will run on ' + device.type.toUpperCase() + ': ' + device.name +
-    ' (' + device.version.trim() + ', ' + device.computeUnits + ' compute units)' +
+    ' (' + device.version.trim() + units + ')' +
     (others ? '; ' + others + ' other OpenCL device' + (others > 1 ? 's' : '') +
       ' available, see `npm run devices`' : ''));
   const setting = (process.env.OMNIFILTER_DEVICE || 'auto').toLowerCase();
   if (device.type !== 'gpu' && (setting === 'auto' || setting === 'any')) {
     console.log('WARNING: no usable GPU was found, so filters will be slower.');
   }
-} catch (e) {
+}, (e) => {
   console.log('WARNING: image filters will fail: ' + e.message);
-}
+});
 
 app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));

@@ -63,6 +63,13 @@ export interface Device {
   platform: string;
 }
 
+// GET /guest.
+export interface GuestSettings {
+  enabled: boolean;
+  // The largest photo a guest may send, in pixels.
+  maxPixels: number;
+}
+
 // One filter in the stack being edited. tOption is null for "none".
 export interface Layer {
   tOption: string | null;
@@ -77,7 +84,7 @@ export interface Photo {
   content: string;
   tOption?: string;
   tParams?: ParamValues;
-  tStack?: { tOption: string; params?: ParamValues; amount?: number; blend?: string }[];
+  tStack?: { tOption: string; tParams?: ParamValues; amount?: number; blend?: string }[];
   createdAt?: string;
 }
 

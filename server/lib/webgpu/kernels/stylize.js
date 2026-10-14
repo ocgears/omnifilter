@@ -1,7 +1,8 @@
-// native/kernels/stylize.cl.
-import { KernelSpec } from '../kernel';
+'use strict';
 
-export const STYLIZE: Record<string, KernelSpec> = {
+// native/kernels/stylize.cl.
+
+exports.STYLIZE = {
   sobel: {
     args: 'src:in dst:out width:i32 height:i32 scale:f32 mode:i32',
     body: `
@@ -20,7 +21,7 @@ export const STYLIZE: Record<string, KernelSpec> = {
   if (mode == 0) { o = vec3f(mag); }
   else if (mode == 1) { o = vec3f(1.0 - mag); }
   else { o = hsv_to_rgb(atan2(gy, gx) / (2.0 * PI) + 0.5, 1.0, mag); }
-  dst[i] = from_rgb(o, alpha_of(src[i]));`,
+  dst[i] = from_rgb(o, alpha_of(src[i]));`
   },
 
   color_dodge: {
@@ -28,7 +29,7 @@ export const STYLIZE: Record<string, KernelSpec> = {
     body: `
   let b = to_rgb(base[i]);
   let l = to_rgb(layer[i]);
-  dst[i] = from_rgb(min(b / max(1.0 - l, vec3f(1e-3)), vec3f(1.0)), alpha_of(base[i]));`,
+  dst[i] = from_rgb(min(b / max(1.0 - l, vec3f(1e-3)), vec3f(1.0)), alpha_of(base[i]));`
   },
 
   bilateral: {
@@ -49,7 +50,7 @@ export const STYLIZE: Record<string, KernelSpec> = {
       wsum += w;
     }
   }
-  dst[i] = from_rgba(unpremultiply(sum / wsum));`,
+  dst[i] = from_rgba(unpremultiply(sum / wsum));`
   },
 
   quantize_luma: {
@@ -60,7 +61,7 @@ export const STYLIZE: Record<string, KernelSpec> = {
   let band = 1.0 / f32(levels);
   let nearest = band * round(l / band);
   let q = nearest + 0.5 * band * tanh(sharpness * (l - nearest) / band);
-  dst[i] = from_rgb(with_luma(c, q), alpha_of(src[i]));`,
+  dst[i] = from_rgb(with_luma(c, q), alpha_of(src[i]));`
   },
 
   dog_lines: {
@@ -68,14 +69,14 @@ export const STYLIZE: Record<string, KernelSpec> = {
     body: `
   let d = luma(to_rgb(narrow[i])) - luma(to_rgb(wide[i]));
   let ink = clamp((-d - threshold) * sharpness, 0.0, 1.0);
-  dst[i] = from_rgb(vec3f(ink), 255u);`,
+  dst[i] = from_rgb(vec3f(ink), 255u);`
   },
 
   cartoon_combine: {
     args: 'colour:in ink:in dst:out width:i32 height:i32',
     body: `
   let k = f32(bytes4(ink[i]).x) / 255.0;
-  dst[i] = from_rgb(to_rgb(colour[i]) * (1.0 - k), alpha_of(colour[i]));`,
+  dst[i] = from_rgb(to_rgb(colour[i]) * (1.0 - k), alpha_of(colour[i]));`
   },
 
   kuwahara: {
@@ -106,7 +107,7 @@ export const STYLIZE: Record<string, KernelSpec> = {
       out = mean;
     }
   }
-  dst[i] = from_rgba(unpremultiply(out));`,
+  dst[i] = from_rgba(unpremultiply(out));`
   },
 
   median: {
@@ -143,7 +144,7 @@ export const STYLIZE: Record<string, KernelSpec> = {
     if (below.z <= kc) { m.z = cand.z; }
     if (below.w <= k) { m.w = cand.w; }
   }
-  dst[i] = pack_bytes(m);`,
+  dst[i] = pack_bytes(m);`
   },
 
   crosshatch: {
@@ -166,7 +167,7 @@ fn hatch(v: f32, spacing: f32, line_width: f32) -> f32 {
   let paper = vec3f(0.98, 0.96, 0.91);
   var pen = vec3f(0.12, 0.12, 0.16);
   if (colour != 0) { pen = c * 0.7; }
-  dst[i] = from_rgb(mix(paper, pen, ink), alpha_of(src[i]));`,
+  dst[i] = from_rgb(mix(paper, pen, ink), alpha_of(src[i]));`
   },
 
   structure_tensor: {
@@ -178,7 +179,7 @@ fn hatch(v: f32, spacing: f32, line_width: f32) -> f32 {
   let fy = (rgb_at_src(x - 1, y + 1, width, height) + 2.0 * rgb_at_src(x, y + 1, width, height) +
             rgb_at_src(x + 1, y + 1, width, height) - rgb_at_src(x - 1, y - 1, width, height) -
             2.0 * rgb_at_src(x, y - 1, width, height) - rgb_at_src(x + 1, y - 1, width, height)) * 0.25;
-  tensor[i] = vec4f(dot(fx, fx), dot(fx, fy), dot(fy, fy), 0.0);`,
+  tensor[i] = vec4f(dot(fx, fx), dot(fx, fy), dot(fy, fy), 0.0);`
   },
 
   tensor_orientation: {
@@ -194,7 +195,7 @@ fn hatch(v: f32, spacing: f32, line_width: f32) -> f32 {
   let phi = -atan2(t.y, t.x);
   var a = 0.0;
   if (lambda1 + lambda2 > 0.0) { a = (lambda1 - lambda2) / (lambda1 + lambda2); }
-  orient[i] = vec4f(t, phi, a);`,
+  orient[i] = vec4f(t, phi, a);`
   },
 
   anisotropic_kuwahara: {
@@ -260,6 +261,6 @@ fn hatch(v: f32, spacing: f32, line_width: f32) -> f32 {
   }
   var rgb = vec3f(0.0);
   if (out.w > 0.0) { rgb = out.xyz / out.w; }
-  dst[i] = from_rgb(rgb, alpha_of(src[i]));`,
-  },
+  dst[i] = from_rgb(rgb, alpha_of(src[i]));`
+  }
 };

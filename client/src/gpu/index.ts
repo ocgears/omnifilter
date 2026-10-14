@@ -1,9 +1,9 @@
 // The browser's filter engine: the server's filter plans run with WebGPU.
-// See engine.ts (plans), kernel.ts and kernels/ (the WGSL), filters.ts (the
-// shared filter definitions) and stack.ts (filter stacks).
+// See engine.ts, server/lib/webgpu (the engine and WGSL kernels the server's
+// WebGPU backend shares), filters.ts (the shared filter definitions) and
+// stack.ts (filter stacks).
 import { GpuEngine } from './engine';
 import { allFilterNames, buildPlan, previewable } from './filters';
-import { KERNELS } from './kernels';
 import { StackLayer, StackRenderer } from './stack';
 
 export { GpuEngine } from './engine';
@@ -72,7 +72,7 @@ export function installDebugApi(win: Window & { omnifilterGpu?: GpuDebugApi }): 
     async compileAll() {
       const e = await engine();
       const errors: string[] = [];
-      for (const name of Object.keys(KERNELS)) {
+      for (const name of GpuEngine.kernelNames()) {
         try {
           await e.prepare([name]);
         } catch (err) {

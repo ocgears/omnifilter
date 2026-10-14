@@ -73,6 +73,11 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  // Whatever stays on screen at the top and bottom (the header, and on the
+  // photo page the photo on phones and the Transform bar; see the editor),
+  // so that moving focus or jumping to something never leaves it under them.
+  scroll-padding-top: calc(var(--header-height) + var(--sticky-top, 0px) + 8px);
+  scroll-padding-bottom: calc(var(--sticky-bottom, 0px) + 8px);
 }
 
 body {
@@ -211,13 +216,15 @@ button:disabled {
   opacity: 0.45;
 }
 
-button.primary {
+button.primary,
+.button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-button.primary:hover:not(:disabled) {
+button.primary:hover:not(:disabled),
+.button.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }

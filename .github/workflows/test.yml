@@ -71,6 +71,57 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash .github/run-and-annotate.sh npx mocha --exit --timeout 120000 --file server/test/setup.js server/test
 
+  # The WebGPU backend (OMNIFILTER_BACKEND=webgpu): Dawn for Node on Mesa's
+  # lavapipe, a Vulkan driver that runs on the CPU. Its results are compared
+  # with OpenCL's on pocl, then every filter is checked and the whole server
+  # suite runs on it.
+  webgpu:
+    name: server (WebGPU on lavapipe)
+    runs-on: ubuntu-24.04
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      # webgpu_test.js fails, rather than skipping, without the webgpu package.
+      OMNIFILTER_REQUIRE_WEBGPU: 1
+      WEBGPU_VERSION: 0.6.2
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pocl, and Vulkan with lavapipe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools
+          vulkaninfo --summary
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save webgpu@$WEBGPU_VERSION
+      - name: The WebGPU device
+        env:
+          OMNIFILTER_BACKEND: webgpu
+        run: npm run devices
+      - name: WebGPU's results against OpenCL's
+        env:
+          OMNIFILTER_DEVICE: pocl
+        run: bash .github/run-and-annotate.sh npx mocha --exit --timeout 600000 --file server/test/setup.js server/test/webgpu_test.js
+      - name: Check every filter on WebGPU
+        if: ${{ !cancelled() }}
+        env:
+          OMNIFILTER_BACKEND: webgpu
+        run: bash .github/run-and-annotate.sh npm run check-device
+      - name: Server tests on the WebGPU backend
+        if: ${{ !cancelled() }}
+        env:
+          OMNIFILTER_BACKEND: webgpu
+        run: bash .github/run-and-annotate.sh npx mocha --exit --timeout 120000 --file server/test/setup.js server/test
+
   # Apple Silicon. The runner VM may have no OpenCL device; if it has one,
   # every filter is checked on it.
   macos:

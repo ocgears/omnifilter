@@ -44,6 +44,8 @@ export class Gallery {
   // A photo to scroll to and point out, such as the one just made.
   readonly highlight = input<string | null>(null);
   readonly remove = output<Photo>();
+  // Use the stack a photo was made with again.
+  readonly reuse = output<Photo>();
 
   // The photo whose delete button is asking "are you sure?".
   readonly confirming = signal<string | null>(null);

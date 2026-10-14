@@ -2,6 +2,7 @@ import { FILTERS } from '../../testing/fixtures';
 import { Preset } from '../models';
 import {
   groupFilters,
+  layersFromPhoto,
   layersFromPreset,
   missingFilters,
   newLayer,
@@ -89,5 +90,25 @@ describe('the filter stack', () => {
       ['Blur', 1],
       ['Colour', 2],
     ]);
+  });
+
+  it("rebuilds the stack a saved photo was made with", () => {
+    expect(
+      layersFromPhoto(FILTERS, {
+        _id: '1',
+        content: '',
+        tStack: [
+          { tOption: 'sepia', tParams: { tone: 'cool' }, amount: 40, blend: 'multiply' },
+          { tOption: 'blur' },
+        ],
+      }),
+    ).toEqual([
+      { tOption: 'sepia', params: { amount: 80, tone: 'cool' }, amount: 40, blend: 'multiply' },
+      { tOption: 'blur', params: { radius: 3 }, amount: 100, blend: 'normal' },
+    ]);
+    expect(
+      layersFromPhoto(FILTERS, { _id: '2', content: '', tOption: 'blur', tParams: { radius: 7 } }),
+    ).toEqual([{ tOption: 'blur', params: { radius: 7 }, amount: 100, blend: 'normal' }]);
+    expect(layersFromPhoto(FILTERS, { _id: '3', content: '', tOption: '', tStack: [] })).toEqual([]);
   });
 });

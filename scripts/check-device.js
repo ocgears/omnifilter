@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-// Checks which filters work on this machine's OpenCL device: runs every
+// Checks which filters work on this machine's OpenCL device (or WebGPU's,
+// with OMNIFILTER_BACKEND=webgpu): runs every
 // filter, plus a few edge cases, and reports each as ok, failed or crashed.
 // A driver bug can crash the whole process, so the cases run in a child
 // process; if it crashes, the case it was on is marked crashed and a fresh
@@ -26,7 +27,7 @@ function testImage(width, height) {
 function allCases(gpu) {
   const cases = {};
   for (const f of gpu.list()) {
-    if (f.group === 'Neural style') continue;  // ONNX Runtime, not OpenCL
+    if (f.group === 'Neural style') continue;  // ONNX Runtime, not kernels
     cases[f.name] = () => gpu.apply(f.name, testImage(W, H), W, H, {});
   }
   // A texture wider than the device allows, so the filter runs scaled down.
@@ -46,6 +47,7 @@ async function child(names) {
   const gpu = require('../server/lib/gpu_filters');
   let cases;
   try {
+    await gpu.ready();
     const device = gpu.deviceInfo();
     say({ device: device.name + ' (' + device.platform + ', ' + device.version.trim() + ')' });
     cases = allCases(gpu);
