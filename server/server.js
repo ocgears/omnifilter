@@ -52,21 +52,24 @@ app.use((err, req, res, next) => {
   res.status(status).json({ msg: status === 500 ? 'Server Error' : err.message });
 });
 
-try {
-  const gpuFilters = require(__dirname + '/lib/gpu_filters');
+// Sets up the device now (OpenCL compiles its kernels here; WebGPU in the
+// background), and says what the filters will run on.
+const gpuFilters = require(__dirname + '/lib/gpu_filters');
+gpuFilters.ready().then(() => {
   const device = gpuFilters.deviceInfo();
   for (const failure of device.skipped) console.log('Skipped OpenCL device ' + failure);
   const others = gpuFilters.devices().length - 1;
+  const units = device.computeUnits ? ', ' + device.computeUnits + ' compute units' : '';
   console.log('Filters will run on ' + device.type.toUpperCase() + ': ' + device.name +
-    ' (' + device.version.trim() + ', ' + device.computeUnits + ' compute units)' +
+    ' (' + device.version.trim() + units + ')' +
     (others ? '; ' + others + ' other OpenCL device' + (others > 1 ? 's' : '') +
       ' available, see `npm run devices`' : ''));
   const setting = (process.env.OMNIFILTER_DEVICE || 'auto').toLowerCase();
   if (device.type !== 'gpu' && (setting === 'auto' || setting === 'any')) {
     console.log('WARNING: no usable GPU was found, so filters will be slower.');
   }
-} catch (e) {
+}, (e) => {
   console.log('WARNING: image filters will fail: ' + e.message);
-}
+});
 
 app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));

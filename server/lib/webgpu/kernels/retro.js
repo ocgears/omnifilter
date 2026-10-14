@@ -1,9 +1,10 @@
+'use strict';
+
 // native/kernels/retro.cl and distort.cl.
-import { KernelSpec } from '../kernel';
 
 const DISTORT_SAMPLE = 'sample_rgba_src';
 
-export const RETRO: Record<string, KernelSpec> = {
+exports.RETRO = {
   block_average: {
     args: 'src:in avg:f4out width:i32 height:i32 block:i32 blocks_x:i32 blocks_y:i32',
     guard: 'none',
@@ -25,14 +26,14 @@ export const RETRO: Record<string, KernelSpec> = {
   }
   var o = vec4f(0.0);
   if (sum.w > 0.0) { o = vec4f(sum.xyz / sum.w, sum.w / f32((x1 - x0) * (y1 - y0))); }
-  avg[by * blocks_x + bx] = o;`,
+  avg[by * blocks_x + bx] = o;`
   },
 
   pixelate_fill: {
     args: 'avg:f4s dst:out width:i32 height:i32 block:i32 blocks_x:i32',
     body: `
   let a = avg[(y / block) * blocks_x + x / block];
-  dst[i] = pack_bytes(vec4u(sat_u8(a.x), sat_u8(a.y), sat_u8(a.z), sat_u8(a.w)));`,
+  dst[i] = pack_bytes(vec4u(sat_u8(a.x), sat_u8(a.y), sat_u8(a.z), sat_u8(a.w)));`
   },
 
   dither: {
@@ -66,7 +67,7 @@ var<private> BAYER8: array<f32, 64> = array<f32, 64>(
     else if (shade == 2) { o = vec3f(0.545, 0.675, 0.059); }
     else { o = vec3f(0.608, 0.737, 0.059); }
   }
-  dst[i] = from_rgb(o, alpha_of(src[i]));`,
+  dst[i] = from_rgb(o, alpha_of(src[i]));`
   },
 
   halftone: {
@@ -121,7 +122,7 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
     o.z *= 1.0 - halftone_ink(p, 0.0, cell, 2, width, height);
     o *= 1.0 - halftone_ink(p, 45.0 * PI / 180.0, cell, 3, width, height);
   }
-  dst[i] = from_rgb(o, alpha_of(original[i]));`,
+  dst[i] = from_rgb(o, alpha_of(original[i]));`
   },
 
   ascii_art: {
@@ -145,7 +146,7 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
   } else {
     o = select(vec3f(0.98, 0.97, 0.94), vec3f(0.08), on != 0u);
   }
-  dst[i] = from_rgb(o, sat_u8(tile.w));`,
+  dst[i] = from_rgb(o, sat_u8(tile.w));`
   },
 
   swirl: {
@@ -162,7 +163,7 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
     let sn = sin(theta);
     p = c + vec2f(cs * d.x - sn * d.y, sn * d.x + cs * d.y);
   }
-  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`,
+  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`
   },
 
   pinch_bulge: {
@@ -176,7 +177,7 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
     let rn = dist / radius;
     p = c + d * (pow(rn, 1.0 + amount) / rn);
   }
-  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`,
+  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`
   },
 
   fisheye: {
@@ -191,7 +192,7 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
     let src_rn = tan(rn * fov * 0.5) / tan(fov * 0.5);
     p = c + d * (src_rn / rn);
   }
-  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`,
+  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`
   },
 
   ripple: {
@@ -209,7 +210,7 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
   } else {
     p = q + amplitude * vec2f(sin(2.0 * PI * q.y / wavelength), sin(2.0 * PI * q.x / wavelength));
   }
-  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`,
+  dst[i] = from_rgba(${DISTORT_SAMPLE}(p, width, height));`
   },
 
   lens_distortion: {
@@ -219,7 +220,7 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
   let d = vec2f(f32(x) + 0.5, f32(y) + 0.5) - c;
   let r2 = dot(d, d) / dot(c, c);
   let factor = (1.0 + amount * r2) / (1.0 + max(amount, 0.0));
-  dst[i] = from_rgba(${DISTORT_SAMPLE}(c + d * factor, width, height));`,
+  dst[i] = from_rgba(${DISTORT_SAMPLE}(c + d * factor, width, height));`
   },
 
   chromatic_aberration: {
@@ -230,6 +231,6 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
   let g = ${DISTORT_SAMPLE}(c + d, width, height);
   let r = ${DISTORT_SAMPLE}(c + d * (1.0 + amount), width, height).x;
   let b = ${DISTORT_SAMPLE}(c + d * (1.0 - amount), width, height).z;
-  dst[i] = from_rgba(vec4f(r, g.y, b, g.w));`,
-  },
+  dst[i] = from_rgba(vec4f(r, g.y, b, g.w));`
+  }
 };

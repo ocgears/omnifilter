@@ -1,7 +1,8 @@
-// native/kernels/convolve.cl.
-import { KernelSpec } from '../kernel';
+'use strict';
 
-export const CONVOLVE: Record<string, KernelSpec> = {
+// native/kernels/convolve.cl.
+
+exports.CONVOLVE = {
   convolve: {
     args: 'src:in dst:out width:i32 height:i32 weights:f32s kw:i32 kh:i32 bias:f32 absolute:i32 premul:i32 row0:i32',
     guard: 'band',
@@ -38,7 +39,7 @@ export const CONVOLVE: Record<string, KernelSpec> = {
   }
   if (absolute != 0) { acc3 = abs(acc3); }
   acc3 += bias;
-  dst[i] = pack_bytes(vec4u(sat_u8(acc3.x), sat_u8(acc3.y), sat_u8(acc3.z), alpha_of(src[i])));`,
+  dst[i] = pack_bytes(vec4u(sat_u8(acc3.x), sat_u8(acc3.y), sat_u8(acc3.z), alpha_of(src[i])));`
   },
 
   downsample_box: {
@@ -57,7 +58,7 @@ export const CONVOLVE: Record<string, KernelSpec> = {
   for (var y = y0; y < y1; y++) {
     for (var x = x0; x < x1; x++) { sum += premul_pixel(src[y * width + x]); }
   }
-  dst[sy * small_width + sx] = from_rgba(unpremultiply(sum / f32((x1 - x0) * (y1 - y0))));`,
+  dst[sy * small_width + sx] = from_rgba(unpremultiply(sum / f32((x1 - x0) * (y1 - y0))));`
   },
 
   upsample_bilinear: {
@@ -74,7 +75,7 @@ export const CONVOLVE: Record<string, KernelSpec> = {
   let b = premul_pixel(small[y0 * small_width + x1]);
   let c = premul_pixel(small[y1 * small_width + x0]);
   let d = premul_pixel(small[y1 * small_width + x1]);
-  dst[i] = from_rgba(unpremultiply(mix(mix(a, b, t.x), mix(c, d, t.x), t.y)));`,
+  dst[i] = from_rgba(unpremultiply(mix(mix(a, b, t.x), mix(c, d, t.x), t.y)));`
   },
 
   convolve_f4: {
@@ -90,13 +91,13 @@ export const CONVOLVE: Record<string, KernelSpec> = {
       acc += src[sy * width + sx] * weights[j * kw + k];
     }
   }
-  dst[i] = acc;`,
+  dst[i] = acc;`
   },
 
   restore_alpha: {
     args: 'src:in dst:out width:i32 height:i32 original:in',
     body: `
-  dst[i] = (src[i] & 0x00ffffffu) | (original[i] & 0xff000000u);`,
+  dst[i] = (src[i] & 0x00ffffffu) | (original[i] & 0xff000000u);`
   },
 
   unsharp: {
@@ -106,7 +107,7 @@ export const CONVOLVE: Record<string, KernelSpec> = {
   let diff = s - to_rgb(blurred[i]);
   var mask = 1.0;
   if (threshold > 0.0) { mask = smoothstep(threshold * 0.5, threshold, abs(luma(diff))); }
-  dst[i] = from_rgb(s + amount * mask * diff, alpha_of(src[i]));`,
+  dst[i] = from_rgb(s + amount * mask * diff, alpha_of(src[i]));`
   },
 
   motion_blur: {
@@ -121,7 +122,7 @@ export const CONVOLVE: Record<string, KernelSpec> = {
     if (samples > 1) { t = f32(s) / f32(samples - 1) - 0.5; }
     acc += sample_premul_src(p + t * d, width, height);
   }
-  dst[i] = from_rgba(unpremultiply(acc / f32(samples)));`,
+  dst[i] = from_rgba(unpremultiply(acc / f32(samples)));`
   },
 
   tilt_shift: {
@@ -135,6 +136,6 @@ export const CONVOLVE: Record<string, KernelSpec> = {
   var c: vec4f;
   if (m < 0.5) { c = unpremultiply(mix(s, b1, m * 2.0)); } else { c = unpremultiply(mix(b1, b2, m * 2.0 - 1.0)); }
   let l = luma(c.xyz);
-  dst[i] = from_rgba(vec4f(l + (c.xyz - l) * saturation, c.w));`,
-  },
+  dst[i] = from_rgba(vec4f(l + (c.xyz - l) * saturation, c.w));`
+  }
 };

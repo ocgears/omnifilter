@@ -66,14 +66,19 @@ const image = (w, h) => Buffer.alloc(w * h * 4, 128);
 
 // The fake devices are GPUs, so a device setting from the environment (such
 // as OMNIFILTER_DEVICE=cpu for a CPU test run) is set aside while they run.
+// These tests use the OpenCL host code with a stand-in addon, whatever device
+// or backend the rest of the tests run on.
 function ignoreDeviceSetting() {
-  let saved;
+  const saved = {};
+  const names = ['OMNIFILTER_DEVICE', 'OMNIFILTER_BACKEND'];
   before(() => {
-    saved = process.env.OMNIFILTER_DEVICE;
-    delete process.env.OMNIFILTER_DEVICE;
+    for (const name of names) {
+      saved[name] = process.env[name];
+      delete process.env[name];
+    }
   });
   after(() => {
-    if (saved !== undefined) process.env.OMNIFILTER_DEVICE = saved;
+    for (const name of names) if (saved[name] !== undefined) process.env[name] = saved[name];
   });
 }
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

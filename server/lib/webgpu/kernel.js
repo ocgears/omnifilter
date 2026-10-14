@@ -1,5 +1,9 @@
-// WGSL versions of the OpenCL kernels in native/kernels, so the browser can
-// run the same plans (server/lib/filters) on the viewer's GPU through WebGPU.
+'use strict';
+
+// WGSL versions of the OpenCL kernels in native/kernels, so the same plans
+// (server/lib/filters) run with WebGPU: on the viewer's GPU in the browser
+// (the live preview, client/src/gpu) and on the server's (OMNIFILTER_BACKEND=
+// webgpu, see backend.js).
 //
 // Each kernel is declared once with its argument list, in the same order as
 // the OpenCL kernel's, and the body of its main function. From the list this
@@ -9,9 +13,9 @@
 //
 // Argument kinds (name:kind):
 //   in, out      RGBA8 pixels (OpenCL uchar4 *), read-only or read-write, as
-//                array<u32>; see px() and pack() in common.ts
+//                array<u32>; see px() and pack() in common.js
 //   img          RGBA8 pixels read as an image (OpenCL image2d_t): the same
-//                buffer, with nearest and bilinear helpers (see common.ts)
+//                buffer, with nearest and bilinear helpers (see common.js)
 //   imgf4        an rgba32f image: array<vec4f>
 //   f32s, f32out float buffers;  i32s, i32out int buffers;  u32s uint buffers
 //   i32atomic, u32atomic   int / uint buffers updated with atomics
@@ -21,64 +25,23 @@
 // A `data` argument in a plan binds as a read-only buffer of whichever kind
 // the kernel declares there (f32s, bytes...).
 
-export type ArgKind =
-  | 'in'
-  | 'out'
-  | 'img'
-  | 'imgf4'
-  | 'f32s'
-  | 'f32out'
-  | 'i32s'
-  | 'i32out'
-  | 'u32s'
-  | 'i32atomic'
-  | 'u32atomic'
-  | 'f4s'
-  | 'f4out'
-  | 'i2s'
-  | 'bytes'
-  | 'i32'
-  | 'f32';
-
-export interface KernelArg {
-  name: string;
-  kind: ArgKind;
-}
-
-// How the kernel finds its pixel:
-//   '2d'   GUARD: x, y and i from the global id, skipping the ones outside
-//          width x height
-//   'band' GUARD_BAND: the same, offset by row0 (always 0 here: bands keep
-//          OS watchdogs happy on desktop GPUs; the browser has its own limits)
+// A kernel is declared as { args, body, guard?, workgroup?, barriers?,
+// helpers? }: args is the argument list as 'name:kind ...'; body the main
+// function's body; helpers module-scope WGSL (helper functions, constants,
+// workgroup arrays). guard says how the kernel finds its pixel:
+//   '2d'   (default) x, y and i from the global id, skipping the ones
+//          outside width x height
+//   'band' the same, offset by row0 (the last argument), so a big image can
+//          run in bands of rows
 //   'none' the body uses gid (and lid, wid for work-group kernels) itself;
 //          work-items past the plan's global size return first unless the
 //          kernel uses barriers (`barriers: true`), whose global sizes are
 //          whole work-groups
-export type Guard = '2d' | 'band' | 'none';
+// Types for TypeScript are in kernel.d.ts.
 
-export interface KernelSpec {
-  args: string;
-  body: string;
-  guard?: Guard;
-  workgroup?: [number, number?, number?];
-  barriers?: boolean;
-  // Module-scope WGSL: helper functions, constants, workgroup arrays.
-  helpers?: string;
-}
+const SCALAR = ['i32', 'f32'];
 
-export interface Kernel {
-  name: string;
-  args: KernelArg[];
-  // Buffer-like arguments in binding order, and scalars in uniform order.
-  bindings: KernelArg[];
-  scalars: KernelArg[];
-  workgroup: [number, number, number];
-  source: string;
-}
-
-const SCALAR: ArgKind[] = ['i32', 'f32'];
-
-function storageType(kind: ArgKind): string {
+function storageType(kind) {
   switch (kind) {
     case 'in':
     case 'img':
@@ -111,12 +74,12 @@ function storageType(kind: ArgKind): string {
   }
 }
 
-export function isWritable(kind: ArgKind): boolean {
+function isWritable(kind) {
   return ['out', 'f4out', 'f32out', 'i32out', 'i32atomic', 'u32atomic'].includes(kind);
 }
 
 // Helpers for reading a pixel buffer as an image, made for each one by name.
-function imageHelpers(name: string): string {
+function imageHelpers(name) {
   return `
 fn at_${name}(x: i32, y: i32, w: i32, h: i32) -> u32 {
   return ${name}[clamp(y, 0, h - 1) * w + clamp(x, 0, w - 1)];
@@ -151,7 +114,7 @@ fn sample_rgba_${name}(p: vec2f, w: i32, h: i32) -> vec4f {
 }
 
 // read_imagef with the LINEAR sampler on a float image: bilinear, straight.
-function floatImageHelpers(name: string): string {
+function floatImageHelpers(name) {
   return `
 fn f4_at_${name}(x: i32, y: i32, w: i32, h: i32) -> vec4f {
   return ${name}[clamp(y, 0, h - 1) * w + clamp(x, 0, w - 1)];
@@ -168,7 +131,7 @@ fn linear_${name}(p: vec2f, w: i32, h: i32) -> vec4f {
 `;
 }
 
-function byteHelpers(name: string): string {
+function byteHelpers(name) {
   return `
 fn byte_${name}(i: i32) -> u32 {
   return (${name}[i >> 2u] >> (u32(i & 3) * 8u)) & 255u;
@@ -176,26 +139,26 @@ fn byte_${name}(i: i32) -> u32 {
 `;
 }
 
-export function parseArgs(spec: string): KernelArg[] {
+function parseArgs(spec) {
   return spec
     .trim()
     .split(/\s+/)
     .map((part) => {
       const [name, kind] = part.split(':');
-      return { name, kind: kind as ArgKind };
+      return { name, kind };
     });
 }
 
-export function makeKernel(name: string, spec: KernelSpec, common: string): Kernel {
+function makeKernel(name, spec, common) {
   const args = parseArgs(spec.args);
   const bindings = args.filter((a) => !SCALAR.includes(a.kind));
   const scalars = args.filter((a) => SCALAR.includes(a.kind));
   const guard = spec.guard ?? '2d';
   const wg = spec.workgroup ?? (guard === 'none' ? [64] : [8, 8]);
-  const workgroup: [number, number, number] = [wg[0], wg[1] ?? 1, wg[2] ?? 1];
+  const workgroup = [wg[0], wg[1] ?? 1, wg[2] ?? 1];
 
   const decls = bindings.map(
-    (a, i) => `@group(0) @binding(${i}) ${storageType(a.kind).replace('NAME', a.name)};`,
+    (a, i) => `@group(0) @binding(${i}) ${storageType(a.kind).replace('NAME', a.name)};`
   );
   // The plan's global size comes last, for the 'none' guard.
   const fields = scalars.map((a) => `  ${a.name}_: ${a.kind},`).concat(['  global_: vec2u,']);
@@ -240,3 +203,5 @@ ${spec.body}
 `;
   return { name, args, bindings, scalars, workgroup, source };
 }
+
+module.exports = { isWritable, parseArgs, makeKernel };
