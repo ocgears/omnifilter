@@ -126,18 +126,8 @@ describe('security', () => {
 
   describe('photos belong to their owner', () => {
     var photo;
-    beforeEach(() => Content.create({ user_id: alice._id, content: 'data:image/png;base64,AAAA', title: 'mine' })
+    beforeEach(() => Content.create({ user_id: alice._id, content: 'data:image/png;base64,AAAA' })
       .then((data) => { photo = data; }));
-
-    it('does not let another user update a photo', () => {
-      return chai.request(baseUri).put('/preview/' + photo._id).set({ token: bobToken })
-        .send({ title: 'stolen' })
-        .then((res) => {
-          expect(res).to.have.status(404);
-          return Content.findById(photo._id);
-        })
-        .then((saved) => expect(saved.title).to.eql('mine'));
-    });
 
     it('does not let another user delete a photo', () => {
       return chai.request(baseUri).delete('/delete/' + photo._id).set({ token: bobToken })
@@ -151,25 +141,6 @@ describe('security', () => {
     it('does not show one user the photos of another', () => {
       return chai.request(baseUri).get('/getAll').set({ token: bobToken })
         .then((res) => expect(res.body).to.eql([]));
-    });
-
-    it('ignores operators and protected fields in an update', () => {
-      return chai.request(baseUri).put('/preview/' + photo._id).set({ token: aliceToken })
-        .send({ $set: { user_id: String(bob._id) }, user_id: String(bob._id), title: 'renamed' })
-        .then((res) => {
-          expect(res).to.have.status(200);
-          return Content.findById(photo._id);
-        })
-        .then((saved) => {
-          expect(saved.user_id).to.eql(String(alice._id));
-          expect(saved.title).to.eql('renamed');
-        });
-    });
-
-    it('rejects a field of the wrong type', () => {
-      return chai.request(baseUri).put('/preview/' + photo._id).set({ token: aliceToken })
-        .send({ title: { $gt: '' } })
-        .then((res) => expect(res).to.have.status(400));
     });
 
     it('answers 404 for an id that is not an id', () => {

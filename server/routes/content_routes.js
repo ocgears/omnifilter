@@ -9,10 +9,8 @@ const imageCodec = require(__dirname + '/../lib/image_codec');
 const filterStack = require(__dirname + '/../lib/stack');
 const transformQueue = require(__dirname + '/../lib/transform_queue');
 
-// Photos arrive as data URLs, so /newcontent takes big bodies; everything
-// else gets the small default.
+// Photos arrive as data URLs, so /newcontent takes big bodies.
 const photoParser = bodyParser.json({ limit: 16000000 });
-const smallParser = bodyParser.json({ limit: '100kb' });
 
 var contentRouter = module.exports = exports = express.Router();
 
@@ -34,40 +32,6 @@ const transforms = contentRouter.transforms = transformQueue.create({
 
 function msSince(start) {
   return Number(process.hrtime.bigint() - start) / 1e6;
-}
-
-// The fields a user may change on a saved photo: their types and the longest
-// value allowed (for tags, the most tags and the longest tag).
-const EDITABLE = {
-  title: { type: 'string', max: 200 },
-  createdOn: { type: 'string', max: 100 },
-  location: { type: 'string', max: 200 },
-  tags: { type: 'string[]', max: 50, maxEach: 50 }
-};
-
-// Resolves the update to make, or { error } describing what's wrong.
-function editableFields(body) {
-  const update = {};
-  for (const field of Object.keys(EDITABLE)) {
-    if (!Object.prototype.hasOwnProperty.call(body, field)) continue;
-    const rule = EDITABLE[field];
-    const value = body[field];
-    if (rule.type === 'string[]') {
-      if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) {
-        return { error: field + ' must be a list of strings' };
-      }
-      if (value.length > rule.max || value.some((v) => v.length > rule.maxEach)) {
-        return { error: 'At most ' + rule.max + ' ' + field + ' of up to ' + rule.maxEach + ' characters each' };
-      }
-    } else {
-      if (typeof value !== 'string') return { error: field + ' must be a string' };
-      if (value.length > rule.max) {
-        return { error: field + ' can be at most ' + rule.max + ' characters' };
-      }
-    }
-    update[field] = value;
-  }
-  return { update: update };
 }
 
 // The first filter in a stack that the device can't run, with why, or null.
@@ -113,12 +77,6 @@ contentRouter.get('/presets', (req, res) => {
     layerParams: filterStack.LAYER_PARAMS,
     presets: filterStack.presets()
   });
-});
-
-contentRouter.get('/getlatest', jwtAuth, (req, res) => {
-  Content.findOne({ user_id: req.user._id }).sort({ createdAt: -1 })
-    .then((data) => res.status(200).json(data))
-    .catch((err) => handleDBError(err, res));
 });
 
 contentRouter.get('/getAll', jwtAuth, (req, res) => {
@@ -229,18 +187,6 @@ contentRouter.post('/newcontent', jwtAuth, photoParser, asyncRoute(async (req, r
   });
   res.status(200).json(data);
 }));
-
-contentRouter.put('/preview/:id', jwtAuth, validId, smallParser, (req, res) => {
-  const fields = editableFields(req.body);
-  if (fields.error) return res.status(400).json({ msg: fields.error });
-  if (!Object.keys(fields.update).length) return res.status(400).json({ msg: 'Nothing to update' });
-  Content.updateOne({ _id: req.params.id, user_id: req.user._id }, { $set: fields.update })
-    .then((result) => {
-      if (!result.matchedCount) return res.status(404).json({ msg: 'No such content' });
-      res.status(200).json({ msg: 'Successfully updated content' });
-    })
-    .catch((err) => handleDBError(err, res));
-});
 
 contentRouter.delete('/delete/:id', jwtAuth, validId, (req, res) => {
   Content.deleteOne({ _id: req.params.id, user_id: req.user._id })

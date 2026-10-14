@@ -118,68 +118,6 @@ describe('content API', () => {
       }, done);
     });
 
-    it('should be able to update content', (done) => {
-      chai.request(baseUri)
-        .put('/preview/' + this.testContent._id)
-        .set( { token: userToken } )
-        .send( { title: 'new content name' } )
-        .end((err, res) => {
-          expect(err).to.eql(null);
-          expect(res).to.have.status(200);
-          expect(res.body.msg).to.eql('Successfully updated content');
-          Content.findById(this.testContent._id).then((saved) => {
-            expect(saved.title).to.eql('new content name');
-            done();
-          }, done);
-        });
-    });
-
-    it('answers an update with no editable fields with a 400', () => {
-      return chai.request(baseUri)
-        .put('/preview/' + this.testContent._id)
-        .set( { token: userToken } )
-        .send( { name: 'not a field' } )
-        .then((res) => {
-          expect(res).to.have.status(400);
-          expect(res.body.msg).to.eql('Nothing to update');
-        });
-    });
-
-    [
-      [{ title: 'x'.repeat(201) }, /title can be at most 200/],
-      [{ location: 'x'.repeat(201) }, /location can be at most 200/],
-      [{ tags: new Array(51).fill('tag') }, /At most 50 tags/],
-      [{ tags: ['x'.repeat(51)] }, /At most 50 tags/],
-      [{ tags: 'not a list' }, /list of strings/]
-    ].forEach((pair) => {
-      it('refuses ' + Object.keys(pair[0])[0] + ' that is too long or the wrong shape', () => {
-        return chai.request(baseUri)
-          .put('/preview/' + this.testContent._id)
-          .set( { token: userToken } )
-          .send(pair[0])
-          .then((res) => {
-            expect(res).to.have.status(400);
-            expect(res.body.msg).to.match(pair[1]);
-          });
-      });
-    });
-
-    it('accepts fields at their length limits', () => {
-      return chai.request(baseUri)
-        .put('/preview/' + this.testContent._id)
-        .set( { token: userToken } )
-        .send( { title: 'x'.repeat(200), tags: new Array(50).fill('y'.repeat(50)) } )
-        .then((res) => expect(res).to.have.status(200));
-    });
-
-    it('refuses a large body when updating a photo\'s details', () => {
-      return chai.request(baseUri)
-        .put('/preview/' + this.testContent._id)
-        .set( { token: userToken } )
-        .send( { title: 'ok', padding: 'x'.repeat(200 * 1024) } )
-        .then((res) => expect(res).to.have.status(413));
-    });
-
     it('should be able to delete content', (done) => {
       chai.request(baseUri)
         .delete('/delete/' + this.testContent._id)
@@ -188,30 +126,6 @@ describe('content API', () => {
           expect(err).to.eql(null);
           expect(res).to.have.status(200);
           expect(res.body.msg).to.eql('Successfully deleted content');
-          done();
-        });
-    });
-  });
-  describe('Error handling in preview route', () => {
-    it('should correctly stop for lack of token', (done) => {
-      chai.request(baseUri)
-        .put('/preview/' + this.testContent._id)
-        .set( { token: null } )
-        .send( { name: 'new content name' } )
-        .end((err, res) => {
-          expect(res).to.have.status(401);
-          expect(res.body.msg).to.eql('could not authenticate user');
-          done();
-        });
-    });
-
-    it('should correctly stop for mis-match verb', (done) => {
-      chai.request(baseUri)
-        .get('/preview/' + this.testContent._id)
-        .set( { token: userToken } )
-        .send( { name: 'new content name' } )
-        .end((err, res) => {
-          expect(res).to.have.status(404);
           done();
         });
     });
