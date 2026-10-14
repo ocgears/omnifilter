@@ -66,4 +66,20 @@ describe('App', () => {
       ['Create account', '/signup'],
     ]);
   });
+
+  it("leaves a guest on the photo page, but sends a rejected token's owner to sign in", async () => {
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    vi.spyOn(router, 'url', 'get').mockReturnValue('/home');
+    auth.token.set(null);
+    TestBed.createComponent(App);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(navigate).not.toHaveBeenCalled();
+
+    auth.token.set('expired');
+    auth.verify.mockImplementation(async () => auth.token.set(null));
+    TestBed.createComponent(App);
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(navigate).toHaveBeenCalledWith('/signin');
+  });
 });

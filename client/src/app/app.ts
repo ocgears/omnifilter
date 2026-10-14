@@ -21,10 +21,12 @@ export class App {
     // tests and the console. Loaded after the page, in its own chunk (which
     // the photo page uses too).
     import('../gpu').then((gpu) => gpu.installDebugApi(window));
-    // A saved token the server no longer accepts is forgotten; then the photo
-    // page has nothing to show.
+    // A saved token the server no longer accepts is forgotten, and its owner
+    // is asked to sign in again. (Without a token to begin with, the photo
+    // page is a guest's, and stays.)
+    const hadToken = !!this.auth.token();
     this.auth.verify().then(() => {
-      if (!this.auth.token() && this.router.url.startsWith('/home')) {
+      if (hadToken && !this.auth.token() && this.router.url.startsWith('/home')) {
         this.router.navigateByUrl('/signin');
       }
     });

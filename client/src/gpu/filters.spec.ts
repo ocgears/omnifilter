@@ -48,7 +48,7 @@ describe('the shared filter definitions', () => {
         }
       }
     }
-  });
+  }, 30000); // every filter with each of its choices: slow on a busy machine
 
   it('normalizes settings the way the server does', () => {
     const blur = filterDef('blur')!;

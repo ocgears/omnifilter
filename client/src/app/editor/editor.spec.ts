@@ -434,6 +434,19 @@ describe('Editor', () => {
       expect(editor.errors()).toEqual(['Choose a filter first.']);
     });
 
+    it("stays when the server can't be asked, or the answer comes after leaving", async () => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+      api.guest.mockRejectedValue(new HttpErrorResponse({ status: 0 }));
+      await create();
+      let answer!: (s: unknown) => void;
+      api.guest.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+      const second = TestBed.createComponent(Editor);
+      second.destroy();
+      answer({ enabled: false, maxPixels: 0 });
+      await fixture.whenStable();
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
     it("goes to sign in when the server doesn't take guests", async () => {
       api.guest.mockResolvedValue({ enabled: false, maxPixels: 0 });
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);

@@ -239,14 +239,18 @@ export class Editor {
     }
   }
 
-  // A server that doesn't take guests sends them to sign in.
+  // A server that doesn't take guests sends them to sign in, unless they've
+  // already gone elsewhere (the answer can arrive after they've left). If
+  // the server can't be asked, they stay: Transform will say what's wrong.
   private async loadGuestSettings(): Promise<void> {
+    let left = false;
+    this.destroyRef.onDestroy(() => (left = true));
     try {
       const settings = await this.api.guest();
       this.guest.set(settings);
-      if (!settings.enabled) this.router.navigateByUrl('/signin');
+      if (!settings.enabled && !left) this.router.navigateByUrl('/signin');
     } catch {
-      this.router.navigateByUrl('/signin');
+      // Keep the defaults.
     }
   }
 
