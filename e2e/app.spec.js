@@ -33,10 +33,22 @@ async function gradientJpeg(width, height) {
   return sharp(pixels, { raw: { width: width, height: height, channels: 3 } }).jpeg().toBuffer();
 }
 
+// Fills in the sign-in or sign-up form. It waits for the page's heading
+// first: the heading's text and the form's fields are filled in by the same
+// Angular update, and typing into a field before then is lost when Angular
+// writes the (empty) form into it. A busy browser (CI's software GPU still
+// finishing the previous page's work) can leave that gap open long enough.
+async function fillAuthForm(page, fields) {
+  const heading = fields.confirmation === undefined ? 'Sign in' : 'Create an account';
+  await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+  await page.locator('#email').fill(fields.email);
+  await page.locator('#password').fill(fields.password);
+  if (fields.confirmation !== undefined) await page.locator('#confirmation').fill(fields.confirmation);
+}
+
 async function signIn(page) {
   await page.goto('/#/signin');
-  await page.locator('#email').fill(email());
-  await page.locator('#password').fill(password);
+  await fillAuthForm(page, { email: email(), password: password });
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(/#\/home$/);
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toBeVisible();
@@ -110,9 +122,7 @@ test('the start page opens the editor, as a guest', async ({ page }) => {
 
 test('signs up and lands on the photo page', async ({ page }) => {
   await page.goto('/#/signup');
-  await page.locator('#email').fill(email());
-  await page.locator('#password').fill(password);
-  await page.locator('#confirmation').fill(password);
+  await fillAuthForm(page, { email: email(), password: password, confirmation: password });
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/#\/home$/);
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toBeVisible();
@@ -122,17 +132,14 @@ test('signs up and lands on the photo page', async ({ page }) => {
 
 test('refuses a second account with the same email', async ({ page }) => {
   await page.goto('/#/signup');
-  await page.locator('#email').fill(email().toUpperCase());
-  await page.locator('#password').fill(password);
-  await page.locator('#confirmation').fill(password);
+  await fillAuthForm(page, { email: email().toUpperCase(), password: password, confirmation: password });
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.getByRole('alert')).toContainText('already exists');
 });
 
 test('refuses a wrong password', async ({ page }) => {
   await page.goto('/#/signin');
-  await page.locator('#email').fill(email());
-  await page.locator('#password').fill('not the password');
+  await fillAuthForm(page, { email: email(), password: 'not the password' });
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page).toHaveURL(/#\/signin$/);
@@ -153,9 +160,7 @@ test('makes photos as a guest, then adds them to a new account', async ({ page }
   await expect(photos(page)).toHaveCount(1);
 
   await page.locator('.banner.guest').getByRole('link', { name: 'create an account' }).click();
-  await page.locator('#email').fill('guest-' + email());
-  await page.locator('#password').fill(password);
-  await page.locator('#confirmation').fill(password);
+  await fillAuthForm(page, { email: 'guest-' + email(), password: password, confirmation: password });
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/#\/home$/);
 
