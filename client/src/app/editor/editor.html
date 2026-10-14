@@ -3,6 +3,7 @@
 
 <div class="workspace">
   <section
+    #stage
     class="stage"
     aria-label="Your photo"
     (dragover)="onDragOver($event)"
@@ -286,7 +287,7 @@
       + Stack another filter
     </button>
 
-    <div class="action-bar">
+    <div class="action-bar" #actionBar>
       <button
         type="button"
         id="transform"
