@@ -26,6 +26,7 @@
     "sharp": "^0.35.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "angular-mocks": "~1.8.3",
     "chai": "^4.5.0",
     "chai-http": "^4.4.0",
@@ -52,6 +53,7 @@
     "mongo": "mkdir -p db && mongod --dbpath=./db",
     "test": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && mocha --exit --timeout 10000 --file server/test/setup.js server/test",
     "test:client": "gulp webpack:test && karma start",
+    "test:e2e": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && playwright test",
     "lint": "eslint .",
     "lint:client": "eslint app gulpfile.js karma.conf.js",
     "start": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && node clientserver & node server/server",

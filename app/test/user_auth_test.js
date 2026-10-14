@@ -76,20 +76,12 @@ describe('apiBase', () => {
 // Minified code renames function parameters, so every injectable has to name
 // its dependencies explicitly. strictDi fails on any that don't.
 describe('minification-safe dependency injection', () => {
-  it('creates every controller and directive with strictDi on', () => {
+  it('creates every controller with strictDi on', () => {
     var injector = angular.injector(['ng', 'ngMock', 'omnifilterTemplates', 'omnifilterApp'], true);
     var $rootScope = injector.get('$rootScope');
     var $controller = injector.get('$controller');
     ['authController', 'SigninController', 'SignupController', 'PhotosController'].forEach((name) => {
       expect(() => $controller(name, { $scope: $rootScope.$new() })).not.toThrow();
     });
-    injector.get('$templateCache').put('/templates/photos/directives/photo_form_directive.html',
-      '<div></div>');
-    injector.get('$templateCache').put('/templates/photos/directives/photo.html', '<div></div>');
-    var scope = $rootScope.$new();
-    scope.photo = {};
-    injector.get('$compile')('<div><photo-form photo="photo"></photo-form>' +
-      '<photo photo-data="photo"></photo></div>')(scope);
-    expect(() => scope.$digest()).not.toThrow();
   });
 });

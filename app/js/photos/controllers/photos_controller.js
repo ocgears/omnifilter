@@ -179,16 +179,6 @@ module.exports = function(app) {
       $scope.serverMessages.splice($scope.serverMessages.indexOf(message), 1);
     };
 
-    $scope.toggleEdit = function(photo) {
-      if (photo.backup) {
-        var temp = photo.backup;
-        $scope.photos.splice($scope.photos.indexOf(photo), 1, temp);
-      } else {
-        photo.backup = angular.copy(photo);
-        photo.editing = true;
-      }
-    };
-
     $scope.getAll = function() {
       photoService.getAll((err, res) => {
         if (err) {
@@ -233,18 +223,6 @@ module.exports = function(app) {
         }
         $scope.photos.splice($scope.photos.indexOf(photo), 1);
         $scope.serverMessages.push(res);
-      });
-    };
-
-    $scope.updatePhoto = function(photo) {
-      photoService.update(photo, function(err, res) {
-        photo.editing = false;
-        photo.backup = null;
-        if (err) {
-          $scope.errors.push('could not update photo ' + photo.name);
-          return console.log(err);
-        }
-        $scope.photos.splice($scope.photos.indexOf(photo), 1, res);
       });
     };
 

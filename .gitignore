@@ -9,6 +9,8 @@ node_modules/**
 **/node_modules
 app/test/bndl/test_bundle.js
 app/test/bndl/**
+test-results/
+playwright-report/
 
 # Compiled source #
 ###################

@@ -63,19 +63,6 @@ module.exports = exports = function(app) {
         .then(handleSuccess(callback), handleFailure(callback));
     };
 
-    // Only the editable fields; the server ignores everything else.
-    Resource.prototype.update = function(data, callback) {
-      $http({
-        method: 'PUT',
-        url: apiBase + this.resourceName + 'preview/' + data._id,
-        data: { title: data.title, createdOn: data.createdOn, location: data.location, tags: data.tags },
-        headers: {
-          token: userAuth.getToken()
-        }
-      })
-        .then(handleSuccess(callback), handleFailure(callback));
-    };
-
     Resource.prototype.delete = function(data, callback) {
       $http({
         method: 'DELETE',
