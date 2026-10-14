@@ -10,10 +10,23 @@ mongoose.set('sanitizeFilter', true);
 mongoose.connect(process.env.MONGOLAB_URI || 'mongodb://localhost/omnifilter_app_dev')
   .catch((err) => console.log('Could not connect to MongoDB: ' + err.message));
 
+// The web pages allowed to call the API from a browser: CORS_ORIGINS, a
+// comma-separated list such as "https://omnifilter.example,http://localhost:5000",
+// or else the client server's address.
+const corsOrigins = (process.env.CORS_ORIGINS || hostURL + clientPort)
+  .split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', hostURL + clientPort);
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, token');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+  const origin = req.headers.origin;
+  res.vary('Origin');
+  if (origin && corsOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, token');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+    res.header('Access-Control-Max-Age', '600');
+  }
+  // Answer preflight requests here; the browser makes the real request next.
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
@@ -24,6 +37,11 @@ const userRouter = require(__dirname + '/routes/user_routes');
 app.use('/', contentRouter);
 app.use('/', authRouter);
 app.use('/', userRouter);
+
+// The built client (`npm run build` puts it in dist/), when there is one, so
+// the API and the pages can be served from one place.
+const clientDir = require('path').join(__dirname, '..', 'dist');
+if (require('fs').existsSync(clientDir)) app.use(express.static(clientDir));
 
 // Errors passed on by the routes, including unreadable or oversized request
 // bodies, get a short JSON reply instead of an HTML page with a stack trace.

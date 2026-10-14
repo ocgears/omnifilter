@@ -1,4 +1,6 @@
 // Checks OpenCL kernels against the plain JavaScript versions in reference.js.
+const { execFileSync } = require('child_process');
+const crypto = require('crypto');
 const expect = require('chai').expect;
 const gpu = require(__dirname + '/../lib/gpu_filters');
 const P = require(__dirname + '/../lib/filters/plan');
@@ -38,12 +40,18 @@ describe('OpenCL kernels match the reference implementations', function() {
     expectClose(out, ref.convolve(tall, TALL_W, TALL_H, weights, 5, 3, 20, true));
   });
 
-  it('Gaussian blur (two separable passes)', async () => {
+  it('convolve, premultiplied', async () => {
+    const weights = new Float32Array(15).map((v, i) => 0.02 + (i % 4) * 0.03);
+    const out = await run((p) => P.convolve(p, weights, 3, 5, 0, false, true), tall, TALL_W, TALL_H);
+    expectClose(out, ref.convolve(tall, TALL_W, TALL_H, weights, 3, 5, 0, false, true));
+  });
+
+  it('Gaussian blur (two separable passes, premultiplied)', async () => {
     const w = P.gaussianWeights(2.5);
-    const once = ref.convolve(src, W, H, w, w.length, 1, 0, false);
+    const once = ref.convolve(src, W, H, w, w.length, 1, 0, false, true);
     const out = await run((p) => P.gaussian(p, 2.5), src, W, H);
     // The GPU rounds to bytes between the passes too.
-    expectClose(out, ref.convolve(once, W, H, w, 1, w.length, 0, false));
+    expectClose(out, ref.convolve(once, W, H, w, 1, w.length, 0, false, true));
   });
 
   it('color_matrix (sepia, hue rotation, brightness and contrast)', async () => {
@@ -114,16 +122,57 @@ describe('OpenCL kernels match the reference implementations', function() {
     const identity = lut.bake((c) => c, 17);
     const out = await run((p) => {
       const name = p.buffer(identity.table.byteLength, { init: identity.table });
-      p.step('lut3d', img3d(name, identity.size), int(identity.size), float(1));
+      p.step('lut3d', img3d(name, identity.size), int(identity.size), float(1), data(new Float32Array(identity.domain)));
     }, src, W, H);
     expectClose(out, src, 2);
+  });
+
+  it('motion blur gives the same result however it is banded', async () => {
+    const build = (p) => p.sample('motion_blur', float(9), float(5), int(12), int(0));
+    const whole = await run(build, tall, TALL_W, TALL_H);
+    const banded = await run((p) => build(p).band(16), tall, TALL_W, TALL_H);
+    expect(ref.compare(banded, whole).max).to.equal(0);
+    // The addon sizes bands from OMNIFILTER_BAND_MS, read when it starts, so
+    // run with tiny bands (one work-group of rows each) and one huge one in
+    // fresh processes.
+    const script = `
+      const gpu = require(${JSON.stringify(__dirname + '/../lib/gpu_filters')});
+      const ref = require(${JSON.stringify(__dirname + '/reference')});
+      gpu.apply('motion_blur', ref.randomImage(${TALL_W}, ${TALL_H}, 11), ${TALL_W}, ${TALL_H}, { length: 10, angle: 30 })
+        .then((out) => process.stdout.write(require('crypto').createHash('sha1').update(out).digest('hex')));`;
+    const hash = (ms) => execFileSync(process.execPath, ['-e', script],
+      { env: Object.assign({}, process.env, { OMNIFILTER_BAND_MS: ms }), encoding: 'utf8' });
+    const here = await gpu.apply('motion_blur', tall, TALL_W, TALL_H, { length: 10, angle: 30 });
+    const expected = crypto.createHash('sha1').update(here).digest('hex');
+    expect(hash('0.0001')).to.equal(expected);
+    expect(hash('1000000')).to.equal(expected);
+  });
+
+  it('stained glass cell sums carry past 32 bits', async () => {
+    // 400x400 white pixels all in one cell: the colour sums reach 160000 x
+    // 255 x 255, more than 2^32.
+    const size = 400;
+    const white = new Uint8Array(size * size * 4).fill(255);
+    const out = await run((p) => {
+      const seeds = p.buffer(8, { init: new Int32Array([200, 200]) });
+      const map = p.buffer(size * size * 4, { zero: true });
+      const sums = p.buffer(9 * 4, { zero: true });
+      p.pass('cell_accumulate', [buf('src'), buf(map), buf(sums), int(size), int(size)]);
+      const dst = p.rgba();
+      p.pass('stained_glass', [buf(map), buf(sums), buf(dst), int(size), int(size), float(2)]);
+      p.current = dst;
+      return seeds;
+    }, white, size, size);
+    expect(ref.compare(out, white).max).to.equal(0);
   });
 
   it('distortions at zero strength leave the image unchanged (texture coordinates)', async () => {
     const cases = [['swirl', { angle: 0 }], ['pinch_bulge', { amount: 0 }], ['lens', { amount: 0 }],
       ['chromatic_aberration', { amount: 0 }]];
     for (const [name, params] of cases) {
-      expectClose(await gpu.apply(name, src, W, H, params), src, 1);
+      // Sampling is premultiplied, so fully transparent pixels lose their
+      // hidden colour.
+      expectClose(ref.visible(await gpu.apply(name, src, W, H, params)), ref.visible(src), 1);
     }
   });
 });

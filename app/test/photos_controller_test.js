@@ -136,6 +136,77 @@ describe('photos controller filters', () => {
     expect($scope.selection.preset).toBe(null);
   });
 
+  it('keeps a preset\'s settings when the filter list has not loaded yet', () => {
+    $scope.presets = presets.presets;
+    $scope.selection.preset = 'inked';
+    $scope.applyPreset();
+    expect($scope.layers[0].params).toEqual({ radius: 2 });
+    expect($scope.layers[1].params).toEqual({ style: 'ink' });
+    // Once it arrives, missing settings get their defaults and given ones stay.
+    delete $scope.layers[0].params.radius;
+    $httpBackend.expectGET('http://localhost:3000/filters').respond(200, filters);
+    $httpBackend.expectGET('http://localhost:3000/device').respond(200, {});
+    $httpBackend.expectGET('http://localhost:3000/presets').respond(200, presets);
+    $scope.getFilters();
+    $httpBackend.flush();
+    expect($scope.layers[0].params).toEqual({ radius: 0.67 });
+    expect($scope.layers[1].params).toEqual({ style: 'ink' });
+    expect($scope.selection.preset).toBe('inked');
+  });
+
+  it('marks and refuses presets that use filters the server cannot run', () => {
+    $scope.filters = [filters[0]];
+    $scope.filtersLoaded = true;
+    $scope.presets = presets.presets;
+    expect($scope.missingFilters(presets.presets[0])).toEqual(['sobel']);
+    expect($scope.presetLabel(presets.presets[0])).toBe('Inked (not available here)');
+    var before = $scope.layers;
+    $scope.selection.preset = 'inked';
+    $scope.applyPreset();
+    expect($scope.layers).toBe(before);
+    expect($scope.selection.preset).toBe(null);
+    expect($scope.errors.length).toBe(1);
+  });
+
+  it('forgets the preset when the stack is edited', () => {
+    $scope.filters = filters;
+    $scope.presets = presets.presets;
+    $scope.maxLayers = 3;
+    ['removeLayer', 'moveLayer', 'addLayer', 'stackEdited'].forEach((edit) => {
+      $scope.selection.preset = 'inked';
+      $scope.applyPreset();
+      if (edit === 'removeLayer') $scope.removeLayer(0);
+      else if (edit === 'moveLayer') $scope.moveLayer(0, 1);
+      else $scope[edit]();
+      expect($scope.selection.preset).toBe(null);
+    });
+  });
+
+  it('shows an error when the picked file could not be read', () => {
+    var realFileReader = window.FileReader;
+    var reader;
+    window.FileReader = function() {
+      reader = this;
+      this.readAsDataURL = function() {};
+    };
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'file';
+    document.body.appendChild(input);
+    try {
+      $scope.createPhoto();
+      var seen = [];
+      $scope.$watch('errors.length', (n) => seen.push(n));
+      // FileReader calls back later, outside any digest.
+      reader.onloadend({ target: { result: null } });
+      expect($scope.errors.length).toBe(1);
+      expect(seen).toEqual([1]);
+    } finally {
+      window.FileReader = realFileReader;
+      document.body.removeChild(input);
+    }
+  });
+
   it('reorders, removes and limits layers', () => {
     $scope.filters = filters;
     $scope.maxLayers = 2;

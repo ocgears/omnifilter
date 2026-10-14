@@ -7,12 +7,14 @@
     <link rel='shortcut icon' type='image/x-icon' href='/favicon.ico' />
     <script src="bundle.js"></script>
   </head>
-  <body data-ng-app="omnifilterApp">
+  <body data-ng-app="omnifilterApp" data-ng-strict-di>
     <nav></nav>
     <section data-ng-controller="authController" data-ng-init="updateEmail()">
       <header>
         <p data-ng-if="email" class="header-text">{{'Hello ' + email}} <a href data-ng-click="logout()">logout</a>
            or Go <a href="#/home">Home</a></p>
+        <p data-ng-if="!email && unverified" class="header-text">Signed in, but the server can't be
+           reached right now. <a href data-ng-click="logout()">logout</a></p>
       </header>
       <main data-ng-view>
       </main>

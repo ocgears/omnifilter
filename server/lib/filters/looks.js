@@ -4,10 +4,9 @@
 // The built-in looks are baked from the colour functions below. Any .cube
 // file dropped into server/luts/ also appears as a look.
 
-const fs = require('fs');
 const path = require('path');
 const P = require('./plan');
-const { Plan, img3d, int, float, range } = P;
+const { Plan, img3d, int, float, data, range } = P;
 const lut = require('./lut');
 
 const GROUP = 'Looks';
@@ -87,31 +86,15 @@ function lutFilter(name, label, description, table) {
     plan(w, h, p) {
       const plan = new Plan(w, h);
       const name3d = plan.buffer(table.table.byteLength, { init: table.table });
-      return plan.step('lut3d', img3d(name3d, table.size), int(table.size), float(p.amount / 100));
+      return plan.step('lut3d', img3d(name3d, table.size), int(table.size), float(p.amount / 100),
+        data(new Float32Array(table.domain)));
     }
   };
 }
 
-function cubeFilters() {
-  let files = [];
-  try {
-    files = fs.readdirSync(LUT_DIR).filter((f) => /\.cube$/i.test(f)).sort();
-  } catch (e) {
-    return [];
-  }
-  const filters = [];
-  for (const file of files) {
-    try {
-      const table = lut.loadCube(path.join(LUT_DIR, file));
-      const base = file.replace(/\.cube$/i, '');
-      filters.push(lutFilter('lut_' + base.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-        table.title || base, 'Your LUT from server/luts/' + file + '.', table));
-    } catch (e) {
-      console.log('Skipping LUT ' + file + ': ' + e.message);
-    }
-  }
-  return filters;
-}
+// Any .cube files in server/luts/, as looks.
+const cubeFilters = () => lut.loadCubeDir(LUT_DIR).map((c) =>
+  lutFilter(c.name, c.table.title || c.base, 'Your LUT from server/luts/' + c.file + '.', c.table));
 
 module.exports = LOOKS.map((look) => lutFilter(look.name, look.label, look.description, lut.bake(look.fn)))
   .concat(cubeFilters())

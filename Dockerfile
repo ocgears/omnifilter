@@ -13,10 +13,13 @@ RUN apt-get update \
 WORKDIR /usr/src/app
 
 # Install dependencies first so this layer is cached until they change.
-# npm ci also compiles the addon (the "install" script), so it needs the source
-# and the install script.
+# npm ci also compiles the addon (the "install" script), so it needs the
+# addon's source and the install script, but not the kernels (native/kernels,
+# read at run time), so editing a kernel doesn't redo this layer.
+# Keep this list in step with what binding.gyp ("sources") and
+# scripts/install-native.js (SOURCES, and anything else it reads) use.
 COPY package.json package-lock.json binding.gyp ./
-COPY native ./native
+COPY native/omnifilter.cpp ./native/
 COPY scripts/install-native.js ./scripts/
 # ONNX Runtime's installer would also fetch a 500 MB CUDA (NVIDIA) provider.
 # The addon is compiled here rather than downloaded, since the toolchain is
@@ -26,13 +29,13 @@ ENV ONNXRUNTIME_NODE_INSTALL_CUDA=skip \
 RUN npm ci
 
 COPY . .
-# Build the client, drop dev dependencies, download the neural style models
+# Build the client (minified, without source maps), drop dev dependencies, download the neural style models
 # (about 34 MB, checksum-verified), and remove the macOS and Windows binaries
 # that ONNX Runtime ships alongside the Linux ones. Build with
 # --build-arg FETCH_MODELS=false to leave the models out; the neural styles
 # then report that they're missing and every other filter works as usual.
 ARG FETCH_MODELS=true
-RUN npm run build && npm prune --omit=dev \
+RUN npm run build:prod && npm prune --omit=dev \
   && if [ "$FETCH_MODELS" = "true" ]; then npm run fetch-models; else mkdir -p models; fi \
   && rm -rf node_modules/onnxruntime-node/bin/napi-v3/darwin node_modules/onnxruntime-node/bin/napi-v3/win32 \
      node_modules/onnxruntime-node/bin/napi-v3/linux/*/libonnxruntime_providers_cuda.so
@@ -51,6 +54,10 @@ ENV NODE_ENV=production \
 
 WORKDIR /usr/src/app
 COPY --from=build /usr/src/app/package.json ./
+# The addon is already built, and its source and install script aren't in this
+# image, so drop the "install" script rather than have a later `npm install`
+# or `npm rebuild` fail on it.
+RUN npm pkg delete scripts.install
 COPY --from=build /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/build/Release/omnifilter.node ./build/Release/
 COPY --from=build /usr/src/app/native/kernels ./native/kernels
@@ -58,11 +65,17 @@ COPY --from=build /usr/src/app/models ./models
 COPY --from=build /usr/src/app/dist ./dist
 COPY --from=build /usr/src/app/server ./server
 COPY --from=build /usr/src/app/clientserver.js ./
-# `docker run --rm omnifilter node scripts/devices.js` lists the OpenCL devices.
-COPY --from=build /usr/src/app/scripts/devices.js ./scripts/
+# `docker run --rm omnifilter npm run devices` lists the OpenCL devices, and
+# `docker run --rm omnifilter npm run check-device` runs every filter on one.
+COPY --from=build /usr/src/app/scripts/devices.js /usr/src/app/scripts/check-device.js ./scripts/
 
 USER node
 EXPOSE 3000 5000
+
+# Healthy once the API answers. docker-compose.yml gives the client server,
+# which runs from the same image, a healthcheck of its own.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD node -e "fetch('http://localhost:' + (process.env.PORT || 3000) + '/device').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
 
 # The API server; docker-compose.yml runs the client server from the same image.
 CMD ["node", "server/server.js"]

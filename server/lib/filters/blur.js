@@ -13,7 +13,7 @@ module.exports = [
     description: 'Smooth blur, run as two separable passes (rows then columns).',
     params: [range('radius', 'Radius (% of size)', 0.1, 5, 0.67, 0.01)],
     plan(w, h, p) {
-      return P.gaussian(new Plan(w, h), Math.min(40, Math.max(0.5, P.px(w, h, p.radius))));
+      return P.gaussian(new Plan(w, h), Math.max(0.5, P.px(w, h, p.radius)));
     }
   },
   {
@@ -23,11 +23,7 @@ module.exports = [
     description: 'Averages a square around each pixel; cheaper and blockier than Gaussian.',
     params: [range('radius', 'Radius (% of size)', 0.1, 3, 0.5, 0.01)],
     plan(w, h, p) {
-      const r = Math.min(127, Math.max(1, Math.round(P.px(w, h, p.radius))));
-      const weights = new Float32Array(2 * r + 1).fill(1 / (2 * r + 1));
-      const plan = new Plan(w, h);
-      P.convolve(plan, weights, weights.length, 1);
-      return P.convolve(plan, weights, 1, weights.length);
+      return P.boxBlur(new Plan(w, h), Math.max(1, Math.round(P.px(w, h, p.radius))));
     }
   },
   {
@@ -42,9 +38,11 @@ module.exports = [
     plan(w, h, p) {
       const length = P.px(w, h, p.length);
       const a = p.angle * Math.PI / 180;
-      const samples = Math.min(256, Math.max(2, Math.round(length)));
+      // About one sample per pixel of streak; beyond 1024 they spread out, but
+      // interpolation keeps the streak smooth.
+      const samples = Math.min(1024, Math.max(2, Math.round(length)));
       return new Plan(w, h).sample('motion_blur',
-        float(Math.cos(a) * length), float(Math.sin(a) * length), int(samples));
+        float(Math.cos(a) * length), float(Math.sin(a) * length), int(samples), int(0)).band(128);
     }
   },
   {
@@ -70,7 +68,7 @@ module.exports = [
       range('threshold', 'Threshold', 0, 20, 0)
     ],
     plan(w, h, p) {
-      const plan = P.gaussian(new Plan(w, h), Math.min(40, Math.max(0.5, P.px(w, h, p.radius))));
+      const plan = P.gaussian(new Plan(w, h), Math.max(0.5, P.px(w, h, p.radius)));
       const blurred = plan.current;
       const out = plan.rgba();
       plan.pass('unsharp', [buf('src'), buf(blurred), buf(out), int(w), int(h),
@@ -91,7 +89,7 @@ module.exports = [
       range('saturation', 'Saturation (%)', 50, 200, 135)
     ],
     plan(w, h, p) {
-      const sigma = Math.min(40, Math.max(0.5, P.px(w, h, p.blur)));
+      const sigma = Math.max(0.5, P.px(w, h, p.blur));
       const plan = new Plan(w, h);
       P.gaussian(plan, sigma * 0.4);
       const blur1 = plan.rgba();

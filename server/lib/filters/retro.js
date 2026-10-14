@@ -85,7 +85,8 @@ module.exports = [
     plan(w, h, p) {
       const cell = Math.max(3, P.px(w, h, p.cell));
       const plan = P.gaussian(new Plan(w, h), cell * 0.35);
-      return plan.sample('halftone', float(cell), int(p.style === 'mono' ? 1 : 0));
+      // The original goes along too, for its alpha.
+      return plan.sample('halftone', float(cell), int(p.style === 'mono' ? 1 : 0), buf('src'));
     }
   },
   {

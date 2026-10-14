@@ -2,7 +2,9 @@
 
 // Averages each block x block tile into one float4 (0-255), with one
 // work-item per tile. Shared by pixelate and ASCII art. Tiles at the right
-// and bottom edges may be partial.
+// and bottom edges may be partial. The average is premultiplied, so
+// transparent pixels add no colour: the result is the visible pixels' mean
+// colour (straight alpha), with the tile's mean alpha.
 __kernel void block_average(__global const uchar4 *src,
                             __global float4 *avg,
                             const int width,
@@ -20,9 +22,13 @@ __kernel void block_average(__global const uchar4 *src,
   const int y1 = min(y0 + block, height);
   float4 sum = (float4)(0.0f);
   for (int y = y0; y < y1; y++) {
-    for (int x = x0; x < x1; x++) sum += convert_float4(src[y * width + x]);
+    for (int x = x0; x < x1; x++) {
+      const float4 p = convert_float4(src[y * width + x]);
+      sum += (float4)(p.xyz * p.w, p.w);
+    }
   }
-  avg[by * blocks_x + bx] = sum / (float)((x1 - x0) * (y1 - y0));
+  avg[by * blocks_x + bx] = sum.w > 0.0f ?
+    (float4)(sum.xyz / sum.w, sum.w / (float)((x1 - x0) * (y1 - y0))) : (float4)(0.0f);
 }
 
 __kernel void pixelate_fill(__global const float4 *avg,
@@ -85,7 +91,8 @@ __kernel void dither(__global const uchar4 *src,
 // ---- Halftone ---------------------------------------------------------------
 // Printing-press dots: a grid of dots per ink, each rotated to its own screen
 // angle, with dot size set by how much of that ink the area needs. Reads a
-// pre-blurred image (as a texture) at each dot's centre.
+// pre-blurred image (as a texture) at each dot's centre. The paper takes the
+// original image's alpha, so cut-outs stay cut out.
 
 float4 rgb_to_cmyk(float3 c) {
   const float k = 1.0f - max(c.x, max(c.y, c.z));
@@ -105,7 +112,7 @@ float halftone_ink(read_only image2d_t img, float2 p, float angle, float cell, i
     for (int ox = -1; ox <= 1; ox++) {
       const float2 centre = (base + (float2)(ox, oy) + 0.5f) * cell;
       const float2 image_pos = (float2)(ca * centre.x - sa * centre.y, sa * centre.x + ca * centre.y);
-      const float4 cmyk = rgb_to_cmyk(read_imagef(img, LINEAR, image_pos).xyz);
+      const float4 cmyk = rgb_to_cmyk(sample_rgba(img, image_pos).xyz);
       const float ink = channel == 0 ? cmyk.x : channel == 1 ? cmyk.y : channel == 2 ? cmyk.z : cmyk.w;
       const float radius = sqrt(ink) * cell * 0.70710678f;
       const float d = length(r - centre);
@@ -120,7 +127,8 @@ __kernel void halftone(read_only image2d_t src,
                        const int width,
                        const int height,
                        const float cell,
-                       const int mono)
+                       const int mono,
+                       __global const uchar4 *original)
 {
   GUARD;
   const float2 p = (float2)(x + 0.5f, y + 0.5f);
@@ -135,7 +143,7 @@ __kernel void halftone(read_only image2d_t src,
       for (int ox = -1; ox <= 1; ox++) {
         const float2 centre = (base + (float2)(ox, oy) + 0.5f) * cell;
         const float2 image_pos = (float2)(ca * (centre.x - centre.y), ca * (centre.x + centre.y));
-        const float ink = 1.0f - luma(read_imagef(src, LINEAR, image_pos).xyz);
+        const float ink = 1.0f - luma(sample_rgba(src, image_pos).xyz);
         const float radius = sqrt(ink) * cell * 0.70710678f;
         best = max(best, 1.0f - smoothstep(radius - 0.75f, radius + 0.75f, length(r - centre)));
       }
@@ -148,14 +156,15 @@ __kernel void halftone(read_only image2d_t src,
     o.z *= 1.0f - halftone_ink(src, p, 0.0f, cell, 2);
     o *= 1.0f - halftone_ink(src, p, 45.0f * PI / 180.0f, cell, 3);
   }
-  dst[i] = from_rgb(o, 255);
+  dst[i] = from_rgb(o, original[i].w);
 }
 
 // ---- ASCII art --------------------------------------------------------------
 // Each cell x cell tile becomes one character from an 8x8 bitmap font,
 // chosen by the tile's brightness (glyphs are ordered sparse to dense).
 // mode 0 draws glyphs in the tile's colour on black, 1 is a green terminal,
-// and 2 is black ink on white paper (dense glyphs for dark areas).
+// and 2 is black ink on white paper (dense glyphs for dark areas). Each tile
+// takes its mean alpha, so transparent areas stay transparent.
 __kernel void ascii_art(__global const float4 *avg,
                         __global const uchar *glyphs,
                         __global uchar4 *dst,
@@ -167,7 +176,8 @@ __kernel void ascii_art(__global const float4 *avg,
                         const int mode)
 {
   GUARD;
-  const float3 c = avg[(y / cell) * blocks_x + x / cell].xyz / 255.0f;
+  const float4 tile = avg[(y / cell) * blocks_x + x / cell];
+  const float3 c = tile.xyz / 255.0f;
   const float l = luma(c);
   const float density = mode == 2 ? 1.0f - l : l;
   const int g = min((int)(density * glyph_count), glyph_count - 1);
@@ -184,5 +194,5 @@ __kernel void ascii_art(__global const float4 *avg,
   } else {
     o = on ? (float3)(0.08f) : (float3)(0.98f, 0.97f, 0.94f);
   }
-  dst[i] = from_rgb(o, 255);
+  dst[i] = from_rgb(o, convert_uchar_sat_rte(tile.w));
 }

@@ -23,12 +23,13 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.0",
     "node-addon-api": "^8.3.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "angular-mocks": "~1.8.3",
     "chai": "^4.5.0",
     "chai-http": "^4.4.0",
+    "eslint": "^8.57.1",
     "gulp": "^5.0.0",
     "gulp-clean-css": "^4.3.0",
     "gulp-sass": "^6.0.0",
@@ -46,9 +47,13 @@
   "scripts": {
     "install": "node scripts/install-native.js",
     "build": "gulp",
+    "build:prod": "gulp build:prod",
+    "heroku-postbuild": "OMNIFILTER_API=/ gulp build:prod",
     "mongo": "mkdir -p db && mongod --dbpath=./db",
     "test": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && mocha --exit --timeout 10000 --file server/test/setup.js server/test",
     "test:client": "gulp webpack:test && karma start",
+    "lint": "eslint .",
+    "lint:client": "eslint app gulpfile.js karma.conf.js",
     "start": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && node clientserver & node server/server",
     "fetch-models": "node scripts/fetch-models.js",
     "devices": "node scripts/devices.js",
@@ -63,7 +68,7 @@
     "filters"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9"
   },
   "gypfile": true,
   "optionalDependencies": {

@@ -94,8 +94,13 @@ function parent(only) {
     }
     const { messages, result } = runChild(names);
     let running = null;
+    let sawDevice = false;
+    let finished = 0;
     for (const m of messages) {
-      if (m.device) device = m.device;
+      if (m.device) {
+        device = m.device;
+        sawDevice = true;
+      }
       if (m.fatal) {
         console.error('Could not use the OpenCL device: ' + m.fatal);
         process.exit(1);
@@ -104,15 +109,35 @@ function parent(only) {
       if (m.done) {
         results.push([m.done, m.ok ? 'ok' : 'FAILED', m.error || '']);
         running = null;
+        finished++;
       }
     }
-    if (!running) break;
-    const how = result.error && result.error.code === 'ETIMEDOUT' ? 'TIMED OUT' : 'CRASHED';
-    results.push([running, how, result.signal || ('exit code ' + result.status)]);
+    const timedOut = result.error && result.error.code === 'ETIMEDOUT';
+    const how = result.signal || (timedOut ? 'timed out' : 'exit code ' + result.status);
+    if (!running) {
+      // The child died outside any case: while setting up the device (e.g.
+      // the driver crashed compiling the kernels), or between cases. Either
+      // way the remaining cases never ran, so this isn't a pass.
+      const clean = result.status === 0 && !result.signal && !result.error;
+      if (!sawDevice || (!clean && finished < names.length)) {
+        if (results.length) report(device, results);
+        console.error('The check crashed ' + (sawDevice ? 'between cases' : 'while setting up the OpenCL device') +
+          ' (' + how + '); try `npm run devices`, or another OMNIFILTER_DEVICE.');
+        process.exit(1);
+      }
+      break;
+    }
+    results.push([running, timedOut ? 'TIMED OUT' : 'CRASHED', how]);
     names = names.slice(names.indexOf(running) + 1);
     if (!names.length) break;
   }
 
+  const bad = report(device, results);
+  process.exit(bad ? 1 : 0);
+}
+
+// Prints the results so far; returns how many weren't ok.
+function report(device, results) {
   console.log('Device: ' + device);
   for (const [name, status, detail] of results) {
     console.log('  ' + status.padEnd(9) + ' ' + name + (detail ? ': ' + detail : ''));
@@ -121,7 +146,7 @@ function parent(only) {
   const bad = results.length - count('ok');
   console.log(count('ok') + ' ok, ' + count('FAILED') + ' failed, ' + count('CRASHED') + ' crashed' +
     (count('TIMED OUT') ? ', ' + count('TIMED OUT') + ' timed out' : ''));
-  process.exit(bad ? 1 : 0);
+  return bad;
 }
 
 const args = process.argv.slice(2);

@@ -8,7 +8,7 @@ Omnifilter was built and tested on one machine: a 2015 MacBook Pro with an Intel
 
 The design already helps here. Filters don't talk to OpenCL directly. They build a **plan**: a list of named buffers and kernel passes (`server/lib/filters/plan.js`), which the native addon runs (`native/omnifilter.cpp`). The plan format says nothing OpenCL-specific beyond kernel names and argument types, so a second backend can run the same plans.
 
-The kernels: 53 kernels in about 1,500 lines of OpenCL C 1.2 (`native/kernels/*.cl`). 14 of them read images (textures), the histogram and Voronoi kernels use atomics, and none use double precision.
+The kernels: 56 kernels in about 1,800 lines of OpenCL C 1.2 (`native/kernels/*.cl`). 14 of them read images (textures), the histogram and Voronoi kernels use atomics, and none use double precision.
 
 Assumptions baked in that won't hold everywhere:
 
@@ -19,7 +19,7 @@ Assumptions baked in that won't hold everywhere:
 | The first device of the wanted type is the right one | `PickDevice` | Machines with an integrated *and* a discrete GPU, or several platforms (e.g. pocl and a vendor driver) |
 | Every kernel is short enough to dodge the display watchdog | banding sizes tuned by hand on the Iris 6100 | Slower GPUs (watchdog kills), and needlessly slow on compute GPUs with no watchdog |
 | The whole image fits in one device allocation | `CL_DEVICE_MAX_MEM_ALLOC_SIZE` check | GPUs with small allocation limits (often 1/4 of memory) at 50 MP |
-| macOS or Linux, x64 | `binding.gyp` | Windows (no OpenCL headers or library configured); prebuilt binaries for arm64 |
+| macOS or Linux, x64 | `binding.gyp` | Windows (no OpenCL headers or library configured); prebuilt binaries for arm64. *Fixed in Phase 1.* |
 
 ## The situations to cover
 
@@ -48,7 +48,7 @@ Cheap, and it fixes real bugs. Everything else builds on it.
 * *Suggested work-group size query:* not used. Passes without a work-group size already let the driver choose, and banded passes want square tiles, which the query wouldn't give.
 * *Kernels without images:* devices without image support hide the 14 texture filters instead of getting buffer-based copies of them. Such devices are rare (every desktop GPU, pocl, Rusticl and clvk support images), and the copies would double those kernels.
 * *Tiling:* filters too big for the device run on a scaled-down copy instead of being split into exact tiles. On this machine everything fits at the 50 megapixel limit; exact tiling can come later if a small-memory GPU needs it.
-* *Still to check:* the CI workflow hasn't run yet (the Rusticl job in particular), since that needs the repository pushed to GitHub.
+* *CI:* the workflow runs every test on pocl (Node 20 and 24) and Mesa's Rusticl, and found a Rusticl crash that now has a workaround (see Phase 1).
 
 1. **Ask the device for its limits instead of assuming them.** At init, read `CL_DEVICE_MAX_WORK_ITEM_SIZES`, `CL_DEVICE_MAX_WORK_GROUP_SIZE`, `CL_DEVICE_IMAGE_SUPPORT`, `CL_DEVICE_IMAGE2D_MAX_WIDTH/HEIGHT`, `CL_DEVICE_IMAGE3D_MAX_*`, `CL_DEVICE_LOCAL_MEM_SIZE`, `CL_DEVICE_GLOBAL_MEM_SIZE` and `CL_DEVICE_MAX_MEM_ALLOC_SIZE`, and for each kernel `CL_KERNEL_WORK_GROUP_SIZE`. Expose them through `deviceInfo()`.
    * Banded launches pick a tile that fits: 16x16 where allowed, otherwise the largest shape the device and kernel accept (e.g. 64x1). This fixes `OMNIFILTER_DEVICE=cpu` on macOS. On OpenCL 3.1 drivers, use the new suggested work-group size query (`clGetKernelSuggestedLocalWorkSizeKHR`) instead of guessing, keeping the fallback for OpenCL 1.2 (Apple).
@@ -91,7 +91,7 @@ Each variant keeps pocl as a fallback (the default `OMNIFILTER_DEVICE=auto` pref
 
 OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it under WSL2. A second backend makes Omnifilter independent of any one vendor's OpenCL.
 
-**Why WebGPU rather than Metal, CUDA or Vulkan directly.** One WebGPU port runs on Metal (Apple), Vulkan (Linux, Android) and Direct3D 12 (Windows), and the same shader code runs in the browser (Phase 4). Writing Metal, CUDA and Vulkan backends separately would mean three ports of the 53 kernels.
+**Why WebGPU rather than Metal, CUDA or Vulkan directly.** One WebGPU port runs on Metal (Apple), Vulkan (Linux, Android) and Direct3D 12 (Windows), and the same shader code runs in the browser (Phase 4). Writing Metal, CUDA and Vulkan backends separately would mean three ports of the 56 kernels.
 
 **Kernel language: try Slang first.** [Slang](https://www.khronos.org/news/press/khronos-group-launches-slang-initiative-hosting-open-source-compiler-contributed-by-nvidia), now a Khronos project, compiles one kernel source to WGSL, Metal, SPIR-V (Vulkan), HLSL (D3D12) and CUDA, with readable output. Writing the kernels in Slang instead of hand-written WGSL would give the browser preview (Phase 4) and, later, native Metal or CUDA backends from the same source. Start with a short trial: port `blend_layers`, `color_matrix` and one texture-sampling kernel, run the generated WGSL under Dawn and in a browser, and compare speed and readability with the OpenCL versions. If it falls short, write WGSL by hand as below.
 

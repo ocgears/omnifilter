@@ -60,8 +60,16 @@ float3 blend_rgb(float3 b, float3 t, int mode) {
 }
 
 // src is the filtered image (the layer), base the image the filter was applied
-// to. amount (0-1) fades between base and the blended result. Alpha is faded
-// the same way.
+// to; both have straight alpha. Where the base is transparent the layer keeps
+// its own colour, as in the spec's general formula
+//   Cs' = (1 - ab) * Cs + ab * B(Cb, Cs),
+// and amount (0-1) fades from the base to that blended layer, premultiplied,
+// so a layer over a transparent base keeps its colour and gets amount of its
+// alpha: at 50%, opaque red over nothing is red at alpha 0.5. When the layer
+// is opaque this is exactly source-over compositing with opacity amount; when
+// it isn't (a filter keeps its input's alpha), the base doesn't show through
+// the layer as well, which would make a semi-transparent image more opaque
+// with every layer.
 __kernel void blend_layers(__global const uchar4 *src,
                            __global uchar4 *dst,
                            const int width,
@@ -71,8 +79,9 @@ __kernel void blend_layers(__global const uchar4 *src,
                            const float amount)
 {
   GUARD;
-  const float4 t = convert_float4(src[i]) * (1.0f / 255.0f);
-  const float4 b = convert_float4(base[i]) * (1.0f / 255.0f);
-  const float3 blended = blend_rgb(b.xyz, t.xyz, mode);
-  dst[i] = from_rgba((float4)(mix(b.xyz, blended, amount), mix(b.w, t.w, amount)));
+  const float4 t = to_rgba(src[i]);
+  const float4 b = to_rgba(base[i]);
+  const float3 blended = mix(t.xyz, blend_rgb(b.xyz, t.xyz, mode), b.w);
+  const float4 layer = premultiply((float4)(blended, t.w));
+  dst[i] = from_rgba(unpremultiply(mix(premultiply(b), layer, amount)));
 }

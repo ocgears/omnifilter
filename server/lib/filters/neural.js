@@ -34,14 +34,26 @@ try {
 const sessions = new Map();
 
 // The published models declare a fixed 224x224 input; patch that so they
-// accept any size, then cache the session.
+// accept any size, then cache the session. A failed load isn't cached, so the
+// next request tries again (e.g. after `npm run fetch-models`).
 function session(file) {
   if (!sessions.has(file)) {
-    const model = makeSpatialDimsDynamic(fs.readFileSync(path.join(MODEL_DIR, file)), 'input1', 'output1');
-    sessions.set(file, ort.InferenceSession.create(model, { logSeverityLevel: 3 }));
+    const created = fs.promises.readFile(path.join(MODEL_DIR, file))
+      .then((bytes) => exports.ort.InferenceSession.create(
+        makeSpatialDimsDynamic(bytes, 'input1', 'output1'), { logSeverityLevel: 3 }));
+    sessions.set(file, created);
+    created.catch(() => {
+      if (sessions.get(file) === created) sessions.delete(file);
+    });
   }
   return sessions.get(file);
 }
+
+// Blending touches every pixel in JavaScript, which for a big photo takes long
+// enough to hold up other requests, so it gives way every this many pixels.
+const BLEND_CHUNK = 1 << 20;
+
+const yieldToEventLoop = () => new Promise((resolve) => setImmediate(resolve));
 
 async function stylize(file, rgba, width, height, params) {
   // Work at a reduced size: the network's cost grows with pixel count, and
@@ -62,7 +74,7 @@ async function stylize(file, rgba, width, height, params) {
     input[2 * plane + i] = small[i * 3 + 2];
   }
   const s = await session(file);
-  const result = await s.run({ input1: new ort.Tensor('float32', input, [1, 3, wh, ww]) });
+  const result = await s.run({ input1: new exports.ort.Tensor('float32', input, [1, 3, wh, ww]) });
   const output = result.output1;
   const [, , oh, ow] = output.dims;
   const outPlane = ow * oh;
@@ -78,16 +90,21 @@ async function stylize(file, rgba, width, height, params) {
     .resize(width, height, { fit: 'fill', kernel: 'lanczos3' }).raw().toBuffer();
   const t = params.strength / 100;
   const out = Buffer.alloc(width * height * 4);
-  for (let i = 0; i < width * height; i++) {
-    for (let c = 0; c < 3; c++) {
-      out[i * 4 + c] = Math.round(rgba[i * 4 + c] + (full[i * 3 + c] - rgba[i * 4 + c]) * t);
+  const pixels = width * height;
+  for (let begin = 0; begin < pixels; begin += BLEND_CHUNK) {
+    if (begin) await yieldToEventLoop();
+    const end = Math.min(pixels, begin + BLEND_CHUNK);
+    for (let i = begin; i < end; i++) {
+      for (let c = 0; c < 3; c++) {
+        out[i * 4 + c] = Math.round(rgba[i * 4 + c] + (full[i * 3 + c] - rgba[i * 4 + c]) * t);
+      }
+      out[i * 4 + 3] = rgba[i * 4 + 3];
     }
-    out[i * 4 + 3] = rgba[i * 4 + 3];
   }
   return out;
 }
 
-module.exports = !ort ? [] : STYLES
+exports = module.exports = !ort ? [] : STYLES
   .filter((style) => fs.existsSync(path.join(MODEL_DIR, style.file)))
   .map((style) => ({
     name: style.name,
@@ -100,3 +117,9 @@ module.exports = !ort ? [] : STYLES
     ],
     run: (job) => stylize(style.file, job.rgba, job.width, job.height, job.params)
   }));
+
+// For tests: the ONNX Runtime module in use (replaceable with a stub), the
+// session loader and its cache.
+exports.ort = ort;
+exports.session = session;
+exports.sessions = sessions;

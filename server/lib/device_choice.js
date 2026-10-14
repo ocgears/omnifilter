@@ -23,8 +23,11 @@ function compareDevices(a, b) {
 // The devices to try, best first, for an OMNIFILTER_DEVICE setting:
 //   auto (default)  the best GPU, or failing that any other device
 //   any             the same
-//   gpu, cpu        only devices of that type
-//   2               the device with that index (`npm run devices` lists them)
+//   gpu, cpu,       only devices of that type
+//   accelerator
+//   2               the device with that index (`npm run devices` lists them),
+//                   if there is one; otherwise a number is matched against
+//                   names like anything else, so "6100" finds an Iris 6100
 //   anything else   devices whose name, vendor, version or platform
 //                   contains it, ignoring case, e.g. "RTX" or "pocl" (pocl's
 //                   platform is "Portable Computing Language"; "PoCL" is in
@@ -35,9 +38,9 @@ function candidates(devices, setting) {
   var picked;
   if (s === 'auto' || s === 'any') {
     picked = usable;
-  } else if (s === 'gpu' || s === 'cpu') {
+  } else if (s === 'gpu' || s === 'cpu' || s === 'accelerator') {
     picked = usable.filter((d) => d.type === s);
-  } else if (/^\d+$/.test(s)) {
+  } else if (/^\d+$/.test(s) && devices.some((d) => d.index === Number(s))) {
     picked = usable.filter((d) => d.index === Number(s));
   } else {
     picked = usable.filter((d) => [d.platform, d.platformVendor, d.name, d.vendor, d.version]

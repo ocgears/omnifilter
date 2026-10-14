@@ -1,7 +1,7 @@
 'use strict';
 
 const P = require('./plan');
-const { Plan, buf, img, data, int, float, range, choice } = P;
+const { Plan, buf, data, int, float, range, choice } = P;
 
 const M = require('./matrices');
 
@@ -27,10 +27,14 @@ module.exports = [
     group: GROUP,
     description: 'Edge-preserving smoothing, the basis of "beauty" filters.',
     params: [
-      range('radius', 'Radius (px)', 2, 10, 5),
+      range('radius', 'Radius (px at working size)', 2, 10, 5),
       range('smoothing', 'Smoothing', 2, 40, 12),
-      range('iterations', 'Iterations', 1, 5, 2)
+      range('iterations', 'Iterations', 1, 5, 2),
+      range('detail', 'Detail (working size, px)', 600, 4000, 2000, 100)
     ],
+    // The radius is in pixels, so the cost grows with the image's area: big
+    // photos are smoothed at the working size.
+    workingSize: workingSize,
     plan: (w, h, p) => bilateral(new Plan(w, h), p.radius, p.smoothing / 100, p.iterations)
   },
   {
@@ -111,7 +115,11 @@ module.exports = [
     label: 'Median (denoise)',
     group: GROUP,
     description: 'Middle value of each channel in a window: removes speckles, keeps edges.',
-    params: [range('radius', 'Radius (px)', 1, 3, 1)],
+    params: [
+      range('radius', 'Radius (px at working size)', 1, 3, 1),
+      range('detail', 'Detail (working size, px)', 1000, 8000, 4000, 100)
+    ],
+    workingSize: workingSize,
     plan: (w, h, p) => new Plan(w, h).step('median', int(p.radius), int(0)).band(256)
   },
   {
@@ -127,7 +135,7 @@ module.exports = [
       const spacing = Math.max(3, P.px(w, h, p.spacing));
       const plan = P.gaussian(new Plan(w, h), spacing * 0.3);
       return plan.step('crosshatch', float(spacing), float(Math.max(1, spacing * 0.18)),
-        int(p.style === 'colour' ? 1 : 0));
+        int(p.style === 'colour' ? 1 : 0)).step('restore_alpha', buf('src'));
     }
   }
 ];

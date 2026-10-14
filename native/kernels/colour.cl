@@ -101,17 +101,23 @@ __kernel void vignette(__global const uchar4 *src,
 // what every input colour should become. The table lives in a 3D image, so
 // the texture hardware interpolates between its entries (trilinearly) for
 // free. Red runs along x, green along y and blue along z, as in .cube files.
+// domain holds the input colours at the cube's first and last entries (red,
+// green and blue minimums, then maximums), usually 0 0 0 and 1 1 1; colours
+// outside it take the nearest entry.
 __kernel void lut3d(__global const uchar4 *src,
                     __global uchar4 *dst,
                     const int width,
                     const int height,
                     read_only image3d_t lut,
                     const int size,
-                    const float amount)
+                    const float amount,
+                    __global const float *domain)
 {
   GUARD;
   const float3 c = to_rgb(src[i]);
-  const float3 coord = c * (size - 1) + 0.5f;
+  const float3 lo = (float3)(domain[0], domain[1], domain[2]);
+  const float3 hi = (float3)(domain[3], domain[4], domain[5]);
+  const float3 coord = clamp((c - lo) / (hi - lo), 0.0f, 1.0f) * (size - 1) + 0.5f;
   const float4 graded = read_imagef(lut, LINEAR, (float4)(coord, 0.0f));
   dst[i] = from_rgb(mix(c, graded.xyz, amount), src[i].w);
 }

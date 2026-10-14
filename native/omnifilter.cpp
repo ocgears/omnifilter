@@ -57,6 +57,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -553,17 +554,27 @@ class Gpu {
 
     cl_uint count = 0;
     Check(clCreateKernelsInProgram(program_, 0, nullptr, &count), "clCreateKernelsInProgram");
-    std::vector<cl_kernel> kernels(count);
+    std::vector<cl_kernel> kernels(count, nullptr);
     Check(clCreateKernelsInProgram(program_, count, kernels.data(), nullptr),
           "clCreateKernelsInProgram");
-    for (cl_kernel kernel : kernels) {
+    // Each kernel moves into kernels_ (which Release() frees) as it's named;
+    // if a query fails part way, free the ones that haven't moved yet.
+    struct KernelGuard {
+      std::vector<cl_kernel>& list;
+      ~KernelGuard() { for (cl_kernel k : list) if (k) clReleaseKernel(k); }
+    } kernelGuard{kernels};
+    for (cl_kernel& slot : kernels) {
+      cl_kernel kernel = slot;
       size_t size = 0;
       Check(clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME, 0, nullptr, &size), "clGetKernelInfo");
       std::string name(size, '\0');
       Check(clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME, size, &name[0], nullptr),
             "clGetKernelInfo");
       while (!name.empty() && name.back() == '\0') name.pop_back();
+      auto existing = kernels_.find(name);
+      if (existing != kernels_.end()) clReleaseKernel(existing->second);
       kernels_[name] = kernel;
+      slot = nullptr;
       // A kernel can allow smaller work-groups than the device, e.g. when it
       // uses barriers or a lot of registers.
       size_t group = 0;
@@ -689,6 +700,21 @@ size_t PositiveInt(Napi::Env env, const Napi::Value& value, const std::string& w
   return static_cast<size_t>(n);
 }
 
+// A buffer size in bytes. Unlike PositiveInt this can pass 2^31 (CPU devices
+// allow buffers of several GB), up to the largest integer a double holds
+// exactly; Run() then checks it against the device's largest allocation.
+// Fractions are dropped, as Int64Value() does.
+size_t ByteCount(Napi::Env env, const Napi::Value& value, const std::string& what) {
+  if (!value.IsNumber()) throw Napi::TypeError::New(env, what + " must be a number");
+  const double n = std::floor(value.As<Napi::Number>().DoubleValue());
+  constexpr double kMaxExact = 9007199254740992.0;  // 2^53
+  // Written so NaN fails too.
+  if (!(n >= 1 && n <= kMaxExact) || static_cast<uint64_t>(n) > static_cast<uint64_t>(SIZE_MAX)) {
+    throw Napi::RangeError::New(env, what + " is out of range");
+  }
+  return static_cast<size_t>(n);
+}
+
 // Reads a [x] or [x, y] size array.
 cl_uint Dims(Napi::Env env, const Napi::Value& value, size_t out[2], const std::string& what) {
   if (!value.IsArray()) throw Napi::TypeError::New(env, what + " must be an array");
@@ -759,7 +785,7 @@ Plan ParsePlan(Napi::Env env, const Napi::Value& value) {
       spec.name = b.Get("name").ToString().Utf8Value();
       if (names.count(spec.name)) throw Napi::Error::New(env, where + ": duplicate buffer '" + spec.name + "'");
       names[spec.name] = true;
-      spec.bytes = PositiveInt(env, b.Get("bytes"), where + ".bytes");
+      spec.bytes = ByteCount(env, b.Get("bytes"), where + ".bytes");
       if (b.Has("init") && !b.Get("init").IsUndefined()) {
         spec.init = Bytes(b.Get("init"), where + ".init");
         if (spec.init.size() != spec.bytes) {
