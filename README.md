@@ -51,6 +51,7 @@ Then open http://localhost:5000. On startup the API server logs which device the
 |---|---|
 | `APP_SECRET` | The key that signs login tokens; set it to a long random string (`openssl rand -hex 32`). Without it the server generates a random key at startup, so everyone is signed out when it restarts. Logins last 7 days, and changing a password signs out other sessions. |
 | `OMNIFILTER_MAX_PIXELS` | Largest image accepted, in pixels (default 50 million). Images are also limited to 16384 pixels per side. The limits are checked from the file header, so a small file that would decode to gigabytes is refused before it's decoded. |
+| `OMNIFILTER_BACKEND` | What runs the filters: `opencl` (default, the native addon) or `webgpu` (Dawn, on Metal, Vulkan or Direct3D 12, for GPUs without a working OpenCL driver). WebGPU needs `npm install webgpu` first; see [docs/GPU_SUPPORT.md](docs/GPU_SUPPORT.md#phase-3-a-second-backend-webgpu). With it, `OMNIFILTER_DEVICE` is `auto`, `gpu`, `low-power` or `cpu`, `OMNIFILTER_GPU_MEMORY_MB` gives the GPU's memory (WebGPU doesn't report it), and `OMNIFILTER_WEBGPU_FLAGS` passes Dawn options, e.g. `backend=vulkan`. |
 | `OMNIFILTER_DEVICE` | Which OpenCL device to use: `auto` or `any` (default: the best GPU, else any device), `gpu`, `cpu`, `accelerator`, a device number from `npm run devices`, or part of a device's name, e.g. `RTX`, `pocl` or `3060` (a number that isn't a device number is matched against names). If no device can be set up, the server tries again after 5 minutes. |
 | `OMNIFILTER_BAND_MS` | Target time for each band of a heavy kernel, in milliseconds (default 100). Bands keep a GPU that also drives the display from being reset by the OS; see [How the GPU part works](#how-the-gpu-part-works). |
 | `OMNIFILTER_CL_OPTIONS` | Extra OpenCL compiler options for the kernels. |
@@ -146,6 +147,8 @@ browser --(base64 image)--> server/routes/content_routes.js
           server/lib/filters/*.js          describe the filter as a "plan": buffers + kernel passes
           native/omnifilter.cpp            C++ addon: runs the plan on the GPU
           native/kernels/*.cl              OpenCL kernels, one GPU thread per pixel
+      (or, with OMNIFILTER_BACKEND=webgpu)
+          server/lib/webgpu/               the same plans with WebGPU (Dawn), in WGSL
 ```
 
 * **Node to C++** uses [N-API](https://nodejs.org/api/n-api.html) through [node-addon-api](https://github.com/nodejs/node-addon-api). N-API is ABI-stable, so the addon doesn't break when Node or V8 changes. `binding.gyp` tells node-gyp how to compile it and link OpenCL.

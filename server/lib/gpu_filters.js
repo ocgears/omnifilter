@@ -1,9 +1,11 @@
 'use strict';
 
 // Runs image filters on the GPU through the native OpenCL addon
-// (native/omnifilter.cpp). The kernels live in native/kernels/*.cl and the
-// filter definitions, which describe each filter as a pipeline of kernel
-// passes, in server/lib/filters/.
+// (native/omnifilter.cpp), or with OMNIFILTER_BACKEND=webgpu through WebGPU
+// (webgpu/backend.js). The kernels live in native/kernels/*.cl and
+// webgpu/kernels/*.js, and the filter definitions, which describe each
+// filter as a pipeline of kernel passes, in server/lib/filters/; both
+// backends run the same plans.
 
 const fs = require('fs');
 const path = require('path');
@@ -14,6 +16,15 @@ const deviceChoice = require('./device_choice');
 const { roundWholeParams } = require('./filters/plan');
 
 const KERNEL_DIR = path.join(__dirname, '..', '..', 'native', 'kernels');
+
+// Which backend runs the plans: 'opencl' (the default) or 'webgpu'.
+const BACKEND = (process.env.OMNIFILTER_BACKEND || 'opencl').trim().toLowerCase();
+if (!['opencl', 'webgpu'].includes(BACKEND)) {
+  throw new Error('OMNIFILTER_BACKEND must be opencl or webgpu, not ' + BACKEND);
+}
+const webgpu = BACKEND === 'webgpu' ? require('./webgpu/backend') : null;
+// For messages: "No OpenCL device is available".
+const BACKEND_LABEL = webgpu ? 'WebGPU' : 'OpenCL';
 
 // Which OpenCL device to use: 'auto' (the best GPU, else any device), 'gpu',
 // 'cpu', a device index, or part of a device's name. See device_choice.js,
@@ -73,6 +84,12 @@ function kernelSource() {
 function ensureInit() {
   if (device) return;
   if (initFailure && Date.now() - initFailure.at < INIT_RETRY_MS) throw noDevice(initFailure.message);
+  if (webgpu) {
+    // Setting up WebGPU is asynchronous: start it, and until it's done,
+    // there's no device yet (ready() waits for it).
+    ready().catch(() => {});
+    throw noDevice('The WebGPU device is still being set up');
+  }
   try {
     initDevice();
     initFailure = null;
@@ -107,13 +124,44 @@ function initDevice() {
   throw new Error('No OpenCL device could run the filters:\n' + failures.join('\n'));
 }
 
+// Resolves once the device is set up (straight away for OpenCL, which sets
+// up synchronously), or rejects with code 'NO_DEVICE'.
+var starting = null;
+function ready() {
+  if (device) return Promise.resolve();
+  if (!webgpu) {
+    try {
+      ensureInit();
+      return Promise.resolve();
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+  if (initFailure && Date.now() - initFailure.at < INIT_RETRY_MS) {
+    return Promise.reject(noDevice(initFailure.message));
+  }
+  starting = starting || webgpu.init(DEVICE_SETTING).then((info) => {
+    device = info;
+    skipped = [];
+    initFailure = null;
+  }, (e) => {
+    initFailure = { message: e.message, at: Date.now() };
+    throw noDevice(e.message);
+  }).finally(() => {
+    starting = null;
+  });
+  return starting;
+}
+
 // Every native.filter() call goes through this queue, so at most one is in
 // flight. The addon runs one plan at a time anyway (behind a mutex, on a
 // libuv threadpool thread), so calling it more often would only park
 // threadpool threads that fs, zlib, crypto and sharp need.
 var gpuQueue = Promise.resolve();
 function runOnDevice(rgba, width, height, plan) {
-  const run = gpuQueue.then(() => native.filter(rgba, width, height, plan));
+  const run = gpuQueue.then(() => (webgpu ?
+    webgpu.filter(rgba, width, height, plan, DEVICE_SETTING) :
+    native.filter(rgba, width, height, plan)));
   gpuQueue = run.catch(() => {});  // a failed run mustn't block the ones after it
   return run;
 }
@@ -209,7 +257,7 @@ function sizedPlan(def, width, height, p) {
 }
 
 async function runPlan(def, rgba, width, height, p) {
-  ensureInit();
+  await ready();
   const sized = sizedPlan(def, width, height, p);
   if (sized.width === width && sized.height === height) {
     return runOnDevice(rgba, width, height, sized.plan);
@@ -243,20 +291,16 @@ exports.apply = (name, rgba, width, height, params) => {
 // status 400 if the plan needs more than the device has (memory, image
 // size, texture support), or code 'NO_DEVICE' if no device could be set up.
 // Like apply(), it waits its turn for the device.
-exports.runPlan = (rgba, width, height, plan) => {
-  try {
-    ensureInit();
-    const spec = plan.native();
-    const needs = deviceChoice.planNeeds(spec, width, height);
-    const reason = deviceChoice.unsupportedReason(needs, device);
-    if (reason) throw unsupported('This filter ' + reason);
-    if (deviceChoice.fitScale(needs, device) < 1) {
-      throw unsupported('A ' + width + 'x' + height + ' image is too large for this filter on ' + device.name);
-    }
-    return runOnDevice(rgba, width, height, spec);
-  } catch (e) {
-    return Promise.reject(e);
+exports.runPlan = async (rgba, width, height, plan) => {
+  await ready();
+  const spec = plan.native();
+  const needs = deviceChoice.planNeeds(spec, width, height);
+  const reason = deviceChoice.unsupportedReason(needs, device);
+  if (reason) throw unsupported('This filter ' + reason);
+  if (deviceChoice.fitScale(needs, device) < 1) {
+    throw unsupported('A ' + width + 'x' + height + ' image is too large for this filter on ' + device.name);
   }
+  return runOnDevice(rgba, width, height, spec);
 };
 
 // The chosen device: its description from the addon plus its index, and
@@ -266,10 +310,22 @@ exports.deviceInfo = () => {
   return Object.assign({}, device, { skipped: skipped });
 };
 
-// Every OpenCL device, whether or not it's the one in use.
-exports.devices = () => native.devices();
+// Every OpenCL device, whether or not it's the one in use. (For WebGPU, just
+// the one in use, once it's set up.)
+exports.devices = () => {
+  if (!webgpu) return native.devices();
+  return device ? [device] : [];
+};
 
 exports.kernels = () => {
   ensureInit();
-  return native.kernels();
+  return webgpu ? webgpu.kernels() : native.kernels();
 };
+
+// Resolves once the device is set up; rejects with code 'NO_DEVICE' if it
+// can't be.
+exports.ready = ready;
+
+// 'opencl' or 'webgpu', and its name for messages.
+exports.backend = BACKEND;
+exports.backendLabel = BACKEND_LABEL;

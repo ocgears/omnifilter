@@ -1,11 +1,12 @@
-// native/kernels/generative.cl.
-import { KernelSpec } from '../kernel';
+'use strict';
 
-export const GENERATIVE: Record<string, KernelSpec> = {
+// native/kernels/generative.cl.
+
+exports.GENERATIVE = {
   jfa_clear: {
     args: 'cells:i32out width:i32 height:i32',
     body: `
-  cells[i] = -1;`,
+  cells[i] = -1;`
   },
 
   jfa_plant: {
@@ -15,7 +16,7 @@ export const GENERATIVE: Record<string, KernelSpec> = {
   let s = i32(gid.x);
   if (s >= count) { return; }
   let p = seeds[s];
-  cells[p.y * width + p.x] = s;`,
+  cells[p.y * width + p.x] = s;`
   },
 
   jfa_step: {
@@ -44,7 +45,7 @@ fn seed_dist2(seed: vec2i, x: i32, y: i32) -> f32 {
       }
     }
   }
-  cells_out[i] = best;`,
+  cells_out[i] = best;`
   },
 
   // Each cell's sums are 9 uints: colour times alpha for red, green and blue,
@@ -67,7 +68,7 @@ fn atomic_add_u64(k: u32, value: u32) {
     atomic_add_u64(cell + 4u, p.z * p.w);
     atomic_add_u64(cell + 6u, p.w);
   }
-  atomicAdd(&sums[cell + 8u], 1u);`,
+  atomicAdd(&sums[cell + 8u], 1u);`
   },
 
   stained_glass: {
@@ -98,7 +99,7 @@ fn read_u64(k: u32) -> f32 {
   let l = luma(c);
   c = clamp(l + (c - l) * 1.25, vec3f(0.0), vec3f(1.0));
   c = mix(c, vec3f(0.06, 0.06, 0.07), edge);
-  dst[i] = from_rgb(c, sat_u8(alpha_sum / n));`,
+  dst[i] = from_rgb(c, sat_u8(alpha_sum / n));`
   },
 
   rd_init: {
@@ -113,7 +114,7 @@ fn read_u64(k: u32) -> f32 {
   let l = luma(sample_rgba_src(p, width, height).xyz);
   let h = hash3(u32(x / 3), u32(y / 3), u32(seed));
   let v = select(0.0, 1.0, f32(h & 0xffffu) < 65535.0 * 0.08);
-  state[y * gw + x] = vec4f(1.0 - 0.5 * v, v, feed, kill + (l - 0.5) * kill_range);`,
+  state[y * gw + x] = vec4f(1.0 - 0.5 * v, v, feed, kill + (l - 0.5) * kill_range);`
   },
 
   rd_step: {
@@ -140,7 +141,7 @@ fn read_u64(k: u32) -> f32 {
   let uvv = u * v * v;
   let nu = u + (du * lap.x - uvv + f * (1.0 - u)) * dt;
   let nv = v + (dv * lap.y + uvv - (k + f) * v) * dt;
-  cells_out[y * gw + x] = vec4f(clamp(nu, 0.0, 1.0), clamp(nv, 0.0, 1.0), f, k);`,
+  cells_out[y * gw + x] = vec4f(clamp(nu, 0.0, 1.0), clamp(nv, 0.0, 1.0), f, k);`
   },
 
   rd_render: {
@@ -159,6 +160,6 @@ fn read_u64(k: u32) -> f32 {
     let vivid = clamp(l + (c - l) * 1.4, vec3f(0.0), vec3f(1.0));
     o = mix(c * 0.12, vivid, t);
   }
-  dst[i] = from_rgb(o, sat_u8(photo.w * 255.0));`,
-  },
+  dst[i] = from_rgb(o, sat_u8(photo.w * 255.0));`
+  }
 };

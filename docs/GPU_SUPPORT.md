@@ -93,20 +93,23 @@ OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it 
 
 **Why WebGPU rather than Metal, CUDA or Vulkan directly.** One WebGPU port runs on Metal (Apple), Vulkan (Linux, Android) and Direct3D 12 (Windows), and the same shader code runs in the browser (Phase 4). Writing Metal, CUDA and Vulkan backends separately would mean three ports of the 56 kernels.
 
-**Kernel language: try Slang first.** [Slang](https://www.khronos.org/news/press/khronos-group-launches-slang-initiative-hosting-open-source-compiler-contributed-by-nvidia), now a Khronos project, compiles one kernel source to WGSL, Metal, SPIR-V (Vulkan), HLSL (D3D12) and CUDA, with readable output. Writing the kernels in Slang instead of hand-written WGSL would give the browser preview (Phase 4) and, later, native Metal or CUDA backends from the same source. Start with a short trial: port `blend_layers`, `color_matrix` and one texture-sampling kernel, run the generated WGSL under Dawn and in a browser, and compare speed and readability with the OpenCL versions. If it falls short, write WGSL by hand as below.
+**Done (October 2026), as an opt-in: `OMNIFILTER_BACKEND=webgpu`.** Phase 4 had already written the kernels in WGSL, so the server now runs them too (Slang, the trial this plan first suggested, wasn't needed):
 
-**How:**
-1. Put a backend interface in front of the addon in `gpu_filters.js`: `init()`, `deviceInfo()` and `run(rgba, width, height, plan)`. The OpenCL addon becomes one implementation, and `OMNIFILTER_BACKEND=opencl|webgpu` picks one.
-2. Implement the WebGPU backend in JavaScript with the `webgpu` npm package, Google's Dawn engine for Node (`create()` takes a `backend` and an `adapter` option) ([dawn.node](https://cdn.jsdelivr.net/npm/webgpu@0.4.0/README.md)). Plans map closely: buffers become storage buffers, `img` arguments become textures, and each pass becomes a compute dispatch.
-3. Port the kernels (to Slang, or WGSL directly) under the same names, cheapest first: the per-pixel colour, blend and adjust kernels; then convolution and the distortions (texture sampling); then the histogram kernels (WGSL has workgroup atomics); then the heavy stylize and generative kernels. Each kernel is done when it passes the existing reference tests, which get a backend parameter.
-4. Things to plan around:
-   * Float textures aren't filterable without the `float32-filterable` feature, so the 3D LUTs use `rgba16float`.
-   * WGSL has no `#include`, so common helpers get prepended the way `common.cl` is now.
-   * Dispatch sizes are capped at 65535 workgroups per dimension, so very wide images need 2D dispatch maths.
+* **One copy of the WebGPU code.** The WGSL kernels and the plan engine moved to `server/lib/webgpu/` as plain JavaScript (with `.d.ts` types); the browser bundles them, the way it already bundled the filter definitions, and adds only drawing and camera frames (`client/src/gpu/engine.ts`).
+* **A backend switch** in `gpu_filters.js`: `OMNIFILTER_BACKEND=opencl` (the default) or `webgpu`. Everything above it (working sizes, fitting plans to the device, stacks, the job queue) is shared. `OMNIFILTER_DEVICE` picks `auto`, `gpu`, `low-power` or `cpu` (a software adapter); `auto` falls back to a software adapter when there's no GPU.
+* **Dawn in its own process** (`webgpu/worker.js`): Dawn's Node bindings, the [`webgpu`](https://www.npmjs.com/package/webgpu) npm package, are still a 0.x release, so a crash there fails the filters it was running and restarts, rather than taking the server down. Pixels and plans go to it as structured clones (a copy each way, a few milliseconds for a phone photo).
+* **Bands**, as with OpenCL: kernels the plans run in bands of rows (`bilateral`, `median`, the Kuwaharas, `motion_blur`, `convolve`) are submitted a band at a time, so one dispatch over a 50 MP photo can't trip the OS's GPU watchdog. (Unlike the addon, band heights are fixed, not tuned from timing.)
+* **Not a dependency.** The package is about 140 MB with binaries for every platform, and only some servers want it: `npm install webgpu` adds it. Its macOS binary needs macOS 26 (`webgpu@0.2` runs on older macOS, which is how it was developed on macOS 12).
 
-**Caveat:** Dawn's Node bindings are still marked work in progress (v0.4, and Dawn's notes list known CTS failures). So OpenCL stays the default, and WebGPU starts as opt-in on the platforms where OpenCL is weak: Apple Silicon, Windows on Arm and WSL2.
+**How it's tested:** `server/test/webgpu_test.js` runs every filter (with each of its choices), every preset, every blend mode and two images tall enough for several bands with both backends and compares them pixel by pixel; CI does this on Mesa's lavapipe (Vulkan on the CPU) against pocl, then runs `npm run check-device` and the whole server suite with `OMNIFILTER_BACKEND=webgpu`. On the Iris 6100 (Dawn on Metal) against its OpenCL, the results match as closely as the browser's do.
 
-**Two cheaper options worth knowing about:**
+**Limits to know about:**
+* WebGPU doesn't report how much memory a GPU has. Plans are fitted to four times the largest buffer it allows; set `OMNIFILTER_GPU_MEMORY_MB` for the real figure. A plan that still runs out of memory fails that request with a 400, as a too-large image does on OpenCL.
+* Neural styles still run on ONNX Runtime (Phase 5).
+
+**Still to do:** a Docker image with Vulkan (Mesa for AMD and Intel GPUs; NVIDIA's container toolkit for NVIDIA), timed band heights, and trying it on Apple Silicon (macOS 26), Windows on Arm and WSL2, where it should be most useful. Make it the default where OpenCL is missing once it has run for a while.
+
+**Cheaper alternatives, still worth knowing:**
 * **clvk**, a conformant OpenCL 3.0 built on Vulkan ([Vulkan docs](https://docs.vulkan.org/tutorial/latest/Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/01_introduction.html)), gives OpenCL on machines that only have Vulkan drivers without changing any Omnifilter code. Users install it as an OpenCL driver. Running it on macOS through MoltenVK is unproven.
 * **Rusticl on Zink** (Mesa) is another OpenCL-over-Vulkan route, and OpenCL 3.1 conformant on some drivers. Whether it works on NVIDIA's own Vulkan driver is untested.
 * **pocl's own GPU drivers** (CUDA, Level Zero, Vulkan) are less mature, but worth a test on NVIDIA under WSL2.
@@ -117,10 +120,10 @@ OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it 
 
 **Started (October 2026), ahead of Phase 3.** The page runs the server's filter plans on the viewer's own GPU through WebGPU, for a live preview. WebGPU is in Chrome/Edge, in Safari 26 (iOS and macOS), in Chrome on most Android phones (not yet Samsung's Exynos GPUs), and in Firefox on Windows and Apple Silicon Macs. Elsewhere the page works as before, with the server doing everything ([status summary](https://svilenkovic.com/3d/webgpu-adoption-2026)).
 
-What's done, in `client/src/gpu/` (plain TypeScript, no Angular):
+What's done, in `client/src/gpu/` (plain TypeScript, no Angular) and `server/lib/webgpu/` (the parts the server's WebGPU backend shares, Phase 3):
 
-* **WGSL versions of all 56 kernels** (`kernels/`), one per OpenCL kernel and under the same name. Each is declared once with its argument list in the OpenCL order, and `kernel.ts` generates its bindings, a uniform struct for the scalars and the `GUARD` macros, so the bodies read like the OpenCL ones. Images (`image2d_t`) are plain buffers with nearest and bilinear helpers, so no textures or samplers are needed; work-group kernels (histograms, scans) use workgroup memory and atomics. Rounding to bytes matches `convert_uchar4_sat_rte`.
-* **A plan engine** (`engine.ts`) for the format `native/omnifilter.cpp` runs: buffers, passes, `buf`/`img`/`img3d`/`data`/`int`/`float` arguments, global sizes.
+* **WGSL versions of all 56 kernels** (`server/lib/webgpu/kernels/`), one per OpenCL kernel and under the same name. Each is declared once with its argument list in the OpenCL order, and `kernel.js` generates its bindings, a uniform struct for the scalars and the `GUARD` macros, so the bodies read like the OpenCL ones. Images (`image2d_t`) are plain buffers with nearest and bilinear helpers, so no textures or samplers are needed; work-group kernels (histograms, scans) use workgroup memory and atomics. Rounding to bytes matches `convert_uchar4_sat_rte`.
+* **A plan engine** (`server/lib/webgpu/engine.js`, which `client/src/gpu/engine.ts` extends with drawing and camera frames) for the format `native/omnifilter.cpp` runs: buffers, passes, `buf`/`img`/`img3d`/`data`/`int`/`float` arguments, global sizes.
 * **The same plans as the server.** The client bundles `server/lib/filters` (every module except the neural styles and `.cube` loading, which `lut_files.js` and `cube_looks.js` keep server-side), so the preview runs exactly the server's kernels, weights and sizes. Filters with a working size run at the size the server would use for the full photo.
 * **Stacks** (`stack.ts`) with blending, keeping each layer's result so a change reruns only from that layer.
 * **The editor:** the photo shows the stack applied live; hold to compare with the original; preset looks show as thumbnails of the photo; the status line says how long an update took.
@@ -133,7 +136,6 @@ What's done, in `client/src/gpu/` (plain TypeScript, no Angular):
 Still to do:
 
 * **Measure on phones** (an iPhone on iOS 26, a Pixel), and pick the preview size per device.
-* **A Node backend from the same WGSL** (Phase 3), via Dawn's Node bindings: the kernels now exist, so this is mostly the plan engine again on the server side.
 * **Fallback below WebGPU:** WebGL2 could run the per-pixel kernels, but most of the others need compute shaders; for now browsers without WebGPU use the server.
 
 ## Phase 5: neural styles on the GPU
@@ -154,6 +156,6 @@ The ONNX styles currently run on the CPU. ONNX Runtime has GPU "execution provid
 
 1. **Phase 0.** A few days. It fixes known bugs (the work-group size, the 16384 cap) and makes every later step safer.
 2. **Phases 1 and 2.** About a week together. Windows, prebuilt binaries and GPU Docker images cover most real hardware with the existing kernels.
-3. **Phase 3.** The big one: weeks, mostly porting kernels. Do it once Dawn's Node bindings stabilise, or sooner if Apple removes OpenCL.
+3. **Phase 3.** Done as an opt-in (see above), reusing Phase 4's kernels; next, a Vulkan Docker image and real hardware beyond the Iris.
 4. **Phase 4.** Started first after all (see above): the WGSL kernels it needed are written, and Phase 3 can reuse them.
 5. **Phase 5.** Independent of the others; can happen whenever.

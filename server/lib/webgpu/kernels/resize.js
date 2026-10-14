@@ -1,8 +1,9 @@
-// Kernels the browser needs that the server doesn't have an OpenCL version
-// of: the server resizes with sharp.
-import { KernelSpec } from '../kernel';
+'use strict';
 
-export const BROWSER_ONLY: Record<string, KernelSpec> = {
+// Kernels with no OpenCL version. resize: the browser shrinks and enlarges
+// images for working sizes with it (the OpenCL backend resizes with sharp).
+
+exports.RESIZE = {
   // Resizes src (sw x sh) to width x height, premultiplied: bilinear when
   // enlarging, averaging each output pixel's footprint when shrinking.
   resize: {
@@ -20,6 +21,6 @@ export const BROWSER_ONLY: Record<string, KernelSpec> = {
   for (var sy = lo.y; sy < hi.y; sy++) {
     for (var sx = lo.x; sx < hi.x; sx++) { sum += premul_pixel(at_src(sx, sy, sw, sh)); }
   }
-  dst[i] = from_rgba(unpremultiply(sum / f32((hi.x - lo.x) * (hi.y - lo.y))));`,
-  },
+  dst[i] = from_rgba(unpremultiply(sum / f32((hi.x - lo.x) * (hi.y - lo.y))));`
+  }
 };

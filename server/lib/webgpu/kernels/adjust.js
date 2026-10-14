@@ -1,13 +1,14 @@
+'use strict';
+
 // native/kernels/adjust.cl: histograms (workgroup atomics), reductions and
 // prefix sums. WGSL can't pass workgroup arrays to functions, so the scans
 // and reductions are written out in each kernel; and every kernel here runs
 // with 256 work-items per group, as the plans ask, so the "stride by the
 // group size" loops of the OpenCL versions become one bin per work-item.
-import { KernelSpec } from '../kernel';
 
 // Inclusive Hillis-Steele scan of a[0..255] into a, using b as scratch; 8
 // steps, an even number, so the result ends up back in a. `lid` is the bin.
-const scan = (a: string, b: string) => `
+const scan = (a, b) => `
   for (var offset = 1; offset < 256; offset <<= 1u) {
     let step_odd = (countTrailingZeros(u32(offset)) & 1u) == 1u;
     if (step_odd) {
@@ -22,19 +23,19 @@ const scan = (a: string, b: string) => `
     workgroupBarrier();
   }`;
 
-const reduce = (a: string) => `
+const reduce = (a) => `
   for (var s = 128u; s > 0u; s >>= 1u) {
     if (lid.x < s) { ${a}[lid.x] += ${a}[lid.x + s]; }
     workgroupBarrier();
   }`;
 
-export const ADJUST: Record<string, KernelSpec> = {
+exports.ADJUST = {
   histogram: {
     args: 'src:in hist:i32atomic count:i32',
     guard: 'none',
     workgroup: [256],
     barriers: true,
-    helpers: `var<workgroup> local_hist: array<atomic<i32>, 1024>;`,
+    helpers: 'var<workgroup> local_hist: array<atomic<i32>, 1024>;',
     body: `
   for (var b = lid.x; b < 1024u; b += 256u) { atomicStore(&local_hist[b], 0); }
   workgroupBarrier();
@@ -50,7 +51,7 @@ export const ADJUST: Record<string, KernelSpec> = {
   for (var b = lid.x; b < 1024u; b += 256u) {
     let v = atomicLoad(&local_hist[b]);
     if (v != 0) { atomicAdd(&hist[b], v); }
-  }`,
+  }`
   },
 
   equalize_lut: {
@@ -80,7 +81,7 @@ var<workgroup> cdf_min: i32;`,
   let total = cdf[255];
   let lo = cdf_min;
   lut[lid.x] = clamp(f32(cdf[lid.x] - lo) / f32(max(total - lo, 1)), 0.0, 1.0);
-  if (lid.x == 0u) { lut[256] = select(0.0, 1.0, total > lo); }`,
+  if (lid.x == 0u) { lut[256] = select(0.0, 1.0, total > lo); }`
   },
 
   apply_luma_lut: {
@@ -88,7 +89,7 @@ var<workgroup> cdf_min: i32;`,
     body: `
   let c = to_rgb(src[i]);
   let o = with_luma(c, lut[luma_bin(src[i])]);
-  dst[i] = from_rgb(mix(c, o, amount * lut[256]), alpha_of(src[i]));`,
+  dst[i] = from_rgb(mix(c, o, amount * lut[256]), alpha_of(src[i]));`
   },
 
   auto_levels_params: {
@@ -126,7 +127,7 @@ var<workgroup> cdf_min: i32;`,
     high = 255;
   }
   params[c * 2] = f32(low) / 255.0;
-  params[c * 2 + 1] = f32(high) / 255.0;`,
+  params[c * 2 + 1] = f32(high) / 255.0;`
   },
 
   apply_levels: {
@@ -135,7 +136,7 @@ var<workgroup> cdf_min: i32;`,
   let c = to_rgb(src[i]);
   let low = vec3f(params[0], params[2], params[4]);
   let high = vec3f(params[1], params[3], params[5]);
-  dst[i] = from_rgb((c - low) / (high - low), alpha_of(src[i]));`,
+  dst[i] = from_rgb((c - low) / (high - low), alpha_of(src[i]));`
   },
 
   clahe_hist: {
@@ -143,7 +144,7 @@ var<workgroup> cdf_min: i32;`,
     guard: 'none',
     workgroup: [256],
     barriers: true,
-    helpers: `var<workgroup> h: array<atomic<i32>, 256>;`,
+    helpers: 'var<workgroup> h: array<atomic<i32>, 256>;',
     body: `
   let tile = i32(wid.x);
   let tx = tile % tiles_x;
@@ -161,7 +162,7 @@ var<workgroup> cdf_min: i32;`,
     if (alpha_of(v) != 0u) { atomicAdd(&h[luma_bin(v)], 1); }
   }
   workgroupBarrier();
-  hists[tile * 256 + i32(lid.x)] = atomicLoad(&h[lid.x]);`,
+  hists[tile * 256 + i32(lid.x)] = atomicLoad(&h[lid.x]);`
   },
 
   clahe_lut: {
@@ -191,7 +192,7 @@ var<workgroup> scratch: array<f32, 256>;`,
   ${scan('curve', 'scratch')}
   var v = f32(lid.x) / 255.0;
   if (total != 0) { v = curve[lid.x] / f32(total); }
-  luts[tile * 256 + i32(lid.x)] = v;`,
+  luts[tile * 256 + i32(lid.x)] = v;`
   },
 
   clahe_apply: {
@@ -212,6 +213,6 @@ var<workgroup> scratch: array<f32, 256>;`,
   let v11 = luts[(ty1 * tiles_x + tx1) * 256 + bin];
   let v = mix(mix(v00, v10, ax), mix(v01, v11, ax), ay);
   let c = to_rgb(src[i]);
-  dst[i] = from_rgb(mix(c, with_luma(c, v), amount), alpha_of(src[i]));`,
-  },
+  dst[i] = from_rgb(mix(c, with_luma(c, v), amount), alpha_of(src[i]));`
+  }
 };

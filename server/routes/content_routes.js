@@ -55,9 +55,10 @@ contentRouter.get('/filters', (req, res) => {
   res.status(200).json(gpuFilters.list());
 });
 
-// The OpenCL device the filters run on, for the page to show.
-contentRouter.get('/device', (req, res) => {
+// The device the filters run on, for the page to show.
+contentRouter.get('/device', asyncRoute(async (req, res) => {
   try {
+    await gpuFilters.ready();
     const device = gpuFilters.deviceInfo();
     res.status(200).json({
       name: device.name,
@@ -66,10 +67,10 @@ contentRouter.get('/device', (req, res) => {
       version: device.version.trim()
     });
   } catch (e) {
-    console.log('No OpenCL device: ' + e.message);
-    res.status(503).json({ msg: 'No OpenCL device is available' });
+    console.log('No ' + gpuFilters.backendLabel + ' device: ' + e.message);
+    res.status(503).json({ msg: 'No ' + gpuFilters.backendLabel + ' device is available' });
   }
-});
+}));
 
 // Ready-made filter stacks, and the controls every layer of a stack has.
 contentRouter.get('/presets', (req, res) => {
@@ -165,8 +166,8 @@ async function transformPhoto(req, res, recipe, options) {
         // The device can't run this filter, at all or at this size.
         if (e.code === 'UNSUPPORTED') return { status: e.status || 400, msg: e.message };
         if (e.code === 'NO_DEVICE') {
-          console.log('No OpenCL device for a transform: ' + e.message);
-          return { status: 503, msg: 'No OpenCL device is available to run filters' };
+          console.log('No ' + gpuFilters.backendLabel + ' device for a transform: ' + e.message);
+          return { status: 503, msg: 'No ' + gpuFilters.backendLabel + ' device is available to run filters' };
         }
         console.log('Error in transforming the image: ', e);
         return { status: 500, msg: 'transform failure' };
