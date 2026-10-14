@@ -3,8 +3,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "allowJs": true,
     "types": [
-      "vitest/globals"
+      "vitest/globals",
+      "@webgpu/types"
     ]
   },
   "include": [

@@ -15,6 +15,10 @@ export class App {
   protected readonly year = new Date().getFullYear();
 
   constructor() {
+    // window.omnifilterGpu, the browser's filter engine, for the end-to-end
+    // tests and the console. Loaded after the page, in its own chunk (which
+    // the photo page uses too).
+    import('../gpu').then((gpu) => gpu.installDebugApi(window));
     // A saved token the server no longer accepts is forgotten; then the photo
     // page has nothing to show.
     this.auth.verify().then(() => {

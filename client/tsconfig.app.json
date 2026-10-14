@@ -3,7 +3,10 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": []
+    // allowJs: the shared filter definitions in server/lib/filters (see
+    // src/gpu/filters.ts) are plain JavaScript.
+    "allowJs": true,
+    "types": ["@webgpu/types"]
   },
   "include": [
     "src/**/*.ts"

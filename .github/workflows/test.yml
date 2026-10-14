@@ -147,8 +147,10 @@ jobs:
       - run: npm run lint:client
 
   # The whole app in a real browser (Playwright, Chromium), at desktop and
-  # phone sizes: sign up, filter a photo on pocl, presets, reloads, deleting,
-  # signing out. See e2e/.
+  # phone sizes: sign up, filter a photo on pocl, presets, the live preview
+  # and camera, reloads, deleting, signing out; and the browser's WebGPU
+  # filters (on SwiftShader, Chromium's software GPU) against the server's
+  # OpenCL ones (on pocl), pixel by pixel. See e2e/.
   e2e:
     runs-on: ubuntu-24.04
     services:
@@ -158,6 +160,8 @@ jobs:
           - 27017:27017
     env:
       OMNIFILTER_DEVICE: pocl
+      # Fail, rather than skip the WebGPU comparisons, if the browser has no WebGPU.
+      E2E_REQUIRE_WEBGPU: 1
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:

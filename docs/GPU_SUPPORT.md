@@ -115,12 +115,26 @@ OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it 
 
 ## Phase 4: the GPU in the browser
 
-With WGSL kernels from Phase 3, the page can run filters on the viewer's own GPU through WebGPU. It's now in Chrome/Edge, in Safari 26, and in Firefox on Windows and on Apple Silicon Macs. Firefox on Linux and older hardware still lag, so this is an enhancement, with the server as the fallback ([status summary](https://svilenkovic.com/3d/webgpu-adoption-2026)).
+**Started (October 2026), ahead of Phase 3.** The page runs the server's filter plans on the viewer's own GPU through WebGPU, for a live preview. WebGPU is in Chrome/Edge, in Safari 26 (iOS and macOS), in Chrome on most Android phones (not yet Samsung's Exynos GPUs), and in Firefox on Windows and Apple Silicon Macs. Elsewhere the page works as before, with the server doing everything ([status summary](https://svilenkovic.com/3d/webgpu-adoption-2026)).
 
-* **Live preview:** filter a screen-sized copy in the browser as sliders move, then send the stack to the server for the full-resolution result. This also gives the before/after slider idea from the effects list for free.
-* **Shared code:** move each kernel's WGSL into files both the server and the client bundle load, so a fix applies to both. The client is an Angular 22 app (`client/`); keep the WebGPU code in a module of its own (say `client/src/gpu/`) that knows nothing about Angular, so it can be tested and reused on its own.
-* **Phones:** WebGPU is on by default in Safari on iOS 26 and in Chrome on most Android phones (not yet Samsung's Exynos GPUs). Phone browser tabs get little memory, so preview at screen size and leave full-size results to the server.
-* **Fallback:** browsers without WebGPU keep the current flow, where the server does everything.
+What's done, in `client/src/gpu/` (plain TypeScript, no Angular):
+
+* **WGSL versions of all 56 kernels** (`kernels/`), one per OpenCL kernel and under the same name. Each is declared once with its argument list in the OpenCL order, and `kernel.ts` generates its bindings, a uniform struct for the scalars and the `GUARD` macros, so the bodies read like the OpenCL ones. Images (`image2d_t`) are plain buffers with nearest and bilinear helpers, so no textures or samplers are needed; work-group kernels (histograms, scans) use workgroup memory and atomics. Rounding to bytes matches `convert_uchar4_sat_rte`.
+* **A plan engine** (`engine.ts`) for the format `native/omnifilter.cpp` runs: buffers, passes, `buf`/`img`/`img3d`/`data`/`int`/`float` arguments, global sizes.
+* **The same plans as the server.** The client bundles `server/lib/filters` (every module except the neural styles and `.cube` loading, which `lut_files.js` and `cube_looks.js` keep server-side), so the preview runs exactly the server's kernels, weights and sizes. Filters with a working size run at the size the server would use for the full photo.
+* **Stacks** (`stack.ts`) with blending, keeping each layer's result so a change reruns only from that layer.
+* **The editor:** the photo shows the stack applied live; hold to compare with the original; preset looks show as thumbnails of the photo; the status line says how long an update took.
+* **Live camera:** the stack runs on every camera frame (copied to the GPU with `copyExternalImageToTexture` and scaled there, about 960 px), and the shutter takes the unfiltered frame as the photo, for the server to filter at full size. On the Iris 6100, light stacks run at 15 to 30 ms a frame and Comic book at about 65 ms (painterly filters run at the frame's size here, not the server's working size).
+
+**How close the results are:** `e2e/gpu.spec.js` runs every filter (with each of its choices), every preset and every blend mode both ways and compares them pixel by pixel. On an Intel Iris 6100 (WebGPU on Metal) against the same GPU's OpenCL, nearly everything is identical or a level apart; a handful of pixels differ in Kuwahara and oil paint (near ties between regions), and reaction-diffusion drifts slightly (thousands of steps of a chaotic simulation).
+
+**Speed** (1024 px preview, Intel Iris 6100 from 2015): colour and blur filters and light stacks update in about 15 to 40 ms; the painterly presets (Comic book, Oil on canvas) take 200 to 300 ms, as they run at the server's working size (up to 2000 px). Phone numbers are still to be measured on real devices.
+
+Still to do:
+
+* **Measure on phones** (an iPhone on iOS 26, a Pixel), and pick the preview size per device.
+* **A Node backend from the same WGSL** (Phase 3), via Dawn's Node bindings: the kernels now exist, so this is mostly the plan engine again on the server side.
+* **Fallback below WebGPU:** WebGL2 could run the per-pixel kernels, but most of the others need compute shaders; for now browsers without WebGPU use the server.
 
 ## Phase 5: neural styles on the GPU
 
@@ -141,5 +155,5 @@ The ONNX styles currently run on the CPU. ONNX Runtime has GPU "execution provid
 1. **Phase 0.** A few days. It fixes known bugs (the work-group size, the 16384 cap) and makes every later step safer.
 2. **Phases 1 and 2.** About a week together. Windows, prebuilt binaries and GPU Docker images cover most real hardware with the existing kernels.
 3. **Phase 3.** The big one: weeks, mostly porting kernels. Do it once Dawn's Node bindings stabilise, or sooner if Apple removes OpenCL.
-4. **Phase 4.** After Phase 3, since it reuses the WGSL.
+4. **Phase 4.** Started first after all (see above): the WGSL kernels it needed are written, and Phase 3 can reuse them.
 5. **Phase 5.** Independent of the others; can happen whenever.

@@ -8,6 +8,7 @@ const gpu = require(__dirname + '/../lib/gpu_filters');
 const definitions = require(__dirname + '/../lib/filters');
 const P = require(__dirname + '/../lib/filters/plan');
 const lut = require(__dirname + '/../lib/filters/lut');
+const lutFiles = require(__dirname + '/../lib/filters/lut_files');
 const neuralModels = require(__dirname + '/../lib/filters/neural_models');
 const { makeSpatialDimsDynamic } = require(__dirname + '/../lib/onnx_dynamic');
 const ref = require(__dirname + '/reference');
@@ -269,7 +270,7 @@ describe('.cube LUT parsing', () => {
       console.log = () => {};
       let cubes;
       try {
-        cubes = lut.loadCubeDir(dir);
+        cubes = lutFiles.loadCubeDir(dir);
       } finally {
         console.log = log;
       }

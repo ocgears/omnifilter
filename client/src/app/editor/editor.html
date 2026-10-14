@@ -9,6 +9,7 @@
     (dragleave)="dragging.set(false)"
     (drop)="onDrop($event)"
     [class.dragging]="dragging()"
+    [class.has-photo]="!!source() || cameraOn()"
   >
     <input
       type="file"
@@ -18,12 +19,22 @@
       class="visually-hidden"
       (change)="onFilePicked($event)"
     />
-    @if (source(); as src) {
+    @if (cameraOn()) {
+      <of-live-camera
+        [layers]="layers()"
+        [blendModes]="blendModeNames()"
+        (captured)="useCapture($event)"
+        (closed)="cameraOn.set(false)"
+      />
+    } @else if (source(); as src) {
       <figure class="preview">
-        <img id="preview" [src]="src" alt="Your photo" />
+        <of-live-preview [source]="src" [layers]="layers()" [blendModes]="blendModeNames()" />
         <figcaption>
           <span class="file-name">{{ sourceName() }}</span>
           <label for="file" class="button">Change</label>
+          @if (camera) {
+            <button type="button" (click)="cameraOn.set(true)">Camera</button>
+          }
           <button type="button" (click)="clearPhoto()">Remove</button>
         </figcaption>
       </figure>
@@ -38,20 +49,33 @@
         <span class="dropzone-title">Choose a photo</span>
         <span class="dropzone-hint">or take one, drop one here, or paste</span>
       </label>
+      @if (camera) {
+        <div class="camera-row">
+          <button type="button" (click)="cameraOn.set(true)">Live camera, with the filters</button>
+        </div>
+      }
     }
   </section>
 
   <section class="controls" aria-label="Filters">
     @if (presets().length) {
       <h2>Looks</h2>
-      <div class="chips" role="group" aria-label="Preset looks">
+      <div
+        class="chips"
+        [class.looks]="thumbnails().size > 0"
+        role="group"
+        aria-label="Preset looks"
+      >
         <button
           type="button"
           class="chip"
           [attr.aria-pressed]="!selectedPreset()"
           (click)="applyPreset(null)"
         >
-          Build your own
+          @if (thumbnails().size) {
+            <canvas class="thumb" [ofImageData]="thumbnails().get('')" aria-hidden="true"></canvas>
+          }
+          <span>Build your own</span>
         </button>
         @for (p of presets(); track p.name) {
           <button
@@ -62,7 +86,14 @@
             [attr.title]="missing(p).length ? 'Not available on this server' : null"
             (click)="applyPreset(p)"
           >
-            {{ p.label }}
+            @if (thumbnails().size) {
+              <canvas
+                class="thumb"
+                [ofImageData]="thumbnails().get(p.name)"
+                aria-hidden="true"
+              ></canvas>
+            }
+            <span>{{ p.label }}</span>
           </button>
         }
       </div>

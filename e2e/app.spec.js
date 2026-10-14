@@ -132,6 +132,72 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
   expect(data[0]).toBeGreaterThan(200);
 });
 
+// The red channel at the left edge of an element's screenshot, halfway down.
+async function leftEdgeRed(locator) {
+  const png = await locator.screenshot();
+  const image = sharp(png);
+  const { height } = await image.metadata();
+  const { data } = await image.extract({ left: 2, top: Math.floor(height / 2), width: 2, height: 2 })
+    .raw().toBuffer({ resolveWithObject: true });
+  return data[0];
+}
+
+test('previews filters live on this device\'s GPU, and compares with the original', async ({ page }) => {
+  await signIn(page);
+  await choosePhoto(page);
+  const status = page.locator('of-live-preview .status');
+  await page.waitForFunction(() => window.omnifilterGpu);
+  if (!(await page.evaluate(() => window.omnifilterGpu.available()))) {
+    await expect(status).toContainText('needs a browser with WebGPU');
+    return;
+  }
+  await expect(status).toContainText(/Live preview.* ms/);
+  // A thumbnail of each preset look on the photo, and of the photo itself.
+  const presets = await page.locator('.chips .chip').count();
+  await expect(page.locator('canvas.thumb')).toHaveCount(presets);
+
+  // The left edge of the gradient is dark; inverted live, it's light.
+  const canvas = page.locator('of-live-preview canvas');
+  await page.locator('#filter-0').selectOption({ label: 'Invert' });
+  await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
+
+  // Holding the compare button shows the original.
+  const compare = page.getByRole('button', { name: 'Hold to compare' });
+  const box = await compare.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect.poll(() => leftEdgeRed(canvas)).toBeLessThan(60);
+  await page.mouse.up();
+  await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
+
+  // If the GPU device is lost (a driver reset, a phone reclaiming memory),
+  // the next change gets a new one.
+  await page.evaluate(() => window.omnifilterGpu.loseDevice());
+  await page.locator('#filter-0').selectOption({ label: 'Threshold' });
+  await expect(status).toContainText(/Live preview.* ms/);
+  await expect.poll(() => leftEdgeRed(canvas)).toBeLessThan(60);
+});
+
+test('filters the live camera, and takes a photo with it', async ({ page }) => {
+  await signIn(page);
+  await page.waitForFunction(() => window.omnifilterGpu);
+  const gpu = await page.evaluate(() => window.omnifilterGpu.available());
+  await page.getByRole('button', { name: /Live camera/ }).click();
+  const camera = page.locator('of-live-camera');
+  if (!gpu) {
+    await expect(camera).toContainText('need a browser with WebGPU');
+    await camera.getByRole('button', { name: 'Close' }).click();
+    return;
+  }
+  await page.getByRole('button', { name: 'Neon night' }).click();
+  await expect(camera.locator('.status')).toContainText(/Live · \d+ ms a frame/);
+  await camera.getByRole('button', { name: 'Take photo' }).click();
+  await expect(camera).toHaveCount(0);
+  await expect(page.locator('.file-name')).toHaveText('Camera photo');
+  await expect(page.locator('#preview')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
+  await expect(page.locator('of-live-preview .status')).toContainText(/Live preview.* ms/);
+});
+
 test('applies a preset stack', async ({ page }) => {
   await signIn(page);
   await choosePhoto(page);

@@ -262,3 +262,8 @@ button.wide {
     animation-duration: 2.4s;
   }
 }
+
+// Components style their elements' display; the hidden attribute still wins.
+[hidden] {
+  display: none !important;
+}

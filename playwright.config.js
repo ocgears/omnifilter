@@ -10,6 +10,23 @@ const PORT = Number(process.env.E2E_PORT) || 3930;
 // the installed Google Chrome there.
 const oldMac = process.platform === 'darwin' && parseInt(os.release(), 10) < 22;
 
+// WebGPU, for the live preview (e2e/gpu.spec.js). Chrome has it on macOS and
+// Windows; on Linux it's behind a flag, and machines without a GPU (CI) use
+// SwiftShader, Chrome's software GPU, through the full Chromium build.
+// The live camera tests use Chrome's fake camera, a moving test pattern.
+const args = ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
+let browser = { launchOptions: { args: args } };
+if (oldMac) browser = Object.assign(browser, { channel: 'chrome' });
+if (process.platform === 'linux') {
+  browser = {
+    channel: 'chromium',
+    launchOptions: {
+      args: args.concat(['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+        '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader'])
+    }
+  };
+}
+
 module.exports = defineConfig({
   testDir: 'e2e',
   globalSetup: require.resolve('./e2e/global_setup'),
@@ -24,12 +41,14 @@ module.exports = defineConfig({
   use: {
     baseURL: 'http://localhost:' + PORT,
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure'
+    screenshot: 'only-on-failure',
+    permissions: ['camera']
   },
   projects: [
-    { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], oldMac ? { channel: 'chrome' } : {}) },
-    // A phone-sized touch screen (Chromium, as Playwright's iPhones need WebKit).
-    { name: 'phone', use: Object.assign({}, devices['Pixel 7'], oldMac ? { channel: 'chrome' } : {}) }
+    { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], browser) },
+    // A phone-sized touch screen (Chromium, as Playwright's iPhones need
+    // WebKit). The WebGPU comparisons don't depend on the screen.
+    { name: 'phone', use: Object.assign({}, devices['Pixel 7'], browser), testIgnore: /gpu\.spec/ }
   ],
   webServer: {
     // Builds the client into dist/ (installing its packages the first time),

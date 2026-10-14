@@ -1,0 +1,39 @@
+<div
+  class="frame"
+  [class.live]="mode() === 'live'"
+  (pointerdown)="startCompare($event)"
+  (pointerup)="stopCompare()"
+  (pointercancel)="stopCompare()"
+  (lostpointercapture)="stopCompare()"
+  (contextmenu)="mode() === 'live' && $event.preventDefault()"
+>
+  <canvas
+    #canvas
+    class="result"
+    [hidden]="mode() !== 'live'"
+    role="img"
+    [attr.aria-label]="comparing() ? 'Your photo' : 'Your photo with the filters applied'"
+  ></canvas>
+  <img id="preview" [src]="source()" alt="Your photo" [hidden]="mode() === 'live'" />
+  @if (mode() === 'live') {
+    <span class="badge" [class.shown]="comparing()" aria-hidden="true">Original</span>
+  }
+</div>
+<div class="bar">
+  <p class="status" aria-live="polite">{{ status() }}</p>
+  @if (mode() === 'live') {
+    <button
+      type="button"
+      class="compare"
+      (pointerdown)="startCompare($event)"
+      (pointerup)="stopCompare()"
+      (pointercancel)="stopCompare()"
+      (keydown.space)="comparing.set(true); $event.preventDefault()"
+      (keyup.space)="stopCompare()"
+      (blur)="stopCompare()"
+      [attr.aria-pressed]="comparing()"
+    >
+      Hold to compare
+    </button>
+  }
+</div>

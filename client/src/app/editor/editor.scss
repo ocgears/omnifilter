@@ -18,6 +18,17 @@
   }
 }
 
+// On phones the photo stays at the top while the filters scroll under it,
+// so the live preview stays in sight as the sliders move.
+@media (max-width: 859px) {
+  .stage.has-photo {
+    position: sticky;
+    top: var(--header-height);
+    z-index: 3;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  }
+}
+
 .stage {
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -64,12 +75,10 @@
   margin: 0;
 }
 
-.preview img {
-  display: block;
-  width: 100%;
-  max-height: 60vh;
-  object-fit: contain;
-  background: var(--surface-2);
+.camera-row {
+  display: flex;
+  justify-content: center;
+  padding: 0 1rem 1rem;
 }
 
 figcaption {
@@ -118,6 +127,27 @@ h2 {
   flex: none;
   scroll-snap-align: start;
   border-radius: 999px;
+}
+
+// With thumbnails of each look on the user's photo: a strip of cards.
+.looks .chip {
+  flex-direction: column;
+  width: 5.5rem;
+  padding: 0.25rem 0.25rem 0.375rem;
+  gap: 0.25rem;
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--surface-2);
 }
 
 .chip[aria-pressed='true'] {
