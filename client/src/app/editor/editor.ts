@@ -1,6 +1,8 @@
 import {
   Component,
+  DestroyRef,
   ElementRef,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -72,6 +74,7 @@ export class Editor {
   private readonly api = inject(PhotoApi);
   private readonly previewEngine = inject(PreviewEngine);
   private readonly drafts = inject(DraftStore);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly guestStore = inject(GuestPhotos);
@@ -103,6 +106,8 @@ export class Editor {
   // Undo and redo for the stack, and the list of edits.
   readonly history = new EditHistory(this.stackState());
   private readonly historyMenu = viewChild<ElementRef<HTMLDetailsElement>>('historyMenu');
+  private readonly stage = viewChild.required<ElementRef<HTMLElement>>('stage');
+  private readonly actionBar = viewChild.required<ElementRef<HTMLElement>>('actionBar');
 
   // The picked photo, as a data URL.
   readonly source = signal<string | null>(null);
@@ -139,6 +144,7 @@ export class Editor {
     this.loadFilters();
     this.loadPhotos();
     this.restoreDraft();
+    afterNextRender(() => this.trackStickyParts());
     effect(() => {
       const source = this.source();
       const presets = this.presets();
@@ -281,6 +287,33 @@ export class Editor {
     for (const photo of this.waitingPhotos()) await this.guestStore.remove(photo);
     this.waitingPhotos.set([]);
     this.confirmDiscard.set(false);
+  }
+
+  // ---- layout ----
+
+  // On phones the photo stays at the top of the screen, and everywhere the
+  // Transform bar stays at the bottom. Their heights go to the page's scroll
+  // padding (styles.scss), so the browser never scrolls a control under them.
+  private trackStickyParts(): void {
+    if (typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement.style;
+    const phone = window.matchMedia?.('(max-width: 859px)');
+    const update = () => {
+      const stage = this.stage().nativeElement;
+      const pinned = !!phone?.matches && stage.classList.contains('has-photo');
+      root.setProperty('--sticky-top', pinned ? stage.offsetHeight + 'px' : '0px');
+      root.setProperty('--sticky-bottom', this.actionBar().nativeElement.offsetHeight + 'px');
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(this.stage().nativeElement);
+    observer.observe(this.actionBar().nativeElement);
+    phone?.addEventListener('change', update);
+    this.destroyRef.onDestroy(() => {
+      observer.disconnect();
+      phone?.removeEventListener('change', update);
+      root.removeProperty('--sticky-top');
+      root.removeProperty('--sticky-bottom');
+    });
   }
 
   // ---- the draft: the photo and stack, kept in the browser ----
