@@ -18,7 +18,7 @@ Our application is still under development, thank you for your patience.
 # Usage
 
 ### Requirements
-* Node.js 20.9 or newer
+* Node.js 20.9 or newer for the API server, and 22.22 or newer (or 24.15+) to build the web client, which uses Angular 22
 * MongoDB (`brew install mongodb-community`, or any MongoDB 4.2+ server)
 * An OpenCL runtime:
   * **macOS:** built in, nothing to install. (Apple has deprecated OpenCL in favour of Metal, but it still works on current macOS, Intel and Apple Silicon.)
@@ -37,6 +37,7 @@ npm install      # also installs the native GPU addon (downloaded or compiled)
 npm run build    # builds the Angular client into dist/ (`npm run build:prod` for a minified one)
 npm start        # starts MongoDB (data in ./db), the client on :5000 and the API on :3000
 ```
+The web client is in `client/`, an Angular 22 app with its own `package.json`; `npm run build` installs its packages the first time. It's built for phones first and works on any screen size: pick or take a photo (or drop or paste one on a computer), choose a preset look or stack filters, and save or share the results. While working on the client, `cd client && npx ng serve` serves it on http://localhost:4200 and rebuilds on every change; start the API with `CORS_ORIGINS=http://localhost:4200 node server/server.js`. On macOS 12 and 13, set `NG_BUILD_SASS_EMBEDDED=0` for `ng` commands (the build scripts do this for you): Angular's default Sass compiler needs macOS 14.
 Optionally, `npm run fetch-models` downloads the neural style transfer models (about 34 MB); see [Neural style transfer](#neural-style-transfer).
 Then open http://localhost:5000. On startup the API server logs which device the filters will run on, e.g.
 `Filters will run on GPU: Intel(R) Iris(TM) Graphics 6100 (OpenCL 1.2, 48 compute units)`.
@@ -79,10 +80,10 @@ Any Docker runtime works (Docker Desktop, OrbStack, [Colima](https://github.com/
 ### Tests
 ```
 npm test             # server tests (mocha), starts MongoDB from ./db if it isn't running
-npm run test:client  # Angular unit tests (karma, headless Firefox; set KARMA_BROWSERS=ChromeHeadless for Chrome)
-npm run test:e2e     # the whole app in a browser (Playwright): sign up, filter photos, presets, delete, sign out
+npm run test:client  # web client unit tests (Vitest, in jsdom)
+npm run test:e2e     # the whole app in a browser (Playwright), desktop and phone sized: sign up, filter photos, presets, delete, sign out
 ```
-The end-to-end tests build the client, start the API on port 3930 serving it, and use the `omnifilter_e2e` database, which they empty first. Install the browser once with `npx playwright install chromium`; on macOS 12, which Playwright's Chromium doesn't support, they use the installed Google Chrome instead.
+The end-to-end tests run twice, as a desktop browser and as a phone (Pixel 7 size, touch), and check that the page never scrolls sideways and the Transform button stays on screen. They build the client, start the API on port 3930 serving it, and use the `omnifilter_e2e` database, which they empty first. Install the browser once with `npx playwright install chromium`; on macOS 12, which Playwright's Chromium doesn't support, they use the installed Google Chrome instead.
 The GPU tests compare every filter's output against a plain JavaScript implementation of the same convolution, pixel by pixel.
 
 # Filters

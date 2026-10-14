@@ -1,0 +1,229 @@
+<of-alerts [items]="errors()" (dismiss)="dismissError($event)" />
+<of-alerts [items]="messages()" kind="info" (dismiss)="dismissMessage($event)" />
+
+<div class="workspace">
+  <section
+    class="stage"
+    aria-label="Your photo"
+    (dragover)="onDragOver($event)"
+    (dragleave)="dragging.set(false)"
+    (drop)="onDrop($event)"
+    [class.dragging]="dragging()"
+  >
+    <input
+      type="file"
+      id="file"
+      name="file"
+      accept="image/*"
+      class="visually-hidden"
+      (change)="onFilePicked($event)"
+    />
+    @if (source(); as src) {
+      <figure class="preview">
+        <img id="preview" [src]="src" alt="Your photo" />
+        <figcaption>
+          <span class="file-name">{{ sourceName() }}</span>
+          <label for="file" class="button">Change</label>
+          <button type="button" (click)="clearPhoto()">Remove</button>
+        </figcaption>
+      </figure>
+    } @else {
+      <label for="file" class="dropzone">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="40" height="40">
+          <path
+            fill="currentColor"
+            d="M19 5v14H5V5h14m0-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-4.86 8.86-3 3.87L9 13.14 6 17h12l-3.86-5.14Z"
+          />
+        </svg>
+        <span class="dropzone-title">Choose a photo</span>
+        <span class="dropzone-hint">or take one, drop one here, or paste</span>
+      </label>
+    }
+  </section>
+
+  <section class="controls" aria-label="Filters">
+    @if (presets().length) {
+      <h2>Looks</h2>
+      <div class="chips" role="group" aria-label="Preset looks">
+        <button
+          type="button"
+          class="chip"
+          [attr.aria-pressed]="!selectedPreset()"
+          (click)="applyPreset(null)"
+        >
+          Build your own
+        </button>
+        @for (p of presets(); track p.name) {
+          <button
+            type="button"
+            class="chip"
+            [attr.aria-pressed]="selectedPreset() === p.name"
+            [disabled]="missing(p).length > 0"
+            [attr.title]="missing(p).length ? 'Not available on this server' : null"
+            (click)="applyPreset(p)"
+          >
+            {{ p.label }}
+          </button>
+        }
+      </div>
+      @if (preset(); as p) {
+        <p class="description">{{ p.description }}</p>
+      }
+    }
+
+    <h2>Filters</h2>
+    <ol class="layers">
+      @for (layer of layers(); track $index; let i = $index, first = $first, last = $last) {
+        <li class="layer">
+          <div class="layer-header">
+            <span class="layer-number" aria-hidden="true">{{ i + 1 }}</span>
+            <label class="visually-hidden" [for]="'filter-' + i">Filter {{ i + 1 }}</label>
+            <select [id]="'filter-' + i" (change)="setFilter(i, $any($event.target).value)">
+              <option value="" [selected]="!layer.tOption">None (save the original)</option>
+              @for (g of filterGroups(); track g.group) {
+                <optgroup [label]="g.group">
+                  @for (f of g.filters; track f.name) {
+                    <option [value]="f.name" [selected]="layer.tOption === f.name">
+                      {{ f.label }}
+                    </option>
+                  }
+                </optgroup>
+              }
+            </select>
+            @if (layers().length > 1) {
+              <button
+                type="button"
+                class="icon-button"
+                (click)="moveLayer(i, -1)"
+                [disabled]="first"
+                aria-label="Move filter up"
+                title="Move up"
+              >
+                &uarr;
+              </button>
+              <button
+                type="button"
+                class="icon-button"
+                (click)="moveLayer(i, 1)"
+                [disabled]="last"
+                aria-label="Move filter down"
+                title="Move down"
+              >
+                &darr;
+              </button>
+            }
+            @if (layers().length > 1 || layer.tOption) {
+              <button
+                type="button"
+                class="icon-button"
+                (click)="removeLayer(i)"
+                aria-label="Remove filter"
+                title="Remove"
+              >
+                &times;
+              </button>
+            }
+          </div>
+
+          @if (filterOf(layer); as filter) {
+            @if (filter.description) {
+              <p class="description">{{ filter.description }}</p>
+            }
+            <div class="params">
+              @for (p of filter.params; track p.name) {
+                <label class="param">
+                  <span class="param-label">{{ p.label }}</span>
+                  @if (p.type === 'range') {
+                    <input
+                      type="range"
+                      [min]="p.min"
+                      [max]="p.max"
+                      [step]="p.step"
+                      [value]="layer.params[p.name]"
+                      (input)="setParam(i, p, $any($event.target).value)"
+                    />
+                    <output>{{ layer.params[p.name] }}</output>
+                  } @else {
+                    <select (change)="setParam(i, p, $any($event.target).value)">
+                      @for (o of p.options; track o.value) {
+                        <option [value]="o.value" [selected]="layer.params[p.name] === o.value">
+                          {{ o.label }}
+                        </option>
+                      }
+                    </select>
+                  }
+                </label>
+              }
+            </div>
+
+            @if (blendModes().length) {
+              <details class="mix" [open]="layer.amount < 100 || layer.blend !== 'normal'">
+                <summary>Layer mix: {{ blendLabel(layer.blend) }}, {{ layer.amount }}%</summary>
+                <div class="params">
+                  <label class="param">
+                    <span class="param-label">Layer amount</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      [value]="layer.amount"
+                      (input)="setAmount(i, $any($event.target).value)"
+                    />
+                    <output>{{ layer.amount }}%</output>
+                  </label>
+                  <label class="param">
+                    <span class="param-label">Blend mode</span>
+                    <select (change)="setBlend(i, $any($event.target).value)">
+                      @for (o of blendModes(); track o.value) {
+                        <option [value]="o.value" [selected]="layer.blend === o.value">
+                          {{ o.label }}
+                        </option>
+                      }
+                    </select>
+                  </label>
+                </div>
+              </details>
+            }
+          }
+        </li>
+      }
+    </ol>
+    <button
+      type="button"
+      class="add-layer"
+      (click)="addLayer()"
+      [disabled]="layers().length >= maxLayers()"
+    >
+      + Stack another filter
+    </button>
+
+    <div class="action-bar">
+      <button
+        type="button"
+        id="transform"
+        class="primary wide"
+        (click)="transform()"
+        [disabled]="transforming() || !source()"
+      >
+        @if (transforming()) {
+          <span class="spinner" aria-hidden="true"></span> Transforming on the {{ deviceKind() }}…
+        } @else {
+          Transform
+        }
+      </button>
+      @if (device(); as d) {
+        <p class="device-info">
+          Filters run on {{ d.name }} ({{ deviceKind() }}, {{ d.platform }})
+        </p>
+      }
+    </div>
+  </section>
+</div>
+
+<of-gallery
+  [photos]="photos()"
+  [filters]="filters()"
+  [highlight]="latestId()"
+  (remove)="deletePhoto($event)"
+/>

@@ -1,0 +1,71 @@
+<section class="auth">
+  <div class="hero">
+    <p class="tagline">Awesome filters for your own photos, run on a GPU.</p>
+  </div>
+
+  <div class="card">
+    <h1>{{ signup() ? 'Create an account' : 'Sign in' }}</h1>
+
+    <of-alerts [items]="errors()" (dismiss)="dismissError($event)" />
+
+    <form (submit)="submit($event)" novalidate>
+      <div class="field">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          inputmode="email"
+          autocomplete="email"
+          autocapitalize="off"
+          spellcheck="false"
+          [formField]="authForm.email"
+        />
+        @if (authForm.email().touched() && authForm.email().errors().length) {
+          <p class="field-error">{{ authForm.email().errors()[0].message }}</p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          [attr.autocomplete]="signup() ? 'new-password' : 'current-password'"
+          [formField]="authForm.password"
+        />
+        @if (authForm.password().touched() && authForm.password().errors().length) {
+          <p class="field-error">{{ authForm.password().errors()[0].message }}</p>
+        } @else if (signup()) {
+          <p class="hint">At least 8 characters.</p>
+        }
+      </div>
+
+      @if (signup()) {
+        <div class="field">
+          <label for="confirmation">Confirm password</label>
+          <input
+            id="confirmation"
+            type="password"
+            autocomplete="new-password"
+            [formField]="authForm.confirmation"
+          />
+          @if (authForm.confirmation().touched() && authForm.confirmation().errors().length) {
+            <p class="field-error">{{ authForm.confirmation().errors()[0].message }}</p>
+          }
+        </div>
+      }
+
+      <button type="submit" class="primary wide" [disabled]="authForm().invalid() || busy()">
+        {{ signup() ? 'Create account' : 'Sign in' }}
+      </button>
+    </form>
+
+    <p class="switch">
+      @if (signup()) {
+        Already have an account? <a routerLink="/signin">Sign in</a>
+      } @else {
+        New here? <a routerLink="/signup">Create an account</a>
+      }
+    </p>
+  </div>
+</section>

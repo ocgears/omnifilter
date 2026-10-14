@@ -2,7 +2,7 @@
 # with vendor tooling), so this image ships pocl, a portable OpenCL driver that
 # runs the same kernels on the container's CPU. See docker-compose.yml.
 
-# ---- build: compile the native OpenCL addon and the Angular client ----
+# ---- build: compile the native OpenCL addon and build the Angular client ----
 FROM node:24-trixie-slim AS build
 
 # Compiler toolchain for node-gyp, plus the OpenCL headers and ICD loader.
@@ -28,8 +28,14 @@ ENV ONNXRUNTIME_NODE_INSTALL_CUDA=skip \
     OMNIFILTER_BUILD_FROM_SOURCE=1
 RUN npm ci
 
+# The Angular client's packages (client/ is its own npm package), cached the
+# same way.
+COPY client/package.json client/package-lock.json ./client/
+RUN npm ci --prefix client --no-audit --no-fund
+
 COPY . .
-# Build the client (minified, without source maps), drop dev dependencies, download the neural style models
+# Build the client into dist/ (minified, without source maps), drop dev
+# dependencies, download the neural style models
 # (about 34 MB, checksum-verified), and remove the macOS and Windows binaries
 # that ONNX Runtime ships alongside the Linux ones. Build with
 # --build-arg FETCH_MODELS=false to leave the models out; the neural styles

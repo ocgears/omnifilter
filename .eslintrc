@@ -1,7 +1,7 @@
 {
   "root": true,
   "ignorePatterns": [
-    "dist/", "build/", "db/", "models/", "prebuilds/", "app/test/bndl/",
+    "dist/", "build/", "db/", "models/", "prebuilds/", "client/",
     "test-results/", "playwright-report/"
   ],
   "parserOptions": {
@@ -228,10 +228,6 @@
     ]
   },
   "overrides": [
-    {
-      "files": ["app/test/**/*.js"],
-      "env": { "jasmine": true }
-    },
     {
       "files": ["server/test/**/*.js"],
       "rules": {
