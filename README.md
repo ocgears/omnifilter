@@ -1,14 +1,14 @@
-# omnifilter        [![test](https://github.com/AaronFilson/omnifilter/actions/workflows/test.yml/badge.svg)](https://github.com/AaronFilson/omnifilter/actions/workflows/test.yml)
+# omnifilter        [![test](https://github.com/ocgears/omnifilter/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/ocgears/omnifilter/actions/workflows/test.yml?query=branch%3Amaster)
 ###### An image processing library designed on the theory of parallel processing to apply filters to photos extremely quickly and efficiently.
 
 ## Contents
-+   [Overview](https://github.com/AaronFilson/omnifilter#overview)
-+   [Usage](https://github.com/AaronFilson/omnifilter#usage)
-+   [Filters](https://github.com/AaronFilson/omnifilter#filters)
-+   [How the GPU part works](https://github.com/AaronFilson/omnifilter#how-the-gpu-part-works)
-+   [Neural style transfer](https://github.com/AaronFilson/omnifilter#neural-style-transfer)
-+   [Authors](https://github.com/AaronFilson/omnifilter#authors)
-+   [License](https://github.com/AaronFilson/omnifilter#license)
++   [Overview](https://github.com/ocgears/omnifilter#overview)
++   [Usage](https://github.com/ocgears/omnifilter#usage)
++   [Filters](https://github.com/ocgears/omnifilter#filters)
++   [How the GPU part works](https://github.com/ocgears/omnifilter#how-the-gpu-part-works)
++   [Neural style transfer](https://github.com/ocgears/omnifilter#neural-style-transfer)
++   [Authors](https://github.com/ocgears/omnifilter#authors)
++   [License](https://github.com/ocgears/omnifilter#license)
 
 # Overview
 The Omnifilter app is designed to enable the work of filtering images provided by a user on a multitude of server environments. As node.js is fantastic for making web apps, OpenCL is a way to harness the fantastic power of GPUs and multi-core CPUs. It runs on macOS out of the box, and on Linux with an OpenCL driver installed.
@@ -181,4 +181,4 @@ Gene Troy [Github](https://github.com/energene)<br/>
 
 ## License
 
-This project is licensed under the terms of the MIT license. (view file titled [LICENSE](https://github.com/AaronFilson/omnifilter/blob/master/LICENSE))
+This project is licensed under the terms of the MIT license. (view file titled [LICENSE](https://github.com/ocgears/omnifilter/blob/master/LICENSE))

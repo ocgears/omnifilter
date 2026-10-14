@@ -21,7 +21,7 @@ const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const SOURCES = ['native/omnifilter.cpp', 'binding.gyp'];
-const DEFAULT_URL = 'https://github.com/AaronFilson/omnifilter/releases/download/native-prebuilds';
+const DEFAULT_URL = 'https://github.com/ocgears/omnifilter/releases/download/native-prebuilds';
 const PLATFORM = process.platform + '-' + process.arch;
 
 // Identifies the native source. Line endings are normalised so a Windows
