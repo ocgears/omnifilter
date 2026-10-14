@@ -102,7 +102,62 @@
       }
     }
 
-    <h2>Filters</h2>
+    <div class="filters-head">
+      <h2>Filters</h2>
+      <div class="history-bar" role="group" aria-label="Undo and history">
+        <button
+          type="button"
+          class="icon-button"
+          id="undo"
+          (click)="undo()"
+          [disabled]="!history.canUndo()"
+          [attr.aria-label]="history.canUndo() ? 'Undo ' + history.current()?.label : 'Undo'"
+          title="Undo (Ctrl+Z)"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="icon-button"
+          id="redo"
+          (click)="redo()"
+          [disabled]="!history.canRedo()"
+          [attr.aria-label]="
+            history.canRedo() ? 'Redo ' + history.steps()[history.index() + 1].label : 'Redo'
+          "
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"
+            />
+          </svg>
+        </button>
+        <details class="history" #historyMenu>
+          <summary>History</summary>
+          <ol class="steps">
+            @for (step of history.steps(); track $index; let i = $index) {
+              <li>
+                <button
+                  type="button"
+                  [class.undone]="i > history.index()"
+                  [attr.aria-current]="i === history.index() ? 'step' : null"
+                  (click)="goTo(i); historyMenu.open = false"
+                >
+                  {{ step.label }}
+                </button>
+              </li>
+            }
+          </ol>
+        </details>
+      </div>
+    </div>
     <ol class="layers">
       @for (layer of layers(); track $index; let i = $index, first = $first, last = $last) {
         <li class="layer">
@@ -171,7 +226,8 @@
                       [max]="p.max"
                       [step]="p.step"
                       [value]="layer.params[p.name]"
-                      (input)="setParam(i, p, $any($event.target).value)"
+                      (input)="setParam(i, p, $any($event.target).value, false)"
+                      (change)="setParam(i, p, $any($event.target).value)"
                     />
                     <output>{{ layer.params[p.name] }}</output>
                   } @else {
@@ -199,7 +255,8 @@
                       max="100"
                       step="1"
                       [value]="layer.amount"
-                      (input)="setAmount(i, $any($event.target).value)"
+                      (input)="setAmount(i, $any($event.target).value, false)"
+                      (change)="setAmount(i, $any($event.target).value)"
                     />
                     <output>{{ layer.amount }}%</output>
                   </label>
@@ -257,4 +314,5 @@
   [filters]="filters()"
   [highlight]="latestId()"
   (remove)="deletePhoto($event)"
+  (reuse)="useSettings($event)"
 />

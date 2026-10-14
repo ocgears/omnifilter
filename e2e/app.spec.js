@@ -209,6 +209,64 @@ test('applies a preset stack', async ({ page }) => {
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+// The stack's history as saved in the browser, or null.
+const savedSteps = (page) => page.evaluate(() => new Promise((resolve) => {
+  const req = indexedDB.open('omnifilter');
+  req.onerror = () => resolve(null);
+  req.onsuccess = () => {
+    const get = req.result.transaction('draft').objectStore('draft').get('stack');
+    get.onsuccess = () => resolve(get.result ? get.result.steps.map((s) => s.label) : null);
+    get.onerror = () => resolve(null);
+  };
+}));
+
+test('undoes edits, and keeps the work in progress after a reload', async ({ page }) => {
+  await signIn(page);
+  await choosePhoto(page);
+  await page.locator('#filter-0').selectOption({ label: 'Invert' });
+  await page.getByRole('button', { name: '+ Stack another filter' }).click();
+  await page.locator('#filter-1').selectOption({ label: 'Greyscale' });
+  await expect(page.locator('li.layer')).toHaveCount(2);
+
+  await page.locator('#undo').click();
+  await expect(page.locator('#filter-1')).toHaveValue('');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('li.layer')).toHaveCount(1);
+  await page.keyboard.press('ControlOrMeta+Shift+z');
+  await expect(page.locator('li.layer')).toHaveCount(2);
+
+  // The list of edits, to go back to any of them.
+  await page.locator('details.history summary').click();
+  const steps = page.locator('.steps button');
+  await expect(steps).toHaveText(
+    ['Start', 'Layer 1: Invert', 'Added a layer', 'Layer 2: Greyscale']);
+  await expect(steps.nth(2)).toHaveAttribute('aria-current', 'step');
+  await steps.nth(1).click();
+  await expect(page.locator('li.layer')).toHaveCount(1);
+  await expect(page.locator('.steps')).toBeHidden();
+  await expectNoSidewaysScroll(page);
+
+  // A reload (which phones do to tabs in the background) loses nothing.
+  await expect.poll(() => savedSteps(page)).toHaveLength(4);
+  await page.reload();
+  await expect(page.locator('#preview')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
+  await expect(page.locator('.file-name')).toHaveText('gradient.jpg');
+  await expect(page.locator('li.layer')).toHaveCount(1);
+  await expect(page.locator('#filter-0 option:checked')).toHaveText('Invert');
+  await page.locator('#redo').click();
+  await expect(page.locator('li.layer')).toHaveCount(2);
+});
+
+test("uses a saved photo's settings again", async ({ page }) => {
+  await signIn(page);
+  const card = photos(page).filter({ hasText: 'Tilt-shift' });
+  await card.getByRole('button', { name: 'Use settings' }).click();
+  await expect(page.locator('li.layer')).toHaveCount(3);
+  await expect(page.locator('#filter-0 option:checked')).toHaveText('Tilt-shift');
+  await page.locator('#undo').click();
+  await expect(page.locator('li.layer')).toHaveCount(1);
+});
+
 test('keeps the saved photos after a reload, and deletes one', async ({ page }) => {
   await signIn(page);
   await page.reload();
@@ -229,6 +287,8 @@ test('signs out', async ({ page }) => {
   await signIn(page);
   await page.locator('header').getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/#\/signin$/);
+  // The work in progress goes too, for whoever uses this browser next.
+  await expect.poll(() => savedSteps(page)).toBeNull();
   await page.reload();
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toHaveCount(0);
   await page.goto('/#/home');

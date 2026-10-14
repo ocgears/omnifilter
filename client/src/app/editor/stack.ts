@@ -48,6 +48,19 @@ export function layersFromPreset(filters: readonly Filter[], preset: Preset): La
   }));
 }
 
+// The stack a saved photo was made with, to use again. Empty for a photo
+// saved as it was.
+export function layersFromPhoto(filters: readonly Filter[], photo: Photo): Layer[] {
+  let used: NonNullable<Photo['tStack']> = photo.tStack ?? [];
+  if (!used.length && photo.tOption) used = [{ tOption: photo.tOption, tParams: photo.tParams }];
+  return used.map((item) => ({
+    tOption: item.tOption,
+    params: paramsFor(filters, item.tOption, item.tParams),
+    amount: typeof item.amount === 'number' ? item.amount : 100,
+    blend: item.blend || 'normal',
+  }));
+}
+
 // The body for POST /newcontent. Layers with no filter are skipped; with
 // none left, the original is saved. A single filter at full strength is
 // sent the simple way.

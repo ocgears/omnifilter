@@ -30,6 +30,15 @@
               @if (canShare) {
                 <button type="button" (click)="share(photo)">Share</button>
               }
+              @if (photo.tOption || photo.tStack?.length) {
+                <button
+                  type="button"
+                  (click)="reuse.emit(photo)"
+                  title="Use the filters this photo was made with"
+                >
+                  Use settings
+                </button>
+              }
               <button type="button" (click)="confirming.set(photo._id)">Delete</button>
             }
           </div>

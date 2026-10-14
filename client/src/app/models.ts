@@ -77,7 +77,7 @@ export interface Photo {
   content: string;
   tOption?: string;
   tParams?: ParamValues;
-  tStack?: { tOption: string; params?: ParamValues; amount?: number; blend?: string }[];
+  tStack?: { tOption: string; tParams?: ParamValues; amount?: number; blend?: string }[];
   createdAt?: string;
 }
 
