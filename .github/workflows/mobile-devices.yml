@@ -1,0 +1,150 @@
+# Smoke tests of the app in real mobile browsers, every night and on demand
+# (Actions -> mobile devices -> Run workflow): Chrome in the Android
+# emulator, and Mobile Safari in the iOS Simulator. They check that the page
+# loads and fits, a photo can be made, and the work survives a reload, and
+# they put each browser's version and whether it has WebGPU on the run's
+# summary page.
+#
+# They click from inside the page rather than tapping the screen: neither
+# simulator delivered taps reliably (see docs/MOBILE_TESTING.md). Touch is
+# tested on every push by the test workflow's e2e job, through Chromium's
+# touch events. They're slow (an emulator boot, a macOS runner) and less
+# predictable than the rest, so they're kept out of the checks on pushes.
+name: mobile devices
+
+on:
+  schedule:
+    # 06:17 UTC, after US evenings.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+  # And when these tests themselves change.
+  push:
+    paths:
+      - .github/workflows/mobile-devices.yml
+      - .github/android-emulator.sh
+      - e2e/android/**
+      - e2e/ios/**
+
+permissions:
+  contents: read
+
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+  OMNIFILTER_BUILD_FROM_SOURCE: 1
+
+jobs:
+  # Chrome on Android, in the Android emulator (Android 14, x86_64, on the
+  # runner's KVM).
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      OMNIFILTER_DEVICE: pocl
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install the OpenCL loader, headers and pocl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: client
+      - run: node scripts/client.js build --production
+        env:
+          OMNIFILTER_API: /
+      - name: Start the emulator
+        timeout-minutes: 15
+        run: bash .github/android-emulator.sh
+      - name: Android tests
+        timeout-minutes: 18
+        run: |
+          # The phone reaches the test server as its own localhost.
+          "$ANDROID_HOME/platform-tools/adb" reverse tcp:3930 tcp:3930
+          bash .github/run-and-annotate.sh npx playwright test -c e2e/android
+      - name: Keep the screenshots, report and emulator log
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android
+          path: |
+            playwright-report/
+            test-results/
+            emulator.log
+          retention-days: 7
+
+  # Mobile Safari in the iOS Simulator, driven by Apple's safaridriver. The
+  # runner may have no OpenCL device, so the server's filters may be skipped.
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: client
+      - run: node scripts/client.js build --production
+        env:
+          OMNIFILTER_API: /
+      - name: Start the server
+        run: |
+          PORT=3930 APP_SECRET=ios-only-secret-not-for-production GUEST_RATE_BURST=100 \
+            node server/server.js > server.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf localhost:3930/guest > /dev/null && break; sleep 1; done
+          cat server.log
+      - name: Boot an iPhone simulator
+        run: |
+          xcrun simctl list runtimes
+          udid=$(xcrun simctl list devices available --json | node -e '
+            const all = JSON.parse(require("fs").readFileSync(0, "utf8")).devices;
+            const ios = Object.keys(all).filter((r) => /iOS/.test(r)).sort().reverse();
+            const phone = ios.flatMap((r) => all[r]).find((d) => /^iPhone/.test(d.name));
+            if (!phone) process.exit(1);
+            console.error("Using " + phone.name);
+            console.log(phone.udid);')
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          # Safari's first launch is slow; get it over with before the tests.
+          xcrun simctl launch "$udid" com.apple.mobilesafari
+          sleep 10
+      - name: Start safaridriver
+        run: |
+          sudo safaridriver --enable
+          safaridriver -p 4444 > safaridriver.log 2>&1 &
+          sleep 2
+      - name: Safari tests
+        timeout-minutes: 10
+        run: bash .github/run-and-annotate.sh node e2e/ios/safari.js
+      - name: Screenshot of the simulator
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p test-results/ios
+          xcrun simctl io "$SIMULATOR_UDID" screenshot test-results/ios/simulator.png || true
+      - name: Keep the screenshots and logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios
+          path: |
+            test-results/ios/
+            server.log
+            safaridriver.log
+          retention-days: 7

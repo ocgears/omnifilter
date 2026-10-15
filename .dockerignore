@@ -12,3 +12,5 @@ playwright-report
 npm-debug.log
 .DS_Store
 .env
+lighthouse-report
+.lighthouseci

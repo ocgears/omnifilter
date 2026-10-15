@@ -9,6 +9,8 @@ node_modules/**
 **/node_modules
 test-results/
 playwright-report/
+lighthouse-report/
+.lighthouseci/
 
 # Compiled source #
 ###################

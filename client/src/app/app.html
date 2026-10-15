@@ -1,6 +1,6 @@
 <header class="site-header" [class.guest]="!auth.token()">
   <a class="brand" routerLink="/home">
-    <img src="/images/logo_omnifilter_70.png" alt="" width="35" height="35" />
+    <img src="/images/logo_omnifilter_header.png" alt="" width="35" height="35" />
     <span>OmniFilter</span>
   </a>
   @if (auth.email(); as email) {
@@ -28,6 +28,6 @@
 <footer class="site-footer">
   <p>
     MIT license · 2016–{{ year }} OC Gears ·
-    <a href="https://github.com/AaronFilson/omnifilter">Source and readme on GitHub</a>
+    <a href="https://github.com/ocgears/omnifilter">Source and readme on GitHub</a>
   </p>
 </footer>

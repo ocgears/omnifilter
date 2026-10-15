@@ -6,13 +6,14 @@
 }
 
 // The old site's background photo (by Adbar, CC BY-SA 3.0,
-// https://commons.wikimedia.org/w/index.php?curid=27342180) as a banner.
+// https://commons.wikimedia.org/w/index.php?curid=27342180) as a banner,
+// from a copy 1000 px wide (background-banner.jpg; the original is 3872).
 .hero {
   min-height: 8rem;
   display: flex;
   align-items: flex-end;
   border-radius: var(--radius-lg);
-  background: url('/images/background.jpg') center / cover;
+  background: url('/images/background-banner.jpg') center / cover;
   overflow: hidden;
 }
 

@@ -17,6 +17,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.3",
+    "compression": "^1.8.2",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.0",
@@ -24,6 +25,7 @@
     "sharp": "^0.35.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.64.0",
     "chai": "^4.5.0",
     "chai-http": "^4.4.0",
@@ -40,7 +42,7 @@
     "test:client": "node scripts/client.js test",
     "test:e2e": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && playwright test",
     "lint": "eslint .",
-    "lint:client": "eslint e2e scripts playwright.config.js clientserver.js",
+    "lint:client": "eslint e2e scripts playwright.config.js clientserver.js lighthouserc.js",
     "start": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && node clientserver & node server/server",
     "fetch-models": "node scripts/fetch-models.js",
     "devices": "node scripts/devices.js",

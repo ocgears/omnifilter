@@ -68,7 +68,7 @@ img {
 
 .compare {
   flex: none;
-  min-height: 36px;
+  min-height: var(--touch);
   padding: 0.25rem 0.75rem;
   font-size: 0.875rem;
   touch-action: none;

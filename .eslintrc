@@ -2,7 +2,7 @@
   "root": true,
   "ignorePatterns": [
     "dist/", "build/", "db/", "models/", "prebuilds/", "client/",
-    "test-results/", "playwright-report/"
+    "test-results/", "playwright-report/", "lighthouse-report/", ".lighthouseci/"
   ],
   "parserOptions": {
     "ecmaVersion": 2022

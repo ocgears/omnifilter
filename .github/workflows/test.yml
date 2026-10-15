@@ -197,11 +197,14 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run lint:client
 
-  # The whole app in a real browser (Playwright, Chromium), at desktop and
-  # phone sizes: sign up, filter a photo on pocl, presets, the live preview
-  # and camera, reloads, deleting, signing out; and the browser's WebGPU
-  # filters (on SwiftShader, Chromium's software GPU) against the server's
-  # OpenCL ones (on pocl), pixel by pixel. See e2e/.
+  # The whole app in real browsers (Playwright): Chromium at desktop size and
+  # as an Android phone, and WebKit (Safari's engine) as an iPhone. Sign up,
+  # filter a photo on pocl, presets, the live preview and camera, reloads,
+  # deleting, signing out; on the phones, touch gestures, every common phone
+  # width upright and sideways, axe's accessibility checks and a slowed-down
+  # phone; and the browser's WebGPU filters (on SwiftShader, Chromium's
+  # software GPU) against the server's OpenCL ones (on pocl), pixel by pixel.
+  # See e2e/.
   e2e:
     runs-on: ubuntu-24.04
     services:
@@ -231,7 +234,7 @@ jobs:
       - run: npm ci
       - run: npm ci
         working-directory: client
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - name: End-to-end tests
         run: bash .github/run-and-annotate.sh npx playwright test
       - name: Keep the report and traces of failed tests
@@ -242,6 +245,48 @@ jobs:
           path: |
             playwright-report/
             test-results/
+          retention-days: 7
+
+  # Lighthouse's mobile audit of the production build (a mid-range phone on
+  # slow 4G): performance, accessibility and best practices, against the
+  # budgets in lighthouserc.js. The scores go on the run's summary page.
+  lighthouse:
+    runs-on: ubuntu-24.04
+    env:
+      OMNIFILTER_DEVICE: pocl
+      APP_SECRET: lighthouse-only-secret-not-for-production
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install the OpenCL loader, headers and pocl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: client
+      - run: node scripts/client.js build --production
+        env:
+          OMNIFILTER_API: /
+      - name: Lighthouse
+        run: bash .github/run-and-annotate.sh npx --yes @lhci/cli@0.15.1 autorun
+      - name: Scores
+        if: ${{ !cancelled() }}
+        run: node .github/lighthouse-summary.js
+      - name: Keep the reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lighthouse-report
+          path: lighthouse-report/
           retention-days: 7
 
   docker:

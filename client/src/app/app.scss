@@ -53,6 +53,19 @@
   white-space: nowrap;
 }
 
+// A whole finger's width to tap, like the buttons.
+.brand,
+.sign-in {
+  justify-content: center;
+  min-width: var(--touch);
+}
+
+.sign-in {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+}
+
 // A guest's header has two links; on narrow phones the name makes way for
 // them (screen readers still hear it).
 @media (max-width: 419px) {

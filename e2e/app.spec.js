@@ -5,33 +5,14 @@
 // surviving a reload, deleting, and signing out.
 const { test, expect } = require('@playwright/test');
 const sharp = require('sharp');
+const { setUp, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu } = require('./helpers');
 
-// Each project (desktop, phone) gets its own account.
+setUp();
+
+// Each project (desktop, phone, iphone) gets its own account.
 const run = Date.now();
 const email = () => 'e2e-' + run + '-' + test.info().project.name + '@example.com';
 const password = 'correct horse battery';
-
-// The page calls the API on port 3000 of its own host unless told otherwise;
-// here the API server serves the page itself.
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    window.OMNIFILTER_API = '';
-  });
-});
-
-// A small left-to-right gradient, opaque, so the filters' effect is easy to see.
-async function gradientJpeg(width, height) {
-  const pixels = Buffer.alloc(width * height * 3);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 3;
-      pixels[i] = Math.round(255 * x / (width - 1));
-      pixels[i + 1] = Math.round(255 * y / (height - 1));
-      pixels[i + 2] = 96;
-    }
-  }
-  return sharp(pixels, { raw: { width: width, height: height, channels: 3 } }).jpeg().toBuffer();
-}
 
 // Fills in the sign-in or sign-up form. It waits for the page's heading
 // first: the heading's text and the form's fields are filled in by the same
@@ -54,59 +35,7 @@ async function signIn(page) {
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toBeVisible();
 }
 
-// Picking a file shows it straight away.
-async function choosePhoto(page) {
-  await page.locator('#file').setInputFiles({
-    name: 'gradient.jpg',
-    mimeType: 'image/jpeg',
-    buffer: await gradientJpeg(96, 64)
-  });
-  await expect(page.locator('#preview')).toHaveAttribute('src', /^data:image\/jpeg;base64,/);
-}
-
-const photos = (page) => page.locator('.photo-card');
-
-// Nothing sticks out sideways, so the page never scrolls horizontally.
-async function expectNoSidewaysScroll(page) {
-  const [scrollWidth, width] = await page.evaluate(() =>
-    [document.documentElement.scrollWidth, window.innerWidth]);
-  expect(scrollWidth).toBeLessThanOrEqual(width);
-}
-
 test.describe.configure({ mode: 'serial' });
-
-// Errors the page logged or threw during each test, for the report below.
-const pageErrors = new WeakMap();
-test.beforeEach(async ({ page }) => {
-  const errors = [];
-  pageErrors.set(page, errors);
-  page.on('pageerror', (e) => errors.push('uncaught: ' + e.message));
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push('console: ' + m.text());
-  });
-});
-
-// When a test fails, say where the page was and what it showed, as an
-// annotation on the GitHub Actions run (the full logs need sign-in).
-test.afterEach(async ({ page }, testInfo) => {
-  if (testInfo.status === testInfo.expectedStatus) return;
-  const state = await page.evaluate(() => ({
-    url: location.href,
-    headings: Array.from(document.querySelectorAll('h1, h2')).map((h) => h.textContent.trim()),
-    alerts: Array.from(document.querySelectorAll('[role=alert], [role=status]'))
-      .map((a) => a.textContent.trim()).filter(Boolean),
-    disabled: Array.from(document.querySelectorAll('button:disabled')).map((b) => b.textContent.trim()),
-    // Lengths, not values: these may be passwords.
-    inputs: Array.from(document.querySelectorAll('input:not([type=file])'))
-      .map((i) => (i.id || i.name || i.type) + ':' + i.value.length),
-    fieldErrors: Array.from(document.querySelectorAll('.field-error')).map((e) => e.textContent.trim())
-  })).catch((e) => ({ error: e.message }));
-  state.errors = (pageErrors.get(page) || []).slice(0, 8).map((e) => e.slice(0, 300));
-  const where = testInfo.project.name + ' / ' + testInfo.title;
-  const message = JSON.stringify(state).replace(/%/g, '%25').replace(/\r?\n/g, '%0A');
-  console.log(process.env.GITHUB_ACTIONS ? '::warning title=Page when "' + where + '" failed::' + message :
-    'Page when "' + where + '" failed: ' + message);
-});
 
 test('the start page opens the editor, as a guest', async ({ page }) => {
   await page.goto('/');
@@ -204,22 +133,11 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
   expect(data[0]).toBeGreaterThan(200);
 });
 
-// The red channel at the left edge of an element's screenshot, halfway down.
-async function leftEdgeRed(locator) {
-  const png = await locator.screenshot();
-  const image = sharp(png);
-  const { height } = await image.metadata();
-  const { data } = await image.extract({ left: 2, top: Math.floor(height / 2), width: 2, height: 2 })
-    .raw().toBuffer({ resolveWithObject: true });
-  return data[0];
-}
-
 test('previews filters live on this device\'s GPU, and compares with the original', async ({ page }) => {
   await signIn(page);
   await choosePhoto(page);
   const status = page.locator('of-live-preview .status');
-  await page.waitForFunction(() => window.omnifilterGpu);
-  if (!(await page.evaluate(() => window.omnifilterGpu.available()))) {
+  if (!(await hasWebGpu(page))) {
     await expect(status).toContainText('needs a browser with WebGPU');
     return;
   }
@@ -252,8 +170,12 @@ test('previews filters live on this device\'s GPU, and compares with the origina
 
 test('filters the live camera, and takes a photo with it', async ({ page }) => {
   await signIn(page);
-  await page.waitForFunction(() => window.omnifilterGpu);
-  const gpu = await page.evaluate(() => window.omnifilterGpu.available());
+  const gpu = await hasWebGpu(page);
+  // Without a camera (as in WebKit's Linux build), there's no camera button.
+  if (!(await page.evaluate(() => !!navigator.mediaDevices?.getUserMedia))) {
+    await expect(page.getByRole('button', { name: /Live camera/ })).toHaveCount(0);
+    return;
+  }
   await page.getByRole('button', { name: /Live camera/ }).click();
   const camera = page.locator('of-live-camera');
   if (!gpu) {
