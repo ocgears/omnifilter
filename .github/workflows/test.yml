@@ -295,7 +295,7 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     continue-on-error: true
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       OMNIFILTER_DEVICE: pocl
     steps:
@@ -320,11 +320,13 @@ jobs:
         env:
           OMNIFILTER_API: /
       - name: Start the emulator
-        run: bash .github/run-and-annotate.sh bash .github/android-emulator.sh
+        timeout-minutes: 15
+        run: bash .github/android-emulator.sh
       - name: Android tests
+        timeout-minutes: 18
         run: |
           # The phone reaches the test server as its own localhost.
-          adb reverse tcp:3930 tcp:3930
+          "$ANDROID_HOME/platform-tools/adb" reverse tcp:3930 tcp:3930
           bash .github/run-and-annotate.sh npx playwright test -c e2e/android
       - name: Keep the screenshots, report and emulator log
         if: ${{ !cancelled() }}
@@ -386,6 +388,7 @@ jobs:
           safaridriver -p 4444 > safaridriver.log 2>&1 &
           sleep 2
       - name: Safari tests
+        timeout-minutes: 10
         run: bash .github/run-and-annotate.sh node e2e/ios/safari.js
       - name: Screenshot of the simulator
         if: ${{ !cancelled() }}

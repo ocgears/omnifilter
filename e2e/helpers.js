@@ -41,6 +41,9 @@ function setUp() {
       fieldErrors: Array.from(document.querySelectorAll('.field-error')).map((e) => e.textContent.trim())
     })).catch((e) => ({ error: e.message }));
     state.errors = (pageErrors.get(page) || []).slice(0, 8).map((e) => e.slice(0, 300));
+    // The test's own failure, which the run's annotations otherwise cut short.
+    // eslint-disable-next-line no-control-regex
+    state.failure = (testInfo.error?.message || '').replace(/\u001b\[[0-9;]*m/g, '').slice(0, 1500);
     const where = testInfo.project.name + ' / ' + testInfo.title;
     notice('warning', 'Page when "' + where + '" failed', JSON.stringify(state));
   });

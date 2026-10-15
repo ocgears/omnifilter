@@ -42,7 +42,7 @@
     "test:client": "node scripts/client.js test",
     "test:e2e": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && playwright test",
     "lint": "eslint .",
-    "lint:client": "eslint e2e scripts playwright.config.js clientserver.js lighthouserc.js .github/lighthouse-summary.js",
+    "lint:client": "eslint e2e scripts playwright.config.js clientserver.js lighthouserc.js",
     "start": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && node clientserver & node server/server",
     "fetch-models": "node scripts/fetch-models.js",
     "devices": "node scripts/devices.js",

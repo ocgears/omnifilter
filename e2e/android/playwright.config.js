@@ -11,8 +11,9 @@ module.exports = defineConfig({
   outputDir: '../../test-results/android',
   workers: 1,
   timeout: 180000,
+  // Give up on the whole run rather than use up the job's time.
+  globalTimeout: 15 * 60000,
   expect: { timeout: 30000 },
-  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: '../../playwright-report' }]] : 'list',
   webServer: {
     command: 'node server/server.js',

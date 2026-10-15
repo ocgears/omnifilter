@@ -56,9 +56,9 @@ class Session {
   // Runs a function's body in the page; `args` arrive as `arguments`.
   run(script, ...args) { return call('POST', this.base + '/execute/sync', { script: script, args: args }); }
   runAsync(script, ...args) { return call('POST', this.base + '/execute/async', { script: script, args: args }); }
-  async find(css) {
-    const el = await call('POST', this.base + '/element', { using: 'css selector', value: css });
-    return Object.values(el)[0];
+  // The page's element for a CSS selector, as WebDriver refers to it.
+  find(css) {
+    return call('POST', this.base + '/element', { using: 'css selector', value: css });
   }
   // A tap, as safaridriver delivers clicks on iOS. With `text`, on the
   // element matching `css` that has that text.
@@ -69,19 +69,22 @@ class Session {
         'if (!el) return null; el.dataset.tapTarget = ""; return "[data-tap-target]";', css, text);
       if (!css) throw new Error('nothing says ' + text);
     }
-    const id = await this.find(css);
-    await this.run('arguments[0].scrollIntoView({ block: "center" });', { [ELEMENT]: id });
-    await call('POST', this.base + '/element/' + id + '/click', {});
+    await this.run('document.querySelector(arguments[0]).scrollIntoView({ block: "center" });', css);
+    const el = await this.find(css);
+    await call('POST', this.base + '/element/' + (el[ELEMENT] || Object.values(el)[0]) + '/click', {});
     if (text) await this.run('document.querySelector("[data-tap-target]").removeAttribute("data-tap-target");');
   }
-  // Holds a finger on an element for `ms` (WebDriver's touch actions).
+  // Holds a finger on the middle of an element for `ms` (WebDriver's touch
+  // actions, at the element's position in the window).
   async hold(css, ms) {
-    const element = { [ELEMENT]: await this.find(css) };
+    const [x, y] = await this.run('const el = document.querySelector(arguments[0]);' +
+      'el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect();' +
+      'return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];', css);
     await call('POST', this.base + '/actions', {
       actions: [{
         type: 'pointer', id: 'finger', parameters: { pointerType: 'touch' },
         actions: [
-          { type: 'pointerMove', duration: 0, origin: element, x: 0, y: 0 },
+          { type: 'pointerMove', duration: 0, origin: 'viewport', x: x, y: y },
           { type: 'pointerDown', button: 0 },
           { type: 'pause', duration: ms },
           { type: 'pointerUp', button: 0 }

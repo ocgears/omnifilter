@@ -44,12 +44,15 @@ async function fingers(page) {
       }
       await touch('touchEnd');
     },
-    // A quick swipe across an element, as for scrolling it.
+    // A finger swiped across an element, as to scroll it.
     async swipe(locator, dx, dy) {
       const [x, y] = await centre(locator);
-      await cdp.send('Input.synthesizeScrollGesture', {
-        x: x, y: y, xDistance: dx, yDistance: dy, gestureSourceType: 'touch', speed: 1200
-      });
+      await touch('touchStart', x, y);
+      for (let i = 1; i <= 20; i++) {
+        await touch('touchMove', x + dx * i / 20, y + dy * i / 20);
+        await page.waitForTimeout(16);
+      }
+      await touch('touchEnd');
     },
     centre: centre
   };

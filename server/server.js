@@ -39,6 +39,15 @@ if (process.env.TRUST_PROXY) {
   app.set('trust proxy', Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
 }
 
+// Replies are compressed (the page's scripts and styles shrink to a third,
+// which matters on a phone's connection), except those carrying photos,
+// which hardly shrink and would cost the server time.
+const PHOTO_ROUTES = /^\/(getAll|newcontent|transform|import)\b/;
+const compression = require('compression');
+app.use(compression({
+  filter: (req, res) => !PHOTO_ROUTES.test(req.path) && compression.filter(req, res)
+}));
+
 const contentRouter = require(__dirname + '/routes/content_routes');
 const authRouter = require(__dirname + '/routes/auth_routes');
 const userRouter = require(__dirname + '/routes/user_routes');
@@ -48,14 +57,12 @@ app.use('/', authRouter);
 app.use('/', userRouter);
 
 // The built client (`npm run build` puts it in dist/), when there is one, so
-// the API and the pages can be served from one place.
-// The pages' scripts and styles are compressed (a third of their size, which
-// matters on a phone's connection); the API's replies aren't, as they're
-// mostly photos, which don't shrink. Files whose names carry a hash of their
-// contents (main-4NR54UZ5.js) never change, so browsers may keep them.
+// the API and the pages can be served from one place. Files whose names
+// carry a hash of their contents (main-4NR54UZ5.js) never change, so
+// browsers may keep them.
 const clientDir = require('path').join(__dirname, '..', 'dist');
 if (require('fs').existsSync(clientDir)) {
-  app.use(require('compression')(), express.static(clientDir, {
+  app.use(express.static(clientDir, {
     setHeaders: (res, file) => {
       if (/-[A-Za-z0-9_-]{8}\.(js|css)$/.test(file)) {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
