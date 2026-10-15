@@ -70,8 +70,8 @@ class Session {
   find(css) {
     return call('POST', this.base + '/element', { using: 'css selector', value: css });
   }
-  // A tap, as safaridriver delivers clicks on iOS. With `text`, on the
-  // element matching `css` that has that text.
+  // A tap on the element matching `css`, or with `text`, on the
+  // one of them that has that text.
   async tap(css, text) {
     if (text) {
       css = await this.run('const el = Array.from(document.querySelectorAll(arguments[0]))' +
@@ -79,27 +79,33 @@ class Session {
         'if (!el) return null; el.dataset.tapTarget = ""; return "[data-tap-target]";', css, text);
       if (!css) throw new Error('nothing says ' + text);
     }
-    // Notes which events the tap delivers, to say so if it misses.
-    await this.run('const el = document.querySelector(arguments[0]);' +
-      'el.scrollIntoView({ block: "center", inline: "center" }); window.tapEvents = [];' +
+    // A finger on the element's middle, through WebDriver's touch actions.
+    // If the tap reaches something else, that's reported (as a failure, at
+    // the end) and the element is clicked from the page instead, so the
+    // checks after it still run.
+    const [x, y, hit] = await this.run('const el = document.querySelector(arguments[0]);' +
+      'el.scrollIntoView({ block: "center", inline: "center" }); const r = el.getBoundingClientRect();' +
+      'const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);' +
+      'const at = document.elementFromPoint(x, y); window.tapEvents = [];' +
       'for (const type of ["touchstart", "pointerdown", "click"]) document.addEventListener(type,' +
-      ' (e) => window.tapEvents.push(type + (el.contains(e.target) ? "" : " elsewhere (" +' +
-      ' e.target.tagName + ")")), { capture: true, once: true });', css);
-    const el = await this.find(css);
-    await call('POST', this.base + '/element/' + (el[ELEMENT] || Object.values(el)[0]) + '/click', {});
+      ' (e) => window.tapEvents.push(type + (el.contains(e.target) ? "" : " on " + describe(e.target))),' +
+      ' { capture: true, once: true });' +
+      'function describe(t) { return t.tagName + (t.id ? "#" + t.id : "") + " \\"" +' +
+      ' t.textContent.trim().slice(0, 20) + "\\""; }' +
+      'return [x, y, at && !el.contains(at) ? describe(at) : ""];', css);
+    await this.touch(x, y, 50);
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const events = await this.run('return window.tapEvents;');
     if (!events.includes('click')) {
-      throw new Error('the tap on ' + (text || css) + ' gave ' + (events.join(', ') || 'no events'));
+      missedTaps.push((text || css) + ' at ' + x + ',' + y + ' gave ' + (events.join(', ') || 'no events') +
+        (hit ? '; ' + hit + ' is there' : ''));
+      await this.run('document.querySelector(arguments[0]).click();', css);
     }
     if (text) await this.run('document.querySelector("[data-tap-target]").removeAttribute("data-tap-target");');
   }
-  // Holds a finger on the middle of an element for `ms` (WebDriver's touch
-  // actions, at the element's position in the window).
-  async hold(css, ms) {
-    const [x, y] = await this.run('const el = document.querySelector(arguments[0]);' +
-      'el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect();' +
-      'return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];', css);
-    await call('POST', this.base + '/actions', {
+  // Puts a finger down at a point in the window for `ms`.
+  touch(x, y, ms) {
+    return call('POST', this.base + '/actions', {
       actions: [{
         type: 'pointer', id: 'finger', parameters: { pointerType: 'touch' },
         actions: [
@@ -110,6 +116,13 @@ class Session {
         ]
       }]
     });
+  }
+  // Holds a finger on the middle of an element for `ms`.
+  async hold(css, ms) {
+    const [x, y] = await this.run('const el = document.querySelector(arguments[0]);' +
+      'el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect();' +
+      'return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];', css);
+    await this.touch(x, y, ms);
   }
   async screenshot(name) {
     fs.mkdirSync(OUT, { recursive: true });
@@ -155,6 +168,8 @@ const CHOOSE_PHOTO = `
   }, 'image/jpeg', 0.9);`;
 
 let failures = 0;
+// Taps that reached something other than what they were aimed at.
+const missedTaps = [];
 async function check(name, fn) {
   try {
     const note = await fn();
@@ -240,6 +255,11 @@ async function check(name, fn) {
     await s.screenshot('safari');
   } finally {
     await s.end().catch(() => {});
+  }
+  for (const miss of missedTaps) {
+    failures++;
+    console.log('FAILED  a tap: ' + miss);
+    notice('error', 'iOS Safari: a tap missed', miss);
   }
   console.log(failures ? failures + ' failed' : 'all passed');
   process.exit(failures ? 1 : 0);

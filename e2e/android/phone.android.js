@@ -24,10 +24,15 @@ const test = base.extend({
     await device.shell('am force-stop com.android.chrome');
     await device.shell('pm clear com.android.chrome');
     const context = await device.launchBrowser();
-    const page = context.pages()[0] || await context.newPage();
-    // The tab being driven must be the one on screen, for the taps.
-    await page.bringToFront();
-    await page.goto(URL);
+    // The taps need the tab being driven to be the one on screen, so Android
+    // opens the page (in Chrome's front tab), and that's the tab driven.
+    await device.shell('am start -a android.intent.action.VIEW -d ' + URL + ' com.android.chrome');
+    let page;
+    await expect.poll(() => {
+      page = context.pages().find((p) => p.url().startsWith(URL));
+      return !!page;
+    }, { message: 'the tab Android opened' }).toBe(true);
+    await page.waitForLoadState();
     await expect(page.locator('.banner.guest')).toBeVisible();
     await use(page);
     await device.screenshot({ path: testInfo.outputPath('screen.png') });
@@ -60,8 +65,11 @@ async function screenPoint(device, page, locator) {
   if (!landed) {
     // Say what was on the screen instead of the page.
     const focus = String(await device.shell('dumpsys window | grep -E "mCurrentFocus|mFocusedApp"'));
+    const tab = await page.evaluate(() => document.visibilityState + ', ' +
+      (document.hasFocus() ? 'focused' : 'not focused')).catch((e) => e.message) +
+      ', ' + page.context().pages().length + ' tabs';
     throw new Error('A tap at the middle of the screen (' + width + 'x' + height +
-      ') never reached the page. ' + focus.trim().replace(/\s+/g, ' '));
+      ') never reached the page (' + tab + '). ' + focus.trim().replace(/\s+/g, ' '));
   }
   const [cx, cy] = await landed.jsonValue();
   const dpr = await page.evaluate(() => devicePixelRatio);
