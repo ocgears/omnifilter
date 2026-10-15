@@ -17,8 +17,6 @@ const { notice } = require('../helpers');
 const DRIVER = process.env.SAFARIDRIVER_URL || 'http://localhost:4444';
 const APP = 'http://localhost:' + (Number(process.env.E2E_PORT) || 3930) + '/';
 const OUT = path.join(__dirname, '..', '..', 'test-results', 'ios');
-// The key WebDriver uses for a reference to an element.
-const ELEMENT = 'element-6066-11e4-a52f-4d1c5ae2b1b9';
 
 async function call(method, route, body) {
   const res = await fetch(DRIVER + route, {
@@ -83,6 +81,7 @@ class Session {
     // If the tap reaches something else, that's reported (as a failure, at
     // the end) and the element is clicked from the page instead, so the
     // checks after it still run.
+    const [dx, dy] = await this.calibrate();
     const [x, y, hit] = await this.run('const el = document.querySelector(arguments[0]);' +
       'el.scrollIntoView({ block: "center", inline: "center" }); const r = el.getBoundingClientRect();' +
       'const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);' +
@@ -93,11 +92,11 @@ class Session {
       'function describe(t) { return t.tagName + (t.id ? "#" + t.id : "") + " \\"" +' +
       ' t.textContent.trim().slice(0, 20) + "\\""; }' +
       'return [x, y, at && !el.contains(at) ? describe(at) : ""];', css);
-    await this.touch(x, y, 50);
+    await this.touch(x - dx, y - dy, 50);
     await new Promise((resolve) => setTimeout(resolve, 300));
     const events = await this.run('return window.tapEvents;');
     if (!events.includes('click')) {
-      missedTaps.push((text || css) + ' at ' + x + ',' + y + ' gave ' + (events.join(', ') || 'no events') +
+      missedTaps.push((text || css) + ' at ' + x + ',' + y + ' (touched ' + (x - dx) + ',' + (y - dy) + ') gave ' + (events.join(', ') || 'no events') +
         (hit ? '; ' + hit + ' is there' : ''));
       await this.run('document.querySelector(arguments[0]).click();', css);
     }
@@ -117,12 +116,25 @@ class Session {
       }]
     });
   }
+  // How far a touch lands from where it's aimed, in the page's pixels: the
+  // simulator's touches arrive offset (by Safari's own bars, it seems), so
+  // a clear layer over the page notes where one at (100, 300) lands.
+  async calibrate() {
+    await this.run('const layer = document.createElement("div");' +
+      'layer.style.cssText = "position:fixed;inset:0;z-index:2147483647"; window.calibration = null;' +
+      'layer.addEventListener("pointerdown", (e) => { window.calibration = [e.clientX, e.clientY];' +
+      ' layer.remove(); }); document.body.append(layer);');
+    await this.touch(100, 300, 50);
+    const at = await this.until('the calibration touch', 'return window.calibration;', 5000);
+    return [Math.round(at[0] - 100), Math.round(at[1] - 300)];
+  }
   // Holds a finger on the middle of an element for `ms`.
   async hold(css, ms) {
     const [x, y] = await this.run('const el = document.querySelector(arguments[0]);' +
       'el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect();' +
       'return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];', css);
-    await this.touch(x, y, ms);
+    const [dx, dy] = await this.calibrate();
+    await this.touch(x - dx, y - dy, ms);
   }
   async screenshot(name) {
     fs.mkdirSync(OUT, { recursive: true });

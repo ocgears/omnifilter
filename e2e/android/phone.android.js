@@ -57,16 +57,22 @@ async function screenPoint(device, page, locator) {
       layer.remove();
     });
     window.calibration = null;
+    // Which kinds of event anything on the page got, to say so on a miss.
+    window.inputEvents = [];
+    for (const type of ['touchstart', 'pointerdown', 'mousedown', 'click']) {
+      addEventListener(type, () => window.inputEvents.push(type), { capture: true, once: true });
+    }
     document.body.append(layer);
   });
-  await device.shell('input tap ' + Math.round(width / 2) + ' ' + Math.round(height / 2));
+  await device.input.tap({ x: Math.round(width / 2), y: Math.round(height / 2) });
   const landed = await page.waitForFunction(() => window.calibration, null, { timeout: 10000 })
     .catch(() => null);
   if (!landed) {
     // Say what was on the screen instead of the page.
     const focus = String(await device.shell('dumpsys window | grep -E "mCurrentFocus|mFocusedApp"'));
     const tab = await page.evaluate(() => document.visibilityState + ', ' +
-      (document.hasFocus() ? 'focused' : 'not focused')).catch((e) => e.message) +
+      (document.hasFocus() ? 'focused' : 'not focused') + ', events: ' +
+      (window.inputEvents.join(' ') || 'none')).catch((e) => e.message) +
       ', ' + page.context().pages().length + ' tabs';
     throw new Error('A tap at the middle of the screen (' + width + 'x' + height +
       ') never reached the page (' + tab + '). ' + focus.trim().replace(/\s+/g, ' '));
@@ -82,7 +88,7 @@ async function screenPoint(device, page, locator) {
 
 async function tap(device, page, locator) {
   const [x, y] = await screenPoint(device, page, locator);
-  await device.shell('input tap ' + x + ' ' + y);
+  await device.input.tap({ x: x, y: y });
 }
 
 test('opens as a guest, and says what this Chrome can do', async ({ phone }) => {
