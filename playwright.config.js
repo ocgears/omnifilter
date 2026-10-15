@@ -1,6 +1,7 @@
 // End-to-end tests (`npm run test:e2e`): a real browser drives the built
 // client, served by the API server itself, against a real database and the
-// OpenCL device, once at desktop size and once as a phone. See e2e/.
+// OpenCL device: at desktop size, as an Android phone (Chromium) and as an
+// iPhone (WebKit, Safari's engine). See e2e/.
 const os = require('os');
 const { defineConfig, devices } = require('@playwright/test');
 
@@ -26,6 +27,8 @@ if (process.platform === 'linux') {
     }
   };
 }
+// Playwright can only grant the camera in Chromium.
+browser.permissions = ['camera'];
 
 module.exports = defineConfig({
   testDir: 'e2e',
@@ -41,14 +44,17 @@ module.exports = defineConfig({
   use: {
     baseURL: 'http://localhost:' + PORT,
     trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
-    permissions: ['camera']
+    screenshot: 'only-on-failure'
   },
   projects: [
-    { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], browser) },
-    // A phone-sized touch screen (Chromium, as Playwright's iPhones need
-    // WebKit). The WebGPU comparisons don't depend on the screen.
-    { name: 'phone', use: Object.assign({}, devices['Pixel 7'], browser), testIgnore: /gpu\.spec/ }
+    { name: 'desktop', use: Object.assign({}, devices['Desktop Chrome'], browser), testIgnore: /mobile\.spec/ },
+    // Touch screens. The WebGPU comparisons don't depend on the screen.
+    { name: 'phone', use: Object.assign({}, devices['Pixel 7'], browser), testIgnore: /gpu\.spec/ },
+    // Safari's engine, at an iPhone's size, with touch. It's WebKit's Linux
+    // build, not iOS, so it catches WebKit's layout, storage and missing
+    // features (it may have no WebGPU or camera), not iOS's own behaviour.
+    // Playwright has no WebKit for macOS 12 or older.
+    ...(oldMac ? [] : [{ name: 'iphone', use: devices['iPhone 15'], testIgnore: /gpu\.spec/ }])
   ],
   webServer: {
     // Builds the client into dist/ (installing its packages the first time),
@@ -61,7 +67,9 @@ module.exports = defineConfig({
       PORT: String(PORT),
       MONGOLAB_URI: process.env.E2E_MONGO_URI || 'mongodb://localhost/omnifilter_e2e',
       APP_SECRET: 'e2e-only-secret-not-for-production',
-      AUTH_RATE_BURST: '100'
+      AUTH_RATE_BURST: '100',
+      // Every project's guest tests come from the same address.
+      GUEST_RATE_BURST: '100'
     }
   }
 });
