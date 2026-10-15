@@ -38,7 +38,7 @@ case "$SUITE" in
   e2e|all) xvfb-run -a npx playwright test ;;
 esac
 '
-docker run --rm "${gpu[@]}" --ipc=host \
+docker run --rm ${gpu[@]+"${gpu[@]}"} --ipc=host \
   -e SUITE="$suite" -e CI=1 \
   -v "$PWD":/work -w /work \
   -v omnifilter-ci-node-modules:/work/node_modules \

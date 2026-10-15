@@ -6,7 +6,11 @@
 - Vulkan on the CPU (Mesa's lavapipe), for the server's WebGPU backend.
 - Xvfb, the native addon's build tools, and MongoDB 8, which starts with the container.
 
-CI's `ci-image` job builds it on every push and runs the server tests and both browsers in it. It isn't published anywhere yet.
+CI's `ci-image` job builds it on every push and runs the server tests and both browsers in it. The `ci image` workflow (`.github/workflows/ci-image.yml`) publishes it to GitHub's container registry whenever `docker/` changes, tagged with its commit, and as `latest` from master:
+
+```
+docker pull ghcr.io/ocgears/omnifilter-ci:latest
+```
 
 ## Running the tests in it
 
@@ -35,4 +39,4 @@ The same image would run on a GPU cloud that takes Docker images, such as a Moda
 
 ## Using it in CI later
 
-Publishing the image (to `ghcr.io/ocgears/omnifilter-ci`, say) would let CI jobs run in it with `container:` instead of installing packages each time. That publishes it publicly, so it's left for a decision.
+With the image published, CI jobs could run in it with `container: ghcr.io/ocgears/omnifilter-ci:<commit>` instead of installing packages each time. A new package on ghcr.io starts private to the ocgears org; to let anyone pull it, change its visibility under the org's Packages, `omnifilter-ci`, Package settings.
