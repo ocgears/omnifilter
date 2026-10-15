@@ -61,7 +61,8 @@ test('makes a photo, and keeps the work after a reload', async ({ phone }) => {
 
   await phone.locator('#transform').click();
   await expect(photos(phone)).toHaveCount(1, { timeout: 60000 });
-  await expect(photos(phone).first()).toContainText('Toy camera');
+  // The card lists the look's filters.
+  await expect(photos(phone).first()).toContainText('Tilt-shift');
 
   // Android may drop a tab in the background and reload it later.
   await phone.reload();
