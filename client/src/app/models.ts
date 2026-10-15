@@ -63,11 +63,20 @@ export interface Device {
   platform: string;
 }
 
-// GET /guest.
-export interface GuestSettings {
-  enabled: boolean;
-  // The largest photo a guest may send, in pixels.
+// GET /settings: how the server is set up (server/lib/settings.js).
+export interface ServerSettings {
+  // 'cloud' for the hosted demo.
+  mode: 'standard' | 'cloud';
+  // Where signed-in users' filters run: on the server, on this device's
+  // GPU, or on the device where the browser can and otherwise the server.
+  processing: 'server' | 'device' | 'device-first';
+  // Guests: the server's filters, the device's only, or no guests.
+  guests: 'server' | 'device' | 'off';
+  // How many photos an account may keep, or null for any number.
+  maxStoredPhotos: number | null;
+  // The largest photo the server takes, and takes from a guest, in pixels.
   maxPixels: number;
+  guestMaxPixels: number;
 }
 
 // One filter in the stack being edited. tOption is null for "none".

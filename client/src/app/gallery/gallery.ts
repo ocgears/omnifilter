@@ -43,6 +43,8 @@ export class Gallery {
   readonly filters = input.required<Filter[]>();
   // A photo to scroll to and point out, such as the one just made.
   readonly highlight = input<string | null>(null);
+  // How many photos may be kept, when there's a limit (the hosted demo).
+  readonly limit = input<number | null>(null);
   readonly remove = output<Photo>();
   // Use the stack a photo was made with again.
   readonly reuse = output<Photo>();

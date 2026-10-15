@@ -7,6 +7,7 @@ import { AuthService } from '../auth.service';
 import { GuestPhotos } from '../guest-photos';
 import { Photo } from '../models';
 import { PhotoApi } from '../photo-api.service';
+import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { Editor } from './editor';
 
@@ -18,6 +19,17 @@ describe('Editor', () => {
   let drafts: { [K in keyof DraftStore]: ReturnType<typeof vi.fn> };
   let guestPhotos: { [K in keyof GuestPhotos]: ReturnType<typeof vi.fn> };
   let token: ReturnType<typeof signal<string | null>>;
+  let device: { run: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn>; progress: unknown };
+
+  const SETTINGS = {
+    mode: 'standard',
+    processing: 'server',
+    guests: 'server',
+    maxStoredPhotos: null,
+    maxPixels: 50e6,
+    guestMaxPixels: 16e6,
+  };
+  const CLOUD = { ...SETTINGS, mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5 };
 
   const saved: Photo = { _id: 'p1', content: 'data:image/png;base64,AA==', tOption: 'invert' };
 
@@ -41,7 +53,7 @@ describe('Editor', () => {
       all: vi.fn().mockResolvedValue([saved]),
       transform: vi.fn(),
       delete: vi.fn(),
-      guest: vi.fn().mockResolvedValue({ enabled: true, maxPixels: 16e6 }),
+      settings: vi.fn().mockResolvedValue(SETTINGS),
       preview: vi.fn(),
       import: vi.fn(),
     };
@@ -51,6 +63,7 @@ describe('Editor', () => {
       remove: vi.fn().mockResolvedValue(undefined),
     };
     token = signal<string | null>('tok');
+    device = { run: vi.fn(), cancel: vi.fn(), progress: signal(null) };
     drafts = {
       load: vi.fn().mockResolvedValue({ photo: null, stack: null }),
       savePhoto: vi.fn().mockResolvedValue(undefined),
@@ -65,6 +78,7 @@ describe('Editor', () => {
         { provide: DraftStore, useValue: drafts },
         { provide: GuestPhotos, useValue: guestPhotos },
         { provide: AuthService, useValue: { token } },
+        { provide: DeviceTransform, useValue: device },
       ],
     });
   });
@@ -394,7 +408,7 @@ describe('Editor', () => {
     beforeEach(() => {
       token.set(null);
       // No size limit, so photos aren't scaled (jsdom can't decode images).
-      api.guest.mockResolvedValue({ enabled: true, maxPixels: 0 });
+      api.settings.mockResolvedValue({ ...SETTINGS, guestMaxPixels: 0 });
     });
 
     it('shows the photos kept in this browser, and says how to keep them', async () => {
@@ -436,19 +450,19 @@ describe('Editor', () => {
 
     it("stays when the server can't be asked, or the answer comes after leaving", async () => {
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
-      api.guest.mockRejectedValue(new HttpErrorResponse({ status: 0 }));
+      api.settings.mockRejectedValue(new HttpErrorResponse({ status: 0 }));
       await create();
       let answer!: (s: unknown) => void;
-      api.guest.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+      api.settings.mockReturnValue(new Promise((resolve) => (answer = resolve)));
       const second = TestBed.createComponent(Editor);
       second.destroy();
-      answer({ enabled: false, maxPixels: 0 });
+      answer({ ...SETTINGS, guests: 'off' });
       await fixture.whenStable();
       expect(navigate).not.toHaveBeenCalled();
     });
 
     it("goes to sign in when the server doesn't take guests", async () => {
-      api.guest.mockResolvedValue({ enabled: false, maxPixels: 0 });
+      api.settings.mockResolvedValue({ ...SETTINGS, guests: 'off' });
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
       await create();
       expect(navigate).toHaveBeenCalledWith('/signin');
@@ -499,6 +513,94 @@ describe('Editor', () => {
       await fixture.whenStable();
       expect(guestPhotos.remove).toHaveBeenCalledWith(older);
       expect(banner()).toBeNull();
+    });
+  });
+
+  describe('filtering on this device (the hosted demo)', () => {
+    const made = {
+      file: new Blob(['jpeg'], { type: 'image/jpeg' }),
+      width: 4000,
+      height: 3000,
+      ranAt: null,
+      device: 'Test GPU',
+      timings: { decode: 300, upload: 50, filters: 1100, readback: 60, encode: 400, total: 1910 },
+    };
+
+    beforeEach(() => {
+      api.settings.mockResolvedValue(CLOUD);
+      URL.createObjectURL = vi.fn(() => 'blob:made');
+      URL.revokeObjectURL = vi.fn();
+    });
+
+    it('filters on this device, and keeps the result only when asked', async () => {
+      device.run.mockResolvedValue(made);
+      api.import.mockImplementation(async (p: Omit<Photo, '_id'>) => ({ ...p, _id: 'kept' }));
+      await create();
+      // jsdom has no WebGPU, so the page says it's needed (the device is faked).
+      expect(el.querySelector('.device-info')?.textContent).toContain('needs a browser with WebGPU');
+      editor.source.set('data:image/png;base64,BB==');
+      editor.setFilter(0, 'invert');
+      await editor.transform();
+      expect(api.transform).not.toHaveBeenCalled();
+      expect(device.run.mock.calls[0][1]).toEqual([
+        { tOption: 'invert', params: {}, amount: 100, blend: 'normal' },
+      ]);
+      fixture.detectChanges();
+      const card = el.querySelector('of-result-card')!;
+      expect(card.textContent).toContain('12.0 MP, made on Test GPU in 1.9 s (6.3 MP/s)');
+      expect(card.textContent).toContain('Keep in gallery (2 of 5)');
+      expect(el.querySelector('#gallery-title')?.textContent).toContain('1 of 5 kept');
+
+      await editor.keepMade();
+      expect(api.import).toHaveBeenCalledTimes(1);
+      expect(api.import.mock.calls[0][0]).toMatchObject({
+        content: 'data:image/jpeg;base64,anBlZw==',
+        tOption: 'invert',
+      });
+      expect(editor.photos().map((p) => p._id)).toEqual(['kept', 'p1']);
+      expect(editor.made()).toBeNull();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:made');
+    });
+
+    it('keeps no more than the server allows', async () => {
+      api.all.mockResolvedValue([1, 2, 3, 4, 5].map((n) => ({ ...saved, _id: 'p' + n })));
+      device.run.mockResolvedValue(made);
+      await create();
+      editor.source.set('data:image/png;base64,BB==');
+      editor.setFilter(0, 'invert');
+      await editor.transform();
+      expect(editor.keepText()).toBe('Gallery full (5 of 5)');
+      await editor.keepMade();
+      expect(api.import).not.toHaveBeenCalled();
+      expect(editor.errors()[0]).toContain('already keep 5 photos');
+    });
+
+    it('keeps a guest\'s result in this browser', async () => {
+      token.set(null);
+      device.run.mockResolvedValue(made);
+      await create();
+      editor.source.set('data:image/png;base64,BB==');
+      editor.setFilter(0, 'invert');
+      await editor.transform();
+      expect(editor.keepText()).toBe('Keep in this browser (1 of 5)');
+      await editor.keepMade();
+      expect(guestPhotos.add).toHaveBeenCalled();
+      expect(api.import).not.toHaveBeenCalled();
+      expect(editor.photos()[0]._id).toBe('local-1');
+    });
+
+    it('says what browser is needed without WebGPU, and nothing when cancelled', async () => {
+      await create();
+      editor.source.set('data:image/png;base64,BB==');
+      editor.setFilter(0, 'invert');
+      device.run.mockRejectedValue(new DeviceTransformError('no GPU here', true));
+      await editor.transform();
+      expect(editor.errors()[0]).toContain('needs a browser with WebGPU');
+      editor.errors.set([]);
+      device.run.mockRejectedValue(new DeviceTransformError('Cancelled.'));
+      await editor.transform();
+      expect(editor.errors()).toEqual([]);
+      expect(editor.made()).toBeNull();
     });
   });
 });

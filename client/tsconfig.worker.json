@@ -1,0 +1,11 @@
+// The Web Workers (the .worker.ts files). They use the page's types (the
+// DOM library) rather than the worker library, since they share code with
+// the page that mentions page-only types; nothing page-only runs in them.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "types": ["@webgpu/types"]
+  },
+  "include": ["src/**/*.worker.ts"]
+}

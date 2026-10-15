@@ -13,22 +13,24 @@ import {
 import { Router, RouterLink } from '@angular/router';
 import { Alerts } from '../alerts/alerts';
 import { AuthService, errorMessage } from '../auth.service';
-import { Gallery } from '../gallery/gallery';
+import { Gallery, downloadName } from '../gallery/gallery';
 import { GuestPhotos, isLocal } from '../guest-photos';
 import {
   Device,
   Filter,
   FilterParam,
-  GuestSettings,
   Layer,
   ParamValues,
   Photo,
   Preset,
+  ServerSettings,
 } from '../models';
+import { MadeOnDevice, ResultCard } from '../result-card/result-card';
 import { PhotoApi } from '../photo-api.service';
 import { LiveCamera, cameraSupported } from './live-camera';
 import { LivePreview } from './live-preview';
 import { PhotoFileError, fitPhoto, imageFrom, readPhoto } from './photo-file';
+import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { EditHistory, StackState } from './history';
 import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
@@ -38,9 +40,11 @@ import {
   groupFilters,
   layersFromPhoto,
   layersFromPreset,
+  madePhoto,
   missingFilters,
   newLayer,
   paramsFor,
+  photoLabel,
   transformRequest,
 } from './stack';
 import { ImageDataCanvas, renderThumbnails } from './thumbnails';
@@ -57,9 +61,14 @@ const THUMB_SIZE = 160;
 // Without an account it works as a guest: the server filters the photos but
 // doesn't keep them, so they're kept in this browser, and can be added to an
 // account later.
+//
+// Where the server says so (GET /settings: the hosted demo), Transform
+// filters the photo at full size on this device's GPU instead, in a Web
+// Worker; the result is offered to save or share, and kept on the server
+// (or, for a guest, in this browser) only if asked, up to the server's limit.
 @Component({
   selector: 'of-editor',
-  imports: [Alerts, Gallery, ImageDataCanvas, LiveCamera, LivePreview, RouterLink],
+  imports: [Alerts, Gallery, ImageDataCanvas, LiveCamera, LivePreview, ResultCard, RouterLink],
   templateUrl: './editor.html',
   styleUrl: './editor.scss',
   host: {
@@ -78,10 +87,36 @@ export class Editor {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly guestStore = inject(GuestPhotos);
+  private readonly deviceTransform = inject(DeviceTransform);
 
   // Signed in, or trying it out as a guest.
   readonly signedIn = computed(() => !!this.auth.token());
-  readonly guest = signal<GuestSettings | null>(null);
+  readonly settings = signal<ServerSettings | null>(null);
+  // Whether Transform filters on this device's GPU rather than the server's.
+  readonly onDevice = computed(() => {
+    const s = this.settings();
+    if (!s) return false;
+    const where = this.signedIn() ? s.processing : s.guests;
+    return where === 'device' || (where === 'device-first' && DeviceTransform.supported());
+  });
+  readonly deviceSupported = DeviceTransform.supported();
+  // How many photos may be kept, or null for any number.
+  readonly storageLimit = computed(() => this.settings()?.maxStoredPhotos ?? null);
+  readonly roomToKeep = computed(() => {
+    const limit = this.storageLimit();
+    return !limit || this.photos().length < limit;
+  });
+  readonly keepText = computed(() => {
+    const limit = this.storageLimit();
+    const where = this.signedIn() ? 'Keep in gallery' : 'Keep in this browser';
+    if (!limit) return where;
+    if (!this.roomToKeep()) return 'Gallery full (' + limit + ' of ' + limit + ')';
+    return where + ' (' + (this.photos().length + 1) + ' of ' + limit + ')';
+  });
+  // A photo just made on this device, until it's kept or discarded.
+  readonly made = signal<MadeOnDevice | null>(null);
+  readonly keeping = signal(false);
+  readonly deviceProgress = this.deviceTransform.progress;
   // Photos made as a guest that are still in this browser, once signed in.
   readonly waitingPhotos = signal<Photo[]>([]);
   readonly importing = signal(false);
@@ -140,7 +175,11 @@ export class Editor {
   private draftTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
-    if (!this.signedIn()) this.loadGuestSettings();
+    this.loadSettings();
+    this.destroyRef.onDestroy(() => {
+      this.deviceTransform.cancel();
+      this.discardMade();
+    });
     this.loadFilters();
     this.loadPhotos();
     this.restoreDraft();
@@ -242,15 +281,17 @@ export class Editor {
   // A server that doesn't take guests sends them to sign in, unless they've
   // already gone elsewhere (the answer can arrive after they've left). If
   // the server can't be asked, they stay: Transform will say what's wrong.
-  private async loadGuestSettings(): Promise<void> {
+  private async loadSettings(): Promise<void> {
     let left = false;
     this.destroyRef.onDestroy(() => (left = true));
     try {
-      const settings = await this.api.guest();
-      this.guest.set(settings);
-      if (!settings.enabled && !left) this.router.navigateByUrl('/signin');
+      const settings = await this.api.settings();
+      this.settings.set(settings);
+      if (settings.guests === 'off' && !this.signedIn() && !left) {
+        this.router.navigateByUrl('/signin');
+      }
     } catch {
-      // Keep the defaults.
+      // Keep the defaults: the server filters.
     }
   }
 
@@ -264,6 +305,10 @@ export class Editor {
       // Oldest first, so they keep their order.
       for (const photo of [...this.waitingPhotos()].reverse()) {
         try {
+          if (!this.roomToKeep()) {
+            this.addError(this.fullMessage());
+            break;
+          }
           const saved = await this.api.import(photo);
           await this.guestStore.remove(photo);
           this.waitingPhotos.update((list) => list.filter((p) => p !== photo));
@@ -635,11 +680,13 @@ export class Editor {
     }
     if (this.transforming()) return;
     const body = transformRequest(source, this.layers());
-    // Guests have nothing to save a photo to, so there's no point without a filter.
-    if (body.tOption === '' && !this.signedIn()) {
+    // Guests have nothing to save a photo to, so there's no point without a
+    // filter; nor is there when the device does the filtering.
+    if (body.tOption === '' && (!this.signedIn() || this.onDevice())) {
       this.addError('Choose a filter first.');
       return;
     }
+    if (this.onDevice()) return this.transformOnDevice(source);
     if (body.tOption === '') {
       this.messages.update((list) => [...list, 'No filter chosen, so the original was saved.']);
     }
@@ -650,7 +697,7 @@ export class Editor {
         photo = await this.api.transform(body);
       } else {
         // Guests' photos go to the server only up to a smaller size.
-        const max = this.guest()?.maxPixels;
+        const max = this.settings()?.guestMaxPixels;
         if (max) body.content = await fitPhoto(body.content, max);
         photo = await this.guestStore.add(await this.api.preview(body));
       }
@@ -661,6 +708,96 @@ export class Editor {
     } finally {
       this.transforming.set(false);
     }
+  }
+
+  // Filters the photo at full size on this device's GPU, and offers the
+  // result (this.made). Where the browser can't, and the server allows it,
+  // the server does it as usual.
+  private async transformOnDevice(source: string): Promise<void> {
+    this.transforming.set(true);
+    this.discardMade();
+    const layers = this.layers();
+    try {
+      const file = await (await fetch(source)).blob();
+      const result = await this.deviceTransform.run(
+        file,
+        stackLayers(layers),
+        this.blendModeNames(),
+      );
+      const photo = madePhoto(transformRequest('', layers), '');
+      const label = photoLabel(this.filters(), { ...photo, _id: '' });
+      this.made.set({
+        ...result,
+        url: URL.createObjectURL(result.file),
+        label,
+        fileName: downloadName(label, {
+          _id: Date.now().toString(36),
+          content: 'data:' + result.file.type + ',',
+        }),
+      });
+      this.madeLayers = layers;
+    } catch (err) {
+      if (!(err instanceof DeviceTransformError)) {
+        this.addError('Could not filter the photo on this device.');
+      } else if (err.message !== 'Cancelled.') {
+        this.addError(
+          err.noGpu
+            ? "This server filters photos on your own device's GPU, which needs a browser " +
+                'with WebGPU: Chrome or Edge, Safari 26 or later, or Chrome on most Android phones.'
+            : err.message,
+        );
+      }
+    } finally {
+      this.transforming.set(false);
+    }
+  }
+
+  // The stack the photo in this.made was made with.
+  private madeLayers: Layer[] = [];
+
+  cancelTransform(): void {
+    this.deviceTransform.cancel();
+  }
+
+  private fullMessage(): string {
+    const limit = this.storageLimit();
+    return (
+      'You already keep ' +
+      limit +
+      ' photos, as many as this server allows. Delete one to keep another.'
+    );
+  }
+
+  // Keeps the photo made on this device: on the server when signed in (it
+  // checks the photo, and the limit), otherwise in this browser.
+  async keepMade(): Promise<void> {
+    const made = this.made();
+    if (!made || this.keeping()) return;
+    if (!this.roomToKeep()) {
+      this.addError(this.fullMessage());
+      return;
+    }
+    this.keeping.set(true);
+    try {
+      const content = await blobToDataUrl(made.file);
+      const photo = madePhoto(transformRequest('', this.madeLayers), content);
+      const kept = this.signedIn()
+        ? await this.api.import(photo)
+        : await this.guestStore.add(photo);
+      this.photos.update((photos) => [kept, ...photos]);
+      this.latestId.set(kept._id);
+      this.discardMade();
+    } catch (err) {
+      this.addError(errorMessage(err, 'Could not keep the photo.'));
+    } finally {
+      this.keeping.set(false);
+    }
+  }
+
+  discardMade(): void {
+    const made = this.made();
+    if (made) URL.revokeObjectURL(made.url);
+    this.made.set(null);
   }
 
   async deletePhoto(photo: Photo): Promise<void> {
@@ -677,4 +814,13 @@ export class Editor {
       this.addError(errorMessage(err, 'Could not delete that photo.'));
     }
   }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }

@@ -1,0 +1,55 @@
+# Publishes the test image (docker/ci.Dockerfile) to GitHub's container
+# registry as ghcr.io/ocgears/omnifilter-ci, when it changes and on demand.
+# Each build is tagged with its commit; master's builds are also "latest".
+#
+#   docker pull ghcr.io/ocgears/omnifilter-ci:latest
+#
+# The test workflow's ci-image job checks the image on every push; this one
+# only builds it again, checks it starts, and pushes it. See docs/DOCKER.md.
+name: ci image
+
+on:
+  push:
+    paths:
+      - docker/**
+      - .github/workflows/ci-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/ocgears/omnifilter-ci
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Build the image
+        run: |
+          docker build --progress=plain -f docker/ci.Dockerfile \
+            --label org.opencontainers.image.source=https://github.com/ocgears/omnifilter \
+            --label org.opencontainers.image.revision=$GITHUB_SHA \
+            --label "org.opencontainers.image.description=OmniFilter's test environment: Node, Playwright's browsers, pocl, lavapipe, MongoDB" \
+            -t "$IMAGE:$GITHUB_SHA" .
+      - name: It starts, with MongoDB, OpenCL and Vulkan
+        run: |
+          docker run --rm "$IMAGE:$GITHUB_SHA" bash -c \
+            'node --version && clinfo --list && vulkaninfo --summary | grep deviceName && pgrep mongod'
+      - name: Push it
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$GITHUB_SHA"
+          if [ "$GITHUB_REF" = refs/heads/master ]; then
+            docker tag "$IMAGE:$GITHUB_SHA" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
+          echo "::notice title=Published::$IMAGE:$GITHUB_SHA"
+          docker logout ghcr.io

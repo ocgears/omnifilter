@@ -1,0 +1,28 @@
+<section class="result" aria-labelledby="result-title">
+  <h2 id="result-title">Made on this device</h2>
+  <img [src]="result().url" [alt]="result().label" />
+  <div class="about">
+    <p class="label">{{ result().label }}</p>
+    <p class="summary" role="status">{{ summary() }}</p>
+    <p class="parts">{{ parts() }}</p>
+    @if (result().ranAt; as at) {
+      <p class="parts">
+        Filtered at {{ at.width }}×{{ at.height }} to fit this GPU, then enlarged to
+        {{ result().width }}×{{ result().height }}.
+      </p>
+    }
+    @if (shareError(); as message) {
+      <p class="share-error" role="alert">{{ message }}</p>
+    }
+  </div>
+  <div class="actions">
+    <a class="button primary" [href]="result().url" [download]="result().fileName">Save</a>
+    @if (canShare) {
+      <button type="button" (click)="share()">Share</button>
+    }
+    <button type="button" (click)="keep.emit()" [disabled]="!canKeep() || keeping()">
+      {{ keepText() }}
+    </button>
+    <button type="button" (click)="discard.emit()" [disabled]="keeping()">Discard</button>
+  </div>
+</section>

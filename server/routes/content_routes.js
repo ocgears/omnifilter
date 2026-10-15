@@ -9,6 +9,7 @@ const imageCodec = require(__dirname + '/../lib/image_codec');
 const filterStack = require(__dirname + '/../lib/stack');
 const transformQueue = require(__dirname + '/../lib/transform_queue');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
+const settings = require(__dirname + '/../lib/settings');
 
 // Photos arrive as data URLs, so /newcontent takes big bodies.
 const photoParser = bodyParser.json({ limit: 16000000 });
@@ -195,6 +196,34 @@ async function transformPhoto(req, res, recipe, options) {
   return result.content;
 }
 
+// Replies 403 and returns false when this server doesn't run filters for
+// the caller (OMNIFILTER_PROCESSING or OMNIFILTER_GUESTS is device, or
+// guests are off): their browser filters on their own GPU instead.
+function serverMayFilter(res, guest) {
+  const s = settings.read();
+  if (guest ? settings.guestServerFilters(s) : settings.serverFilters(s)) return true;
+  res.status(403).json({
+    msg: guest && s.guests === 'off' ? 'Sign in to use the filters on this server' :
+      'On this server, filters run on your own device'
+  });
+  return false;
+}
+
+// Replies 409 and resolves false when the user already keeps as many photos
+// as this server allows (OMNIFILTER_MAX_STORED_PHOTOS). Two saves at the same
+// moment can both pass; that's one photo over, which is fine.
+async function roomForAnother(req, res) {
+  const limit = settings.read().maxStoredPhotos;
+  if (!limit) return true;
+  const kept = await Content.countDocuments({ user_id: req.user._id });
+  if (kept < limit) return true;
+  res.status(409).json({
+    msg: 'You already keep ' + kept + ' photos, as many as this server allows; delete one to keep this',
+    limit: limit
+  });
+  return false;
+}
+
 function checkContent(req, res) {
   const content = req.body.content;
   if (typeof content !== 'string' || !content.length) {
@@ -211,6 +240,8 @@ contentRouter.post('/newcontent', jwtAuth, photoParser, asyncRoute(async (req, r
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
+  if (recipe.layers && !serverMayFilter(res, false)) return;
+  if (!(await roomForAnother(req, res))) return;
 
   const content = await transformPhoto(req, res, recipe, {
     queue: transforms,
@@ -234,8 +265,8 @@ contentRouter.post('/newcontent', jwtAuth, photoParser, asyncRoute(async (req, r
 // a time each and one for all guests together, a few a minute per IP address
 // (set TRUST_PROXY behind a proxy, so that's the visitor's address), and a
 // smaller photo size (16 megapixels takes a 12-megapixel phone photo; the page
-// scales down bigger ones first). OMNIFILTER_GUESTS=off turns it off.
-const GUESTS_ON = !/^(off|false|0|no)$/i.test(process.env.OMNIFILTER_GUESTS || '');
+// scales down bigger ones first). OMNIFILTER_GUESTS=off turns it off, and
+// =device has guests filter on their own GPU (lib/settings.js).
 const GUEST_MAX_PIXELS = Number(process.env.OMNIFILTER_GUEST_MAX_PIXELS) || 16e6;
 const guestTransforms = contentRouter.guestTransforms = transformQueue.create({
   maxRunning: 1,
@@ -248,19 +279,25 @@ const guestLimiter = contentRouter.guestLimiter = rateLimit({
   message: 'You have made a lot of photos; wait a minute, or create an account to carry on'
 });
 
-// The settings for guest mode, for the page.
-contentRouter.get('/guest', (req, res) => {
+// How this server is set up (lib/settings.js), for the page: where filters
+// run, for signed-in users and for guests, how many photos an account may
+// keep, and the largest photos it takes.
+contentRouter.get('/settings', (req, res) => {
+  const s = settings.read();
   res.status(200).json({
-    enabled: GUESTS_ON,
-    maxPixels: Math.min(GUEST_MAX_PIXELS, imageCodec.MAX_PIXELS)
+    mode: s.mode,
+    processing: s.processing,
+    guests: s.guests,
+    maxStoredPhotos: s.maxStoredPhotos,
+    maxPixels: imageCodec.MAX_PIXELS,
+    guestMaxPixels: Math.min(GUEST_MAX_PIXELS, imageCodec.MAX_PIXELS)
   });
 });
 
 // Applies filters as /newcontent does, but saves nothing: replies with the
 // photo and what was applied, in the shape of a saved photo without an _id.
 contentRouter.post('/transform', (req, res, next) => {
-  if (!GUESTS_ON) return res.status(403).json({ msg: 'Sign in to use the filters on this server' });
-  next();
+  if (serverMayFilter(res, true)) next();
 }, guestLimiter, photoParser, asyncRoute(async (req, res) => {
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
@@ -283,14 +320,16 @@ contentRouter.post('/transform', (req, res, next) => {
   });
 }));
 
-// Saves a photo that was made before signing in (by /transform, kept in the
-// browser), with the filters it says it was made with. The photo is checked
-// as one saved without a filter is; the filters are only a description, so
-// they're checked to be real but not applied.
+// Saves a photo made elsewhere, with the filters it says it was made with:
+// one made before signing in (by /transform, kept in the browser), or one
+// the browser filtered on the visitor's own GPU. The photo is checked as one
+// saved without a filter is; the filters are only a description, so they're
+// checked to be real but not applied.
 contentRouter.post('/import', jwtAuth, photoParser, asyncRoute(async (req, res) => {
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
+  if (!(await roomForAnother(req, res))) return;
 
   var content;
   try {

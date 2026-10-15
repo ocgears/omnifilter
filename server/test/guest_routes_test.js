@@ -39,9 +39,10 @@ describe('guest mode', () => {
   });
 
   it('says guests may use the filters, and how big a photo can be', () => {
-    return chai.request(baseUri).get('/guest').then((res) => {
+    return chai.request(baseUri).get('/settings').then((res) => {
       expect(res).to.have.status(200);
-      expect(res.body).to.eql({ enabled: true, maxPixels: 16e6 });
+      expect(res.body.guests).to.eql('server');
+      expect(res.body.guestMaxPixels).to.eql(16e6);
     });
   });
 

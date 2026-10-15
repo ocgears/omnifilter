@@ -289,6 +289,36 @@ jobs:
           path: lighthouse-report/
           retention-days: 7
 
+  # The test environment as one image (docker/ci.Dockerfile), for running
+  # every suite locally with docker/test.sh, or on a machine with a GPU.
+  # Built and checked here, not published.
+  ci-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Build the image
+        run: bash .github/run-and-annotate.sh docker build --progress=plain -f docker/ci.Dockerfile -t omnifilter-ci .
+      - name: The server tests, and the browsers, in the image
+        run: |
+          docker run --rm --ipc=host -v "$PWD":/work -w /work omnifilter-ci bash -c '
+            set -e
+            node --version
+            clinfo --list
+            vulkaninfo --summary | grep -E "deviceName|driverName"
+            npm ci
+            npx mocha --exit --timeout 120000 --file server/test/setup.js server/test
+            node -e "
+              const pw = require(\"@playwright/test\");
+              (async () => {
+                for (const type of [\"chromium\", \"webkit\"]) {
+                  const browser = await pw[type].launch();
+                  console.log(type, browser.version());
+                  await browser.close();
+                }
+              })().catch((e) => { console.error(e); process.exit(1); });"'
+
   docker:
     runs-on: ubuntu-24.04
     steps:

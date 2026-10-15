@@ -6,6 +6,18 @@ const os = require('os');
 const { defineConfig, devices } = require('@playwright/test');
 
 const PORT = Number(process.env.E2E_PORT) || 3930;
+const CLOUD_PORT = Number(process.env.E2E_CLOUD_PORT) || 3931;
+
+// The test servers' settings, with `own` added.
+function serverEnv(own) {
+  return Object.assign({
+    MONGOLAB_URI: process.env.E2E_MONGO_URI || 'mongodb://localhost/omnifilter_e2e',
+    APP_SECRET: 'e2e-only-secret-not-for-production',
+    AUTH_RATE_BURST: '100',
+    // Every project's guest tests come from the same address.
+    GUEST_RATE_BURST: '100'
+  }, own);
+}
 
 // Playwright has no Chromium build for macOS 12 (Darwin 21) or older, so use
 // the installed Google Chrome there.
@@ -56,20 +68,20 @@ module.exports = defineConfig({
     // Playwright has no WebKit for macOS 12 or older.
     ...(oldMac ? [] : [{ name: 'iphone', use: devices['iPhone 15'], testIgnore: /gpu\.spec/ }])
   ],
-  webServer: {
+  webServer: [{
     // Builds the client into dist/ (installing its packages the first time),
     // which the API serves when it exists.
     command: 'npm run build && node server/server.js',
     url: 'http://localhost:' + PORT + '/device',
     timeout: 180000,
     reuseExistingServer: false,
-    env: {
-      PORT: String(PORT),
-      MONGOLAB_URI: process.env.E2E_MONGO_URI || 'mongodb://localhost/omnifilter_e2e',
-      APP_SECRET: 'e2e-only-secret-not-for-production',
-      AUTH_RATE_BURST: '100',
-      // Every project's guest tests come from the same address.
-      GUEST_RATE_BURST: '100'
-    }
-  }
+    env: serverEnv({ PORT: String(PORT) })
+  }, {
+    // The hosted demo's mode, for e2e/cloud.spec.js, serving the same build.
+    command: 'node e2e/wait-for-build.js && node server/server.js',
+    url: 'http://localhost:' + CLOUD_PORT + '/settings',
+    timeout: 180000,
+    reuseExistingServer: false,
+    env: serverEnv({ PORT: String(CLOUD_PORT), OMNIFILTER_MODE: 'cloud' })
+  }]
 });
