@@ -1,0 +1,56 @@
+# docker compose up --build
+# then open http://localhost:5000
+#
+# The browser talks to both the client server (:5000) and the API (:3000)
+# directly, so both ports are published, on this machine's loopback address
+# only (127.0.0.1), so other machines on the network can't reach them.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  api:
+    build: .
+    image: omnifilter
+    command: ["node", "server/server.js"]
+    restart: unless-stopped
+    environment:
+      MONGOLAB_URI: mongodb://mongo/omnifilter_app_dev
+      # The key that signs login tokens. Without one the API makes a random key
+      # at startup, so logins end when it restarts. To keep them, run
+      #   APP_SECRET=$(openssl rand -hex 32) docker compose up
+      # or put APP_SECRET=... in a .env file next to this one.
+      APP_SECRET: ${APP_SECRET:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  client:
+    build: .
+    image: omnifilter
+    command: ["node", "clientserver.js"]
+    restart: unless-stopped
+    # The image's own healthcheck asks the API; this one asks the client server.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      - api
+
+volumes:
+  mongo-data:

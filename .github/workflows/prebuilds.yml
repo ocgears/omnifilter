@@ -1,0 +1,135 @@
+# Builds the native addon for each platform whenever its source changes,
+# checking that it compiles and loads everywhere. Run it by hand (Actions tab,
+# "prebuilds", Run workflow, with "publish" ticked) to also publish the
+# binaries on the "native-prebuilds" release, where `npm install`
+# (scripts/install-native.js) looks for them. Each binary is named by a hash
+# of the addon's source, so an install only ever uses one built from the same
+# code; with no match, it compiles the addon instead.
+name: prebuilds
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - native/omnifilter.cpp
+      - binding.gyp
+      - scripts/install-native.js
+      - .github/workflows/prebuilds.yml
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the binaries on the native-prebuilds release
+        type: boolean
+        default: false
+
+# The token only needs to read the repository; a job that needs more asks
+# for it itself.
+permissions:
+  contents: read
+
+env:
+  OMNIFILTER_BUILD_FROM_SOURCE: 1
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    # Linux binaries are built on Debian 11 (glibc 2.31), so they also load on
+    # older distributions than the runner's.
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, os: ubuntu-24.04, container: 'node:20-bullseye' }
+          - { platform: linux-arm64, os: ubuntu-24.04-arm, container: 'node:20-bullseye' }
+          - { platform: darwin-arm64, os: macos-15 }
+          # Cross-compiled on the Apple Silicon runner.
+          - { platform: darwin-x64, os: macos-15, arch: x64 }
+          - { platform: win32-x64, os: windows-latest, triplet: x64-windows }
+          - { platform: win32-arm64, os: windows-11-arm, triplet: arm64-windows }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        if: ${{ !matrix.container }}
+        with:
+          node-version: 24
+
+      - name: Install the OpenCL headers and loader (Linux)
+        if: runner.os == 'Linux'
+        run: apt-get update && apt-get install -y --no-install-recommends ocl-icd-opencl-dev
+
+      - name: Install the OpenCL headers and loader (Windows, from vcpkg)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $vcpkg -or -not (Test-Path "$vcpkg\vcpkg.exe")) {
+            git clone --depth 1 https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\vcpkg"
+            & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+            $vcpkg = "$env:RUNNER_TEMP\vcpkg"
+          }
+          & "$vcpkg\vcpkg.exe" install "opencl:${{ matrix.triplet }}"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $sdk = "$vcpkg\installed\${{ matrix.triplet }}"
+          "OPENCL_SDK=$sdk" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          # vcpkg's OpenCL.dll, so the load check below works without a GPU driver.
+          "$sdk\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Build
+        shell: bash
+        run: |
+          # node-gyp reads its --arch option from npm_config_arch.
+          if [ -n "${{ matrix.arch }}" ]; then export npm_config_arch=${{ matrix.arch }}; fi
+          npm ci --omit=optional
+
+      - name: Check the architecture
+        if: runner.os == 'macOS'
+        run: lipo -archs build/Release/omnifilter.node
+
+      - name: Check it loads
+        if: ${{ !matrix.arch }}
+        shell: bash
+        run: node -e "const a = require('./build/Release/omnifilter.node'); console.log(a.devices().length + ' OpenCL devices')"
+
+      - name: Name it by its source
+        shell: bash
+        run: |
+          name="omnifilter-$(node scripts/install-native.js --key)-${{ matrix.platform }}.node"
+          mkdir out
+          cp build/Release/omnifilter.node "out/$name"
+          node -e "const fs = require('fs'), crypto = require('crypto'); const f = process.argv[1];
+            fs.writeFileSync('out/' + f + '.sha256', crypto.createHash('sha256').update(fs.readFileSync('out/' + f)).digest('hex') + '  ' + f + '\n')" "$name"
+          ls -l out
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.platform }}
+          path: out/
+
+  publish:
+    needs: build
+    # Only when asked, and then whatever built, even if one platform failed.
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.publish }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: out
+          merge-multiple: true
+      - name: Upload to the native-prebuilds release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -l out
+          gh release view native-prebuilds > /dev/null 2>&1 ||
+            gh release create native-prebuilds --prerelease --target "$GITHUB_SHA" \
+              --title "Native addon prebuilds" \
+              --notes "Prebuilt native addons that npm install downloads (scripts/install-native.js). Each file is named by a hash of the addon's source; updated automatically by .github/workflows/prebuilds.yml."
+          gh release upload native-prebuilds out/* --clobber

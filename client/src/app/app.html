@@ -1,0 +1,33 @@
+<header class="site-header" [class.guest]="!auth.token()">
+  <a class="brand" routerLink="/home">
+    <img src="/images/logo_omnifilter_70.png" alt="" width="35" height="35" />
+    <span>OmniFilter</span>
+  </a>
+  @if (auth.email(); as email) {
+    <div class="account">
+      <span class="email" [title]="email">{{ email }}</span>
+      <button type="button" (click)="signOut()">Sign out</button>
+    </div>
+  } @else if (auth.unverified()) {
+    <div class="account">
+      <span class="offline">Can't reach the server</span>
+      <button type="button" (click)="signOut()">Sign out</button>
+    </div>
+  } @else if (!auth.token()) {
+    <nav class="account" aria-label="Account">
+      <a routerLink="/signin" class="sign-in">Sign in</a>
+      <a routerLink="/signup" class="button primary">Create account</a>
+    </nav>
+  }
+</header>
+
+<main>
+  <router-outlet />
+</main>
+
+<footer class="site-footer">
+  <p>
+    MIT license · 2016–{{ year }} OC Gears ·
+    <a href="https://github.com/AaronFilson/omnifilter">Source and readme on GitHub</a>
+  </p>
+</footer>

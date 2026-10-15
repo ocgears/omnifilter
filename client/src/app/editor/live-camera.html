@@ -1,0 +1,29 @@
+<div class="viewfinder">
+  <video #video playsinline muted aria-hidden="true"></video>
+  <canvas
+    #canvas
+    [class.mirrored]="facing() === 'user'"
+    [hidden]="state() !== 'live'"
+    role="img"
+    aria-label="The camera, with the filters applied"
+  ></canvas>
+  @if (state() !== 'live') {
+    <p class="message">{{ status() }}</p>
+  }
+</div>
+<div class="controls">
+  <button type="button" (click)="close()">Close</button>
+  <button
+    type="button"
+    class="shutter"
+    (click)="capture()"
+    [disabled]="state() !== 'live'"
+    aria-label="Take photo"
+  ></button>
+  @if (canFlip()) {
+    <button type="button" (click)="flip()" aria-label="Switch camera">Flip</button>
+  } @else {
+    <span class="spacer"></span>
+  }
+</div>
+<p class="status" aria-live="polite">{{ state() === 'live' ? status() : '' }}</p>

@@ -1,0 +1,17 @@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // allowJs: the shared filter definitions in server/lib/filters (see
+    // src/gpu/filters.ts) are plain JavaScript.
+    "allowJs": true,
+    "types": ["@webgpu/types"]
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
+}

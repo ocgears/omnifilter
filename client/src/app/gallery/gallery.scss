@@ -1,0 +1,96 @@
+.gallery {
+  margin-top: calc(2 * var(--gap));
+}
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.count {
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.share-error {
+  color: var(--error-text);
+}
+
+// As many columns as fit, one on a phone.
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+}
+
+.photo-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: box-shadow 0.4s;
+}
+
+.photo-card.latest {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+
+.caption {
+  display: grid;
+  gap: 0.125rem;
+  padding: 0.5rem 0.75rem 0;
+}
+
+.label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+time {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding: 0.75rem;
+}
+
+.actions > * {
+  flex: 1 1 auto;
+}
+
+.confirm-text {
+  flex-basis: 100%;
+  font-size: 0.9375rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-card {
+    transition: none;
+  }
+}

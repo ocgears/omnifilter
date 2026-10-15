@@ -1,0 +1,14 @@
+.git
+node_modules
+client/node_modules
+client/.angular
+build
+dist
+db
+models
+prebuilds
+test-results
+playwright-report
+npm-debug.log
+.DS_Store
+.env

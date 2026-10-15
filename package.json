@@ -2,7 +2,7 @@
   "name": "omnifilter",
   "version": "0.0.2",
   "description": "\"Awesome filters applied to personal images\"",
-  "main": "gulpfile.js",
+  "main": "server/server.js",
   "directories": {},
   "repository": {
     "type": "git",
@@ -15,49 +15,36 @@
   },
   "homepage": "https://github.com/ocgears/omnifilter#readme",
   "dependencies": {
-    "angular": "1.5",
-    "angular-route": "1.5",
-    "bcrypt": "0.8.5",
-    "bindings": "1.2.1",
-    "body-parser": "1.15.2",
-    "express": "4.13.4",
-    "jpg-stream": "1.1.1",
-    "jsonwebtoken": "5.7.0",
-    "mongoose": "4.4.6",
-    "nan": "2.4.0",
-    "node-gyp": "3.4.0",
-    "path": "0.12.7",
-    "pixel-stream": "1.0.3"
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.3",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.0",
+    "node-addon-api": "^8.3.0",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
-    "angular-mocks": "^1.5.0",
-    "babel": "^6.5.2",
-    "babel-core": "^6.6.5",
-    "babel-loader": "^6.2.4",
-    "chai": "^3.5.0",
-    "chai-http": "^3.0.0",
-    "gulp": "^3.9.1",
-    "gulp-minify-css": "^1.2.4",
-    "gulp-protractor": "^3.0.0",
-    "gulp-sass": "^2.2.0",
-    "gulp-sourcemaps": "^1.6.0",
-    "gulp-util": "^3.0.7",
-    "html-loader": "^0.4.3",
-    "jasmine-core": "^2.5.2",
-    "karma": "^0.13.22",
-    "karma-chrome-launcher": "^2.0.0",
-    "karma-firefox-launcher": "^1.0.0",
-    "karma-jasmine": "^1.0.2",
-    "mocha": "^3.0.2",
-    "protractor": "^4.0.11",
-    "webpack": "^1.12.14",
-    "webpack-stream": "^3.2.0"
+    "@playwright/test": "^1.64.0",
+    "chai": "^4.5.0",
+    "chai-http": "^4.4.0",
+    "eslint": "^8.57.1",
+    "mocha": "^10.8.2"
   },
   "scripts": {
-    "test": "mongod --dbpath=./db & mocha server/test",
-    "mocha": "./server/test",
-    "install": "node-gyp rebuild",
-    "start": "mongod --dbpath=./db & node clientserver & node server/server"
+    "install": "node scripts/install-native.js",
+    "build": "node scripts/client.js build",
+    "build:prod": "node scripts/client.js build --production",
+    "heroku-postbuild": "OMNIFILTER_API=/ node scripts/client.js build --production",
+    "mongo": "mkdir -p db && mongod --dbpath=./db",
+    "test": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && mocha --exit --timeout 10000 --file server/test/setup.js server/test",
+    "test:client": "node scripts/client.js test",
+    "test:e2e": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && playwright test",
+    "lint": "eslint .",
+    "lint:client": "eslint e2e scripts playwright.config.js clientserver.js",
+    "start": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && node clientserver & node server/server",
+    "fetch-models": "node scripts/fetch-models.js",
+    "devices": "node scripts/devices.js",
+    "check-device": "node scripts/check-device.js"
   },
   "keywords": [
     "image-filter",
@@ -68,7 +55,10 @@
     "filters"
   ],
   "engines": {
-    "node": "4.2.3"
+    "node": ">=20.9"
   },
-  "gypfile": true
+  "gypfile": true,
+  "optionalDependencies": {
+    "onnxruntime-node": "1.19.2"
+  }
 }

@@ -1,0 +1,35 @@
+.auth {
+  display: grid;
+  gap: var(--gap);
+  max-width: 26rem;
+  margin: 0 auto;
+}
+
+// The old site's background photo (by Adbar, CC BY-SA 3.0,
+// https://commons.wikimedia.org/w/index.php?curid=27342180) as a banner.
+.hero {
+  min-height: 8rem;
+  display: flex;
+  align-items: flex-end;
+  border-radius: var(--radius-lg);
+  background: url('/images/background.jpg') center / cover;
+  overflow: hidden;
+}
+
+.tagline {
+  margin: 0;
+  padding: 2rem 1rem 0.75rem;
+  width: 100%;
+  color: #fff;
+  font-weight: 600;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+}
+
+h1 {
+  margin-top: 0;
+}
+
+.switch {
+  margin-bottom: 0;
+  text-align: center;
+}

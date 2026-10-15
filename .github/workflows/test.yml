@@ -1,0 +1,260 @@
+# Runs the tests on every push and pull request.
+#
+# The runners have no usable GPU, so the server tests run the OpenCL kernels on
+# two independent CPU implementations: pocl, and Mesa's Rusticl on llvmpipe.
+# Two different OpenCL compilers catch most kernel code that only works on one
+# driver. See docs/GPU_SUPPORT.md.
+name: test
+
+on:
+  push:
+  pull_request:
+
+# The token only needs to read the repository; a job that needs more asks
+# for it itself.
+permissions:
+  contents: read
+
+env:
+  # ONNX Runtime's installer would otherwise fetch a 500 MB CUDA provider.
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+  # Test the addon's source, rather than a prebuilt download of it.
+  OMNIFILTER_BUILD_FROM_SOURCE: 1
+
+jobs:
+  server:
+    name: server (${{ matrix.opencl }}, Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - opencl: pocl
+            packages: pocl-opencl-icd
+            device: pocl
+            node: 20
+          - opencl: pocl
+            packages: pocl-opencl-icd
+            device: pocl
+            node: 24
+          - opencl: rusticl
+            packages: mesa-opencl-icd
+            device: rusticl
+            node: 24
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      OMNIFILTER_DEVICE: ${{ matrix.device }}
+      # Rusticl only lists drivers it's told to; llvmpipe is Mesa's CPU driver.
+      RUSTICL_ENABLE: llvmpipe
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install the OpenCL loader, headers and ${{ matrix.opencl }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev clinfo ${{ matrix.packages }}
+          clinfo --list
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run devices
+      - name: Check every filter on the device
+        run: bash .github/run-and-annotate.sh npm run check-device
+      - name: Server tests
+        if: ${{ !cancelled() }}
+        run: bash .github/run-and-annotate.sh npx mocha --exit --timeout 120000 --file server/test/setup.js server/test
+
+  # The WebGPU backend (OMNIFILTER_BACKEND=webgpu): Dawn for Node on Mesa's
+  # lavapipe, a Vulkan driver that runs on the CPU. Its results are compared
+  # with OpenCL's on pocl, then every filter is checked and the whole server
+  # suite runs on it.
+  webgpu:
+    name: server (WebGPU on lavapipe)
+    runs-on: ubuntu-24.04
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      # webgpu_test.js fails, rather than skipping, without the webgpu package.
+      OMNIFILTER_REQUIRE_WEBGPU: 1
+      WEBGPU_VERSION: 0.6.2
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pocl, and Vulkan with lavapipe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools
+          vulkaninfo --summary
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save webgpu@$WEBGPU_VERSION
+      - name: The WebGPU device
+        env:
+          OMNIFILTER_BACKEND: webgpu
+        run: npm run devices
+      - name: WebGPU's results against OpenCL's
+        env:
+          OMNIFILTER_DEVICE: pocl
+        run: bash .github/run-and-annotate.sh npx mocha --exit --timeout 600000 --file server/test/setup.js server/test/webgpu_test.js
+      - name: Check every filter on WebGPU
+        if: ${{ !cancelled() }}
+        env:
+          OMNIFILTER_BACKEND: webgpu
+        run: bash .github/run-and-annotate.sh npm run check-device
+      - name: Server tests on the WebGPU backend
+        if: ${{ !cancelled() }}
+        env:
+          OMNIFILTER_BACKEND: webgpu
+        run: bash .github/run-and-annotate.sh npx mocha --exit --timeout 120000 --file server/test/setup.js server/test
+
+  # Apple Silicon. The runner VM may have no OpenCL device; if it has one,
+  # every filter is checked on it.
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Check every filter, if there is an OpenCL device
+        run: |
+          node -e "const n = require('./server/lib/native'); console.log(JSON.stringify(n.devices(), null, 1))"
+          if node -e "process.exit(require('./server/lib/native').devices().length ? 0 : 1)"; then
+            bash .github/run-and-annotate.sh npm run check-device
+          else
+            echo "::notice title=macOS::This runner has no OpenCL device; the addon built and loaded."
+          fi
+
+  # Builds with the OpenCL headers and loader from vcpkg. The runner has no
+  # OpenCL device, so this checks that the addon builds, installs and loads.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install the OpenCL headers and loader
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install opencl:x64-windows
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $sdk = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+          "OPENCL_SDK=$sdk" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "$sdk\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - run: npm ci
+      - name: The addon loads
+        run: node -e "const n = require('./server/lib/native'); console.log(n.devices().length + ' OpenCL devices')"
+      - name: The server starts without an OpenCL device
+        shell: bash
+        run: |
+          node -e "const g = require('./server/lib/gpu_filters'); console.log(g.list().length + ' filters'); try { g.deviceInfo(); } catch (e) { console.log('as expected: ' + e.message.split('\\n')[0]); }"
+
+  # The Angular client: a production build (which type-checks the templates
+  # too) and the unit tests (Vitest, jsdom).
+  client:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - run: npm ci
+        working-directory: client
+      - run: node scripts/client.js build --production
+      - name: Client tests
+        run: bash .github/run-and-annotate.sh node scripts/client.js test
+      # The end-to-end tests and build scripts. The root packages are only
+      # needed for eslint here, so the native addon isn't built.
+      - run: npm ci --ignore-scripts
+      - run: npm run lint:client
+
+  # The whole app in a real browser (Playwright, Chromium), at desktop and
+  # phone sizes: sign up, filter a photo on pocl, presets, the live preview
+  # and camera, reloads, deleting, signing out; and the browser's WebGPU
+  # filters (on SwiftShader, Chromium's software GPU) against the server's
+  # OpenCL ones (on pocl), pixel by pixel. See e2e/.
+  e2e:
+    runs-on: ubuntu-24.04
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      OMNIFILTER_DEVICE: pocl
+      # Fail, rather than skip the WebGPU comparisons, if the browser has no WebGPU.
+      E2E_REQUIRE_WEBGPU: 1
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install the OpenCL loader, headers and pocl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: client
+      - run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: bash .github/run-and-annotate.sh npx playwright test
+      - name: Keep the report and traces of failed tests
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  docker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      # Without the neural style models: their host (GitHub's LFS storage)
+      # often answers runners with HTTP 504.
+      - name: Build the image
+        run: bash .github/run-and-annotate.sh docker build --progress=plain --build-arg FETCH_MODELS=false -t omnifilter .
+      - name: The image finds an OpenCL device
+        run: docker run --rm omnifilter npm run devices
+      - name: The image has the production client, without source maps
+        run: docker run --rm omnifilter sh -c 'test -s dist/index.html && ls dist/main-*.js && ! ls dist/*.map 2>/dev/null'
