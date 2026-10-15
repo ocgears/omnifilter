@@ -81,6 +81,23 @@ export function transformRequest(content: string, layers: readonly Layer[]): Tra
   };
 }
 
+// A photo made from a request's filters (as the server describes the photos
+// it makes), for a photo made on this device: what POST /import takes.
+export function madePhoto(body: TransformRequest, content: string): Omit<Photo, '_id'> {
+  return {
+    content,
+    tOption: body.tOption ?? '',
+    tParams: body.params,
+    tStack: (body.stack ?? []).map((layer) => ({
+      tOption: layer.tOption,
+      tParams: layer.params,
+      amount: layer.amount,
+      blend: layer.blend,
+    })),
+    createdAt: new Date().toISOString(),
+  };
+}
+
 export function filterLabel(filters: readonly Filter[], name: string | null | undefined): string {
   return findFilter(filters, name)?.label ?? (name || 'Original');
 }

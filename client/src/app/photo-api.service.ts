@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { API_BASE } from './api-base';
 import { AuthService } from './auth.service';
-import { Device, Filter, GuestSettings, Photo, PresetList, TransformRequest } from './models';
+import { Device, Filter, Photo, PresetList, ServerSettings, TransformRequest } from './models';
 
 // The photo and filter endpoints of the API (server/routes/content_routes.js).
 @Injectable({ providedIn: 'root' })
@@ -43,9 +43,10 @@ export class PhotoApi {
     );
   }
 
-  // Whether this server lets people use the filters without an account.
-  guest(): Promise<GuestSettings> {
-    return firstValueFrom(this.http.get<GuestSettings>(this.apiBase + '/guest'));
+  // How the server is set up: where filters run, for whom, and how many
+  // photos an account may keep.
+  settings(): Promise<ServerSettings> {
+    return firstValueFrom(this.http.get<ServerSettings>(this.apiBase + '/settings'));
   }
 
   // Runs the filters on the server without saving anything (guest mode).
@@ -56,8 +57,9 @@ export class PhotoApi {
     );
   }
 
-  // Saves a photo made as a guest to the account, with what it was made with.
-  import(photo: Photo): Promise<Photo> {
+  // Saves a photo made elsewhere (as a guest, or on this device's GPU) to the
+  // account, with what it was made with.
+  import(photo: Omit<Photo, '_id'>): Promise<Photo> {
     const body = {
       content: photo.content,
       createdAt: photo.createdAt,

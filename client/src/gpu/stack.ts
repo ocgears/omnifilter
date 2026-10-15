@@ -105,6 +105,18 @@ export class StackRenderer {
     return { image };
   }
 
+  // One layer applied to an image, without the cache: a new image, which
+  // the caller owns (input stays the caller's too). fullWidth and fullHeight
+  // are the photo's real size, for filters with a working size. For full-size
+  // results, where keeping every layer's result would use too much memory.
+  apply(layer: StackLayer, input: GpuImage, fullWidth: number, fullHeight: number): GpuImage {
+    const reason = StackRenderer.unsupported(layer);
+    if (reason) throw new Error(layer.tOption + ' ' + reason);
+    this.fullWidth = fullWidth;
+    this.fullHeight = fullHeight;
+    return this.layer(layer, input);
+  }
+
   private layer(layer: StackLayer, input: GpuImage): GpuImage {
     const filtered = this.filter(layer, input);
     if (layer.amount >= 100 && layer.blend === 'normal') return filtered;

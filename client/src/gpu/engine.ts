@@ -2,7 +2,11 @@
 // server's filter plans (server/lib/webgpu/engine.js, which the server's
 // WebGPU backend uses too), plus drawing to a canvas and taking camera
 // frames. Knows nothing about Angular, so it can be used and tested on its own.
-import { GpuEngine as CoreEngine, GpuImage } from '../../../server/lib/webgpu/engine';
+import {
+  GpuEngine as CoreEngine,
+  EngineOptions,
+  GpuImage,
+} from '../../../server/lib/webgpu/engine';
 
 export type {
   GpuImage,
@@ -54,10 +58,10 @@ export class GpuEngine extends CoreEngine {
   private frameTexture: GPUTexture | null = null;
 
   // A WebGPU engine on this device's GPU, or null where WebGPU isn't
-  // available.
-  static async create(): Promise<GpuEngine | null> {
+  // available. Works in a Web Worker too.
+  static async create(options?: EngineOptions): Promise<GpuEngine | null> {
     try {
-      return await GpuEngine.fromGpu((navigator as Navigator & { gpu?: GPU }).gpu);
+      return await GpuEngine.fromGpu((navigator as Navigator & { gpu?: GPU }).gpu, options);
     } catch {
       return null;
     }
@@ -115,6 +119,13 @@ export class GpuEngine extends CoreEngine {
     pass.end();
     this.device.queue.submit([encoder.finish()]);
     size.destroy();
+  }
+
+  // Frees the texture imageFromFrame keeps for the next frame (as big as
+  // the source), once there won't be one: a full-size photo's is large.
+  releaseFrame(): void {
+    this.frameTexture?.destroy();
+    this.frameTexture = null;
   }
 
   // Copies a video frame (or bitmap, or canvas) to the GPU as an image of

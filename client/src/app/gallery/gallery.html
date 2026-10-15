@@ -1,7 +1,12 @@
 @if (photos().length) {
   <section class="gallery" aria-labelledby="gallery-title">
     <h2 id="gallery-title">
-      Your photos <span class="count">{{ photos().length }}</span>
+      Your photos
+      @if (limit(); as max) {
+        <span class="count">{{ photos().length }} of {{ max }} kept</span>
+      } @else {
+        <span class="count">{{ photos().length }}</span>
+      }
     </h2>
     @if (shareError(); as message) {
       <p class="share-error" role="alert">{{ message }}</p>

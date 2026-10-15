@@ -335,13 +335,37 @@
         (click)="transform()"
         [disabled]="transforming() || !source()"
       >
-        @if (transforming()) {
+        @if (transforming() && onDevice()) {
+          <span class="spinner" aria-hidden="true"></span>
+          @if (deviceProgress(); as p) {
+            @if (p.stage === 'filter') {
+              Filter {{ p.done + 1 }} of {{ p.total }} on this device…
+            } @else if (p.stage === 'encode') {
+              Encoding…
+            } @else {
+              Filtering on this device…
+            }
+          } @else {
+            Filtering on this device…
+          }
+        } @else if (transforming()) {
           <span class="spinner" aria-hidden="true"></span> Transforming on the {{ deviceKind() }}…
         } @else {
           Transform
         }
       </button>
-      @if (device(); as d) {
+      @if (transforming() && onDevice()) {
+        <button type="button" class="wide" (click)="cancelTransform()">Cancel</button>
+      }
+      @if (onDevice()) {
+        <p class="device-info">
+          @if (deviceSupported) {
+            Filters run at full size on this device's own GPU
+          } @else {
+            This server filters on your device's GPU, which needs a browser with WebGPU
+          }
+        </p>
+      } @else if (device(); as d) {
         <p class="device-info">
           Filters run on {{ d.name }} ({{ deviceKind() }}, {{ d.platform }})
         </p>
@@ -350,8 +374,20 @@
   </section>
 </div>
 
+@if (made(); as result) {
+  <of-result-card
+    [result]="result"
+    [keepText]="keepText()"
+    [canKeep]="roomToKeep()"
+    [keeping]="keeping()"
+    (keep)="keepMade()"
+    (discard)="discardMade()"
+  />
+}
+
 <of-gallery
   [photos]="photos()"
+  [limit]="storageLimit()"
   [filters]="filters()"
   [highlight]="latestId()"
   (remove)="deletePhoto($event)"
