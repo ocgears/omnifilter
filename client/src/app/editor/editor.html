@@ -69,7 +69,12 @@
       />
     } @else if (source(); as src) {
       <figure class="preview">
-        <of-live-preview [source]="src" [layers]="layers()" [blendModes]="blendModeNames()" />
+        <of-live-preview
+          [source]="src"
+          [layers]="layers()"
+          [blendModes]="blendModeNames()"
+          [paused]="transforming() && onDevice()"
+        />
         <figcaption>
           <span class="file-name">{{ sourceName() }}</span>
           <label for="file" class="button">Change</label>

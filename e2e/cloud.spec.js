@@ -44,9 +44,14 @@ test('filters a guest\'s photo at full size on this device, and keeps it when as
   }
   await expect(page.locator('.device-info')).toContainText("this device's own GPU");
   await page.locator('#transform').click();
+  // Decoding, filtering and encoding 3.8 MP take long enough to see this.
+  await expect(page.locator('of-live-preview .status')).toContainText('paused');
   await expect(card(page)).toBeVisible({ timeout: 60000 });
   await expect(card(page).getByRole('status')).toContainText(/^3\.8 MP, made on .+ in [\d.]+ s \([\d.]+ MP\/s\)$/);
   await expect(card(page)).toContainText(/decode [\d.]+ s · to the GPU .* · encode [\d.]+ s/);
+  // The live preview carries on after the job.
+  await expect(page.locator('of-live-preview .status')).toContainText('Live preview');
+  await expect(page.locator('of-live-preview .status')).not.toContainText('paused');
 
   // Full size, and inverted: the gradient's dark left edge is light now.
   const { size, rgb } = await resultPixel(page, 2, 800);
