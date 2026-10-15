@@ -22,6 +22,8 @@ const ELEMENT = 'element-6066-11e4-a52f-4d1c5ae2b1b9';
 
 async function call(method, route, body) {
   const res = await fetch(DRIVER + route, {
+    // A command safaridriver never answers mustn't use up the job's time.
+    signal: AbortSignal.timeout(90000),
     method: method,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body)
@@ -77,9 +79,18 @@ class Session {
         'if (!el) return null; el.dataset.tapTarget = ""; return "[data-tap-target]";', css, text);
       if (!css) throw new Error('nothing says ' + text);
     }
-    await this.run('document.querySelector(arguments[0]).scrollIntoView({ block: "center" });', css);
+    // Notes which events the tap delivers, to say so if it misses.
+    await this.run('const el = document.querySelector(arguments[0]);' +
+      'el.scrollIntoView({ block: "center", inline: "center" }); window.tapEvents = [];' +
+      'for (const type of ["touchstart", "pointerdown", "click"]) document.addEventListener(type,' +
+      ' (e) => window.tapEvents.push(type + (el.contains(e.target) ? "" : " elsewhere (" +' +
+      ' e.target.tagName + ")")), { capture: true, once: true });', css);
     const el = await this.find(css);
     await call('POST', this.base + '/element/' + (el[ELEMENT] || Object.values(el)[0]) + '/click', {});
+    const events = await this.run('return window.tapEvents;');
+    if (!events.includes('click')) {
+      throw new Error('the tap on ' + (text || css) + ' gave ' + (events.join(', ') || 'no events'));
+    }
     if (text) await this.run('document.querySelector("[data-tap-target]").removeAttribute("data-tap-target");');
   }
   // Holds a finger on the middle of an element for `ms` (WebDriver's touch

@@ -25,6 +25,8 @@ const test = base.extend({
     await device.shell('pm clear com.android.chrome');
     const context = await device.launchBrowser();
     const page = context.pages()[0] || await context.newPage();
+    // The tab being driven must be the one on screen, for the taps.
+    await page.bringToFront();
     await page.goto(URL);
     await expect(page.locator('.banner.guest')).toBeVisible();
     await use(page);
@@ -53,7 +55,15 @@ async function screenPoint(device, page, locator) {
     document.body.append(layer);
   });
   await device.shell('input tap ' + Math.round(width / 2) + ' ' + Math.round(height / 2));
-  const [cx, cy] = await (await page.waitForFunction(() => window.calibration)).jsonValue();
+  const landed = await page.waitForFunction(() => window.calibration, null, { timeout: 10000 })
+    .catch(() => null);
+  if (!landed) {
+    // Say what was on the screen instead of the page.
+    const focus = String(await device.shell('dumpsys window | grep -E "mCurrentFocus|mFocusedApp"'));
+    throw new Error('A tap at the middle of the screen (' + width + 'x' + height +
+      ') never reached the page. ' + focus.trim().replace(/\s+/g, ' '));
+  }
+  const [cx, cy] = await landed.jsonValue();
   const dpr = await page.evaluate(() => devicePixelRatio);
   const box = await locator.boundingBox();
   return [
