@@ -49,8 +49,20 @@ app.use('/', userRouter);
 
 // The built client (`npm run build` puts it in dist/), when there is one, so
 // the API and the pages can be served from one place.
+// The pages' scripts and styles are compressed (a third of their size, which
+// matters on a phone's connection); the API's replies aren't, as they're
+// mostly photos, which don't shrink. Files whose names carry a hash of their
+// contents (main-4NR54UZ5.js) never change, so browsers may keep them.
 const clientDir = require('path').join(__dirname, '..', 'dist');
-if (require('fs').existsSync(clientDir)) app.use(express.static(clientDir));
+if (require('fs').existsSync(clientDir)) {
+  app.use(require('compression')(), express.static(clientDir, {
+    setHeaders: (res, file) => {
+      if (/-[A-Za-z0-9_-]{8}\.(js|css)$/.test(file)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    }
+  }));
+}
 
 // Errors passed on by the routes, including unreadable or oversized request
 // bodies, get a short JSON reply instead of an HTML page with a stack trace.

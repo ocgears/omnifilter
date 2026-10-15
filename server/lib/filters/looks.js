@@ -75,7 +75,12 @@ const LOOKS = [
   }
 ];
 
+// `table` is a baked lookup table, or a function that bakes one; that's
+// called the first time the filter is used, rather than when this module
+// loads (each built-in look is 36,000 colour calculations, which a phone's
+// browser would otherwise do before showing the page).
 function lutFilter(name, label, description, table) {
+  let baked = typeof table === 'function' ? null : table;
   return {
     name: name,
     label: label,
@@ -83,15 +88,17 @@ function lutFilter(name, label, description, table) {
     description: description,
     params: [range('amount', 'Amount (%)', 0, 100, 100)],
     plan(w, h, p) {
+      if (!baked) baked = table();
       const plan = new Plan(w, h);
-      const name3d = plan.buffer(table.table.byteLength, { init: table.table });
-      return plan.step('lut3d', img3d(name3d, table.size), int(table.size), float(p.amount / 100),
-        data(new Float32Array(table.domain)));
+      const name3d = plan.buffer(baked.table.byteLength, { init: baked.table });
+      return plan.step('lut3d', img3d(name3d, baked.size), int(baked.size), float(p.amount / 100),
+        data(new Float32Array(baked.domain)));
     }
   };
 }
 
-module.exports = LOOKS.map((look) => lutFilter(look.name, look.label, look.description, lut.bake(look.fn)))
+module.exports = LOOKS.map((look) =>
+  lutFilter(look.name, look.label, look.description, () => lut.bake(look.fn)))
   .concat([{
     name: 'vignette',
     label: 'Vignette',
