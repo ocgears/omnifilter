@@ -8,8 +8,9 @@
 #   docker/test.sh --gpu ...  with this machine's NVIDIA GPU (needs the
 #                             NVIDIA Container Toolkit)
 #
-# The checkout is mounted read-write, but node_modules are kept in Docker
-# volumes, since the ones on a Mac or Windows host won't run on Linux.
+# The checkout is mounted read-write, but node_modules and the native
+# addon's build/ are kept in Docker volumes, since the ones on a Mac or
+# Windows host won't run on Linux (and the Linux ones would replace them).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -43,4 +44,5 @@ docker run --rm ${gpu[@]+"${gpu[@]}"} --ipc=host \
   -v "$PWD":/work -w /work \
   -v omnifilter-ci-node-modules:/work/node_modules \
   -v omnifilter-ci-client-node-modules:/work/client/node_modules \
+  -v omnifilter-ci-native-build:/work/build \
   omnifilter-ci bash -c "$script"

@@ -19,7 +19,7 @@ docker/test.sh            # the server, client and end-to-end tests
 docker/test.sh e2e        # or one of them: server, client, e2e
 ```
 
-This is the way to run everything on a Mac that Playwright doesn't support (macOS 12 runs Chrome but not WebKit, so the iPhone project is skipped there). The checkout is mounted into the container; its `node_modules` stay in Docker volumes, since a Mac's won't run on Linux.
+This is the way to run everything on a Mac that Playwright doesn't support (macOS 12 runs Chrome but not WebKit, so the iPhone project is skipped there). The checkout is mounted into the container; its `node_modules` and the native addon's `build` folder stay in Docker volumes, since a Mac's won't run on Linux and Linux's would replace them.
 
 In the image, the browser's WebGPU runs on Chromium's SwiftShader, as in CI. The server's filters run on pocl, or on lavapipe with `OMNIFILTER_BACKEND=webgpu` and the `webgpu` package (see the CI workflow's `webgpu` job).
 
