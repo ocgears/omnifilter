@@ -43,8 +43,16 @@ class Session {
       'safari:deviceType': 'iPhone'
     };
     if (process.env.SIMULATOR_UDID) capabilities['safari:deviceUDID'] = process.env.SIMULATOR_UDID;
-    const value = await call('POST', '/session', { capabilities: { alwaysMatch: capabilities } });
-    return new Session(value.sessionId, value.capabilities);
+    // Attaching to the simulator's Safari sometimes times out; try again.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const value = await call('POST', '/session', { capabilities: { alwaysMatch: capabilities } });
+        return new Session(value.sessionId, value.capabilities);
+      } catch (e) {
+        if (attempt === 3) throw e;
+        console.log('Attempt ' + attempt + ' to start a session failed: ' + e.message);
+      }
+    }
   }
 
   constructor(id, capabilities) {

@@ -382,6 +382,9 @@ jobs:
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
+          # Safari's first launch is slow; get it over with before the tests.
+          xcrun simctl launch "$udid" com.apple.mobilesafari
+          sleep 10
       - name: Start safaridriver
         run: |
           sudo safaridriver --enable

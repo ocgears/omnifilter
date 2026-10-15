@@ -19,6 +19,10 @@ api=${ANDROID_API:-34}
 image="system-images;android-$api;google_apis;x86_64"
 sdk=${ANDROID_HOME:-$ANDROID_SDK_ROOT}
 tools="$sdk/cmdline-tools/latest/bin"
+# Where avdmanager writes the virtual phone and the emulator looks for it
+# (left to themselves, they disagree on the runner).
+export ANDROID_AVD_HOME="$HOME/.android/avd"
+mkdir -p "$ANDROID_AVD_HOME"
 
 # Let the runner's user open /dev/kvm.
 echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
