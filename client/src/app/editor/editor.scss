@@ -75,10 +75,20 @@
   margin: 0;
 }
 
-.camera-row {
+.start-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1rem 0.5rem;
+}
+
+.sample-credit {
+  margin: 0;
   padding: 0 1rem 1rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--muted);
 }
 
 figcaption {

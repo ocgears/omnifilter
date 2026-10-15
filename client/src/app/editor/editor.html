@@ -95,11 +95,15 @@
         <span class="dropzone-title">Choose a photo</span>
         <span class="dropzone-hint">or take one, drop one here, or paste</span>
       </label>
-      @if (camera) {
-        <div class="camera-row">
+      <div class="start-row">
+        @if (camera) {
           <button type="button" (click)="cameraOn.set(true)">Live camera, with the filters</button>
-        </div>
-      }
+        }
+        <button type="button" id="sample" (click)="useSample()" [disabled]="loadingSample()">
+          {{ loadingSample() ? 'Loading the sample…' : 'Try a sample photo' }}
+        </button>
+      </div>
+      <p class="sample-credit">The sample: Earth from Apollo 17, 1972. Photo: NASA.</p>
     }
   </section>
 

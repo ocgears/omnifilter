@@ -52,6 +52,15 @@ import { ImageDataCanvas, renderThumbnails } from './thumbnails';
 // How long after an edit the draft is saved.
 const DRAFT_SAVE_MS = 300;
 
+// The sample photo: the Apollo 17 crew's view of Earth (NASA's
+// AS17-148-22727, from images.nasa.gov, credited to NASA as its media
+// guidelines ask; see the README), at 12 megapixels, about what a phone
+// takes.
+export const SAMPLE_PHOTO = {
+  url: '/images/samples/earth-apollo-17.jpg',
+  name: 'Earth from Apollo 17 (NASA).jpg',
+};
+
 // The longer side of the preset thumbnails, in pixels (they show at 72 CSS
 // pixels, so this is sharp on 2x screens).
 const THUMB_SIZE = 160;
@@ -533,6 +542,23 @@ export class Editor {
     this.sourceName.set('Camera photo');
     this.cameraOn.set(false);
     this.savePhotoDraft();
+  }
+
+  readonly loadingSample = signal(false);
+
+  // A photo to try the filters on, for visitors without one to hand.
+  async useSample(): Promise<void> {
+    this.loadingSample.set(true);
+    try {
+      const res = await fetch(SAMPLE_PHOTO.url);
+      if (!res.ok) throw new Error(res.statusText);
+      const blob = await res.blob();
+      await this.usePhoto(new File([blob], SAMPLE_PHOTO.name, { type: 'image/jpeg' }));
+    } catch {
+      this.addError('Could not load the sample photo.');
+    } finally {
+      this.loadingSample.set(false);
+    }
   }
 
   clearPhoto(): void {
