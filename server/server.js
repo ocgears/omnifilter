@@ -7,8 +7,18 @@ const mongoose = require('mongoose');
 // Treat query values as plain values, never as operators like $ne, even if a
 // route forgets to check what it was sent.
 mongoose.set('sanitizeFilter', true);
-mongoose.connect(process.env.MONGOLAB_URI || 'mongodb://localhost/omnifilter_app_dev')
-  .catch((err) => console.log('Could not connect to MongoDB: ' + err.message));
+// Mongoose reconnects by itself only once it has been connected, so the
+// first connection is retried here: a server that starts while the database
+// can't be reached (a hosted database's access list still being updated,
+// say) connects when it can, instead of staying without one until restarted.
+function connectDatabase(wait) {
+  mongoose.connect(process.env.MONGOLAB_URI || 'mongodb://localhost/omnifilter_app_dev').catch((err) => {
+    console.log('Could not connect to MongoDB: ' + err.message +
+      '. Trying again in ' + wait / 1000 + ' s.');
+    setTimeout(() => connectDatabase(Math.min(wait * 2, 60000)), wait).unref();
+  });
+}
+connectDatabase(5000);
 
 // The web pages allowed to call the API from a browser: CORS_ORIGINS, a
 // comma-separated list such as "https://omnifilter.example,http://localhost:5000",
