@@ -81,7 +81,7 @@ jobs:
             --set-secrets=MONGOLAB_URI=mongodb-uri:latest,APP_SECRET=app-secret:latest
             --set-env-vars=OMNIFILTER_MODE=cloud,TRUST_PROXY=1
             --cpu=1 --memory=512Mi --concurrency=40 --min-instances=0 --max-instances=1
-            --cpu-throttling --allow-unauthenticated --tag=candidate --quiet)
+            --cpu-throttling --cpu-boost --allow-unauthenticated --tag=candidate --quiet)
           if gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" > /dev/null 2>&1; then
             gcloud run deploy "$SERVICE" "${flags[@]}" --no-traffic
           else

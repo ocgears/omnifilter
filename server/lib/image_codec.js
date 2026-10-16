@@ -9,7 +9,7 @@
 // message that is safe to show the client; libvips' own error text, which
 // can be long and internal, is only logged.
 
-const sharp = require('sharp');
+const sharp = require('./sharp');
 
 const JPEG_QUALITY = 90;
 
