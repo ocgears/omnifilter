@@ -189,3 +189,5 @@ Gene Troy [Github](https://github.com/energene)<br/>
 ## License
 
 This project is licensed under the terms of the MIT license. (view file titled [LICENSE](https://github.com/ocgears/omnifilter/blob/master/LICENSE))
+
+The sample photo (`client/public/images/samples/earth-apollo-17.jpg`) is NASA's AS17-148-22727, Earth photographed by the Apollo 17 crew on 7 December 1972, from the [NASA Image and Video Library](https://images.nasa.gov/details/as17-148-22727), scaled to 12 megapixels. NASA's photos are generally not subject to copyright in the United States; as [NASA's media guidelines](https://www.nasa.gov/nasa-brand-center/images-and-media/) ask, NASA is credited as the source, and using the photo doesn't imply NASA endorses this project.

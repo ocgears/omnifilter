@@ -44,9 +44,14 @@ test('filters a guest\'s photo at full size on this device, and keeps it when as
   }
   await expect(page.locator('.device-info')).toContainText("this device's own GPU");
   await page.locator('#transform').click();
+  // Decoding, filtering and encoding 3.8 MP take long enough to see this.
+  await expect(page.locator('of-live-preview .status')).toContainText('paused');
   await expect(card(page)).toBeVisible({ timeout: 60000 });
   await expect(card(page).getByRole('status')).toContainText(/^3\.8 MP, made on .+ in [\d.]+ s \([\d.]+ MP\/s\)$/);
   await expect(card(page)).toContainText(/decode [\d.]+ s · to the GPU .* · encode [\d.]+ s/);
+  // The live preview carries on after the job.
+  await expect(page.locator('of-live-preview .status')).toContainText('Live preview');
+  await expect(page.locator('of-live-preview .status')).not.toContainText('paused');
 
   // Full size, and inverted: the gradient's dark left edge is light now.
   const { size, rgb } = await resultPixel(page, 2, 800);
@@ -62,6 +67,23 @@ test('filters a guest\'s photo at full size on this device, and keeps it when as
   await expect(page.locator('#gallery-title')).toContainText('1 of 5 kept');
   await page.reload();
   await expect(photos(page)).toHaveCount(1);
+});
+
+test('tries the sample photo, Earth from Apollo 17, at full size: 12 megapixels', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.sample-credit')).toContainText('Photo: NASA');
+  await page.getByRole('button', { name: 'Try a sample photo' }).click();
+  await expect(page.locator('.file-name')).toHaveText('Earth from Apollo 17 (NASA).jpg');
+  await expect(page.locator('.sample-credit')).toHaveCount(0);
+  test.skip(!(await hasWebGpu(page)), 'this browser has no WebGPU');
+  await page.locator('#filter-0').selectOption({ label: 'Invert' });
+  await page.locator('#transform').click();
+  await expect(card(page).getByRole('status')).toContainText(/^12\.0 MP, made on /, { timeout: 120000 });
+  // Inverted: the black of space in the corner is white now.
+  const { size, rgb } = await resultPixel(page, 4, 4);
+  expect(size).toBe('3464x3464');
+  expect(rgb[0]).toBeGreaterThan(240);
+  await card(page).getByRole('button', { name: 'Discard' }).click();
 });
 
 test('runs the filters scaled down when the GPU\'s buffers are too small, then enlarges them', async ({ page }) => {

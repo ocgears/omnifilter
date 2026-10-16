@@ -28,10 +28,11 @@
       (pointerdown)="startCompare($event)"
       (pointerup)="stopCompare()"
       (pointercancel)="stopCompare()"
-      (keydown.space)="comparing.set(true); $event.preventDefault()"
+      (keydown.space)="paused() || comparing.set(true); $event.preventDefault()"
       (keyup.space)="stopCompare()"
       (blur)="stopCompare()"
       [attr.aria-pressed]="comparing()"
+      [disabled]="paused()"
     >
       Hold to compare
     </button>

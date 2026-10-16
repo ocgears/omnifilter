@@ -37,6 +37,11 @@ export class LivePreview implements OnDestroy {
   readonly layers = input.required<Layer[]>();
   // The blend mode names in the server's order (from GET /presets).
   readonly blendModes = input<string[]>([]);
+  // Set while the photo is being filtered at full size on this GPU (in a
+  // worker): the preview stops drawing and lets go of its intermediate
+  // images, so the two don't compete for a phone GPU's time and memory.
+  // Changes made meanwhile are drawn when it's unpaused.
+  readonly paused = input(false);
 
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
   readonly mode = signal<Mode>('starting');
@@ -56,6 +61,7 @@ export class LivePreview implements OnDestroy {
       case 'static':
         return 'Live preview needs a browser with WebGPU. Transform shows the result.';
       default: {
+        if (this.paused()) return 'Live preview paused while the full-size photo is made.';
         if (this.failed()) return "The preview couldn't show these settings. Transform still can.";
         const stopped = this.stoppedAt();
         if (stopped) {
@@ -93,7 +99,14 @@ export class LivePreview implements OnDestroy {
       this.layers();
       this.blendModes();
       this.comparing();
-      this.schedule();
+      if (!this.paused()) this.schedule();
+    });
+    effect(() => {
+      if (this.paused()) {
+        this.comparing.set(false);
+        // Each layer's result is cached for the next change; drop them.
+        if (!this.running) this.renderer?.clearCache();
+      }
     });
   }
 
@@ -146,6 +159,7 @@ export class LivePreview implements OnDestroy {
     const renderer = this.renderer;
     const engine = this.engine;
     if (!this.dirty || this.running || !renderer || !engine || this.destroyed) return;
+    if (this.paused()) return;
     this.dirty = false;
     this.running = true;
     const start = performance.now();
@@ -171,13 +185,14 @@ export class LivePreview implements OnDestroy {
       this.failed.set(true);
     } finally {
       this.running = false;
-      if (this.dirty) requestAnimationFrame(() => this.frame());
+      if (this.paused()) renderer.clearCache();
+      else if (this.dirty) requestAnimationFrame(() => this.frame());
     }
   }
 
   // Press and hold (mouse, touch or pen) on the photo to see the original.
   startCompare(event: PointerEvent): void {
-    if (this.mode() !== 'live') return;
+    if (this.mode() !== 'live' || this.paused()) return;
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     this.comparing.set(true);
   }
