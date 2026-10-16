@@ -9,7 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
+const sharp = require('./sharp');
 const native = require('./native');
 const definitions = require('./filters');
 const deviceChoice = require('./device_choice');

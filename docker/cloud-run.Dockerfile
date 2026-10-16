@@ -35,6 +35,12 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
 COPY server ./server
 RUN rm -rf server/test
 COPY --from=client /usr/src/app/dist ./dist
+# Node's compile cache, filled here by loading the server's modules once, so
+# a new instance (the first request after an idle spell waits for it) skips
+# compiling them. It's read-only to the server, which is fine.
+ENV NODE_COMPILE_CACHE=/usr/src/app/.node-compile-cache
+RUN node -e "for (const r of ['content', 'auth', 'user']) require('./server/routes/' + r + '_routes'); \
+    require('sharp'); require('compression')"
 
 USER node
 # Cloud Run says which port to listen on in PORT (8080).

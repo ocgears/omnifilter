@@ -61,7 +61,12 @@ app.use(compression({
 // For uptime checks and the deploy's smoke test: whether the database is
 // connected, and the caller's address as the server sees it (so a deploy
 // can check TRUST_PROXY: it should be the caller's own public address).
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  // A server that has just started (Cloud Run starts one for the first
+  // request after an idle spell) gets a few seconds to finish connecting.
+  for (let waited = 0; mongoose.connection.readyState === 2 && waited < 10000; waited += 100) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   const database = mongoose.connection.readyState === 1;
   res.set('Cache-Control', 'no-store');
   res.status(database ? 200 : 503).json({ ok: database, database: database, ip: req.ip });

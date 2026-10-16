@@ -16,7 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
+const sharp = require('../sharp');
 const { range } = require('./plan');
 const { makeSpatialDimsDynamic } = require('../onnx_dynamic');
 
