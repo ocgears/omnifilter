@@ -31,7 +31,7 @@ Google needs a billing account (a card) even for free use. Two settings keep a m
 
 1. Go to https://console.cloud.google.com and sign in with the Google account that should own the demo.
 2. Accept the terms. New accounts are offered a free trial with credit; accepting it is fine, and it sets up the billing account.
-3. At the top, open the project picker, choose **New project**, and name it, e.g. `omnifilter-demo`. Google suggests a **project ID** under the name (such as `omnifilter-demo-482913`); it can't be changed later. Note it; the commands below call it `PROJECT_ID`.
+3. At the top, open the project picker, choose **New project**, and name it, e.g. `omnifilter-demo`. Google suggests a **project ID** under the name (such as `omnifilter-demo-482913`); it can't be changed later. Note it: the commands below start by putting it in a shell variable, `PROJECT_ID`.
 4. **Billing** (from the ☰ menu): check the project is linked to the billing account.
 5. **Billing → Budgets & alerts → Create budget**: scope it to this project, amount $1, alerts at 50%, 90% and 100%. Emails go to the billing account's admins.
 
@@ -44,7 +44,10 @@ Or install the CLI on the Mac: `brew install --cask gcloud-cli`, then `gcloud in
 Then, either way:
 
 ```
-gcloud config set project PROJECT_ID
+# Your project ID, from step 1. Set this again in any new terminal or Cloud
+# Shell session; every command below uses it.
+PROJECT_ID=omnifilter-demo-482913
+gcloud config set project $PROJECT_ID
 gcloud config set run/region us-central1
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com \
   cloudbuild.googleapis.com secretmanager.googleapis.com iamcredentials.googleapis.com
@@ -88,14 +91,14 @@ gcloud artifacts repositories set-cleanup-policies omnifilter --location=us-cent
 gcloud iam service-accounts create omnifilter-run --display-name="OmniFilter (runs the app)"
 for s in mongodb-uri app-secret; do
   gcloud secrets add-iam-policy-binding $s --role=roles/secretmanager.secretAccessor \
-    --member=serviceAccount:omnifilter-run@PROJECT_ID.iam.gserviceaccount.com
+    --member=serviceAccount:omnifilter-run@$PROJECT_ID.iam.gserviceaccount.com
 done
 ```
 
 GitHub Actions deploys without a stored key: Workload Identity Federation lets a workflow run from `ocgears/omnifilter`'s master branch act as a deploy account, and nothing else can.
 
 ```
-PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
 
 gcloud iam workload-identity-pools create github --location=global --display-name=GitHub
 gcloud iam workload-identity-pools providers create-oidc omnifilter --location=global \
@@ -104,16 +107,21 @@ gcloud iam workload-identity-pools providers create-oidc omnifilter --location=g
   --attribute-condition="assertion.repository == 'ocgears/omnifilter' && assertion.ref == 'refs/heads/master'"
 
 gcloud iam service-accounts create omnifilter-deploy --display-name="OmniFilter (deploys from GitHub)"
-DEPLOY=omnifilter-deploy@PROJECT_ID.iam.gserviceaccount.com
-gcloud projects add-iam-policy-binding PROJECT_ID --member=serviceAccount:$DEPLOY --role=roles/run.admin
+DEPLOY=omnifilter-deploy@$PROJECT_ID.iam.gserviceaccount.com
+gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:$DEPLOY --role=roles/run.admin \
+  --condition=None
 gcloud artifacts repositories add-iam-policy-binding omnifilter --location=us-central1 \
   --member=serviceAccount:$DEPLOY --role=roles/artifactregistry.writer
-gcloud iam service-accounts add-iam-policy-binding omnifilter-run@PROJECT_ID.iam.gserviceaccount.com \
+gcloud iam service-accounts add-iam-policy-binding omnifilter-run@$PROJECT_ID.iam.gserviceaccount.com \
   --member=serviceAccount:$DEPLOY --role=roles/iam.serviceAccountUser
 gcloud iam service-accounts add-iam-policy-binding $DEPLOY --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/ocgears/omnifilter"
 
+# The values for step 6:
+echo "GCP_PROJECT:      $PROJECT_ID"
+echo "GCP_REGION:       us-central1"
 echo "GCP_WIF_PROVIDER: projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/omnifilter"
+echo "GCP_DEPLOY_SA:    $DEPLOY"
 ```
 
 ### 6. Tell GitHub where to deploy
@@ -122,10 +130,10 @@ In https://github.com/ocgears/omnifilter → **Settings → Environments → New
 
 | Variable | Value |
 |---|---|
-| `GCP_PROJECT` | `PROJECT_ID` |
+| `GCP_PROJECT` | your project ID |
 | `GCP_REGION` | `us-central1` |
-| `GCP_WIF_PROVIDER` | what the last command above printed |
-| `GCP_DEPLOY_SA` | `omnifilter-deploy@PROJECT_ID.iam.gserviceaccount.com` |
+| `GCP_WIF_PROVIDER` | printed by the last commands above |
+| `GCP_DEPLOY_SA` | printed by the last commands above |
 
 Optionally, two **environment secrets**, `SMOKE_EMAIL` and `SMOKE_PASSWORD`: an email address and a long password for an account the smoke test signs in with (it makes the account the first time). Without them the smoke test skips signing in.
 
