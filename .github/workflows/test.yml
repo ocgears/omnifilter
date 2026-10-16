@@ -333,3 +333,41 @@ jobs:
         run: docker run --rm omnifilter npm run devices
       - name: The image has the production client, without source maps
         run: docker run --rm omnifilter sh -c 'test -s dist/index.html && ls dist/main-*.js && ! ls dist/*.map 2>/dev/null'
+
+  # The hosted demo's image (docker/cloud-run.Dockerfile), run as Cloud Run
+  # runs it, beside a MongoDB, with the deploy's smoke test against it.
+  cloud-run:
+    runs-on: ubuntu-24.04
+    services:
+      mongo:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Build the image
+        run: bash .github/run-and-annotate.sh docker build --progress=plain -f docker/cloud-run.Dockerfile -t omnifilter-cloud .
+      - name: Start it
+        run: |
+          docker images omnifilter-cloud --format '::notice title=Cloud Run image::{{.Size}}'
+          docker run -d --name app --network host -e PORT=8080 \
+            -e MONGOLAB_URI=mongodb://localhost/omnifilter_smoke -e APP_SECRET=smoke-only-secret-not-for-production-use \
+            omnifilter-cloud
+          for i in $(seq 1 30); do curl -fsS localhost:8080/health && exit 0; sleep 2; done
+          docker logs app; exit 1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts && npx playwright install --with-deps chromium
+      - name: Smoke test it
+        env:
+          SMOKE_URL: http://localhost:8080
+          SMOKE_EMAIL: smoke@example.com
+          SMOKE_PASSWORD: correct horse battery
+        run: npx playwright test -c e2e/smoke
+      - name: The server's log
+        if: ${{ !cancelled() }}
+        run: docker logs app

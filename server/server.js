@@ -48,6 +48,15 @@ app.use(compression({
   filter: (req, res) => !PHOTO_ROUTES.test(req.path) && compression.filter(req, res)
 }));
 
+// For uptime checks and the deploy's smoke test: whether the database is
+// connected, and the caller's address as the server sees it (so a deploy
+// can check TRUST_PROXY: it should be the caller's own public address).
+app.get('/health', (req, res) => {
+  const database = mongoose.connection.readyState === 1;
+  res.set('Cache-Control', 'no-store');
+  res.status(database ? 200 : 503).json({ ok: database, database: database, ip: req.ip });
+});
+
 const contentRouter = require(__dirname + '/routes/content_routes');
 const authRouter = require(__dirname + '/routes/auth_routes');
 const userRouter = require(__dirname + '/routes/user_routes');
@@ -81,9 +90,21 @@ app.use((err, req, res, next) => {
 });
 
 // Sets up the device now (OpenCL compiles its kernels here; WebGPU in the
-// background), and says what the filters will run on.
+// background), and says what the filters will run on. A server that doesn't
+// filter (cloud mode: visitors' own GPUs do) has nothing to set up.
 const gpuFilters = require(__dirname + '/lib/gpu_filters');
-gpuFilters.ready().then(() => {
+const settings = require(__dirname + '/lib/settings');
+function setUpDevice() {
+  if (!settings.serverDevice(settings.read())) {
+    console.log('Filters run on visitors\' own devices (OMNIFILTER_MODE=cloud); none run here.');
+    return;
+  }
+  gpuFilters.ready().then(reportDevice, (e) => {
+    console.log('WARNING: image filters will fail: ' + e.message);
+  });
+}
+
+function reportDevice() {
   const device = gpuFilters.deviceInfo();
   for (const failure of device.skipped) console.log('Skipped OpenCL device ' + failure);
   const others = gpuFilters.devices().length - 1;
@@ -96,8 +117,7 @@ gpuFilters.ready().then(() => {
   if (device.type !== 'gpu' && (setting === 'auto' || setting === 'any')) {
     console.log('WARNING: no usable GPU was found, so filters will be slower.');
   }
-}, (e) => {
-  console.log('WARNING: image filters will fail: ' + e.message);
-});
+}
+setUpDevice();
 
 app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));

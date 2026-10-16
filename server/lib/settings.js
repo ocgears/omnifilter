@@ -50,9 +50,12 @@ function read(env) {
 // Whether this server runs filters for a signed-in user, or for a guest.
 const serverFilters = (s) => s.processing !== 'device';
 const guestServerFilters = (s) => s.guests === 'server';
+// Whether this server runs filters for anyone, and so needs a device.
+const serverDevice = (s) => serverFilters(s) || guestServerFilters(s);
 
 module.exports = {
   read: read,
   serverFilters: serverFilters,
-  guestServerFilters: guestServerFilters
+  guestServerFilters: guestServerFilters,
+  serverDevice: serverDevice
 };
