@@ -56,8 +56,10 @@ contentRouter.get('/filters', (req, res) => {
   res.status(200).json(gpuFilters.list());
 });
 
-// The device the filters run on, for the page to show.
+// The device the filters run on, for the page to show; null when this server
+// doesn't filter (cloud mode), so it has no device to set up or report.
 contentRouter.get('/device', asyncRoute(async (req, res) => {
+  if (!settings.serverDevice(settings.read())) return res.status(200).json(null);
   try {
     await gpuFilters.ready();
     const device = gpuFilters.deviceInfo();

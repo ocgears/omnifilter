@@ -9,21 +9,26 @@
 // The server started below reads PORT too.
 const PORT = process.env.PORT = process.env.PORT || '3940';
 const app = 'http://localhost:' + PORT + '/';
+// Or a deployed copy, with LHCI_URL=<its address> (the deploy workflow),
+// starting no server.
+const deployed = process.env.LHCI_URL;
+const server = {
+  startServerCommand: 'node server/server.js',
+  startServerReadyPattern: 'server up on port',
+  startServerReadyTimeout: 60000
+};
 
 module.exports = {
   ci: {
-    collect: {
-      startServerCommand: 'node server/server.js',
-      startServerReadyPattern: 'server up on port',
-      startServerReadyTimeout: 60000,
-      url: [app],
+    collect: Object.assign(deployed ? {} : server, {
+      url: [deployed || app],
       numberOfRuns: 3,
       settings: {
         // The runner's Chrome can't use its sandbox (Ubuntu 24.04's AppArmor
         // rules), and the audit doesn't need it.
         chromeFlags: '--no-sandbox --headless=new'
       }
-    },
+    }),
     assert: {
       assertions: {
         'categories:performance': ['error', { minScore: 0.6, aggregationMethod: 'median-run' }],

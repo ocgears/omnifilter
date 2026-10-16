@@ -83,6 +83,17 @@ describe('cloud mode on the server', () => {
     });
   });
 
+  it('has no device to set up or report', () => {
+    expect(settings.serverDevice(settings.read({ OMNIFILTER_MODE: 'cloud' }))).to.eql(false);
+    expect(settings.serverDevice(settings.read({}))).to.eql(true);
+    expect(settings.serverDevice(settings.read({ OMNIFILTER_MODE: 'cloud', OMNIFILTER_GUESTS: 'server' })))
+      .to.eql(true);
+    return chai.request(baseUri).get('/device').then((res) => {
+      expect(res).to.have.status(200);
+      expect(res.body).to.eql(null);
+    });
+  });
+
   it('runs no filters for guests', () => {
     return chai.request(baseUri).post('/transform').send({ content: photo, tOption: 'invert' })
       .then((res) => {
@@ -139,5 +150,16 @@ describe('cloud mode on the server', () => {
         expect(res.body.msg).to.match(/Sign in/);
       })
       .finally(() => { delete process.env.OMNIFILTER_GUESTS; });
+  });
+});
+
+describe('GET /health', () => {
+  it('says the database is connected, and gives the caller\'s address', () => {
+    return chai.request(baseUri).get('/health').then((res) => {
+      expect(res).to.have.status(200);
+      expect(res).to.have.header('cache-control', 'no-store');
+      expect(res.body).to.include({ ok: true, database: true });
+      expect(res.body.ip).to.match(/127\.0\.0\.1|::1/);
+    });
   });
 });

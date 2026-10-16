@@ -1,0 +1,139 @@
+# Deploys the hosted demo to Google Cloud Run (docs/CLOUD_RUN.md): after the
+# test workflow passes on master, or on demand. Each deploy is a new revision
+# that gets no visitors until the smoke test and Lighthouse pass against it
+# at its own address; if they fail, the revision serving now keeps serving.
+#
+# Signs in to Google Cloud with Workload Identity Federation (no stored key),
+# using the production environment's variables: GCP_PROJECT, GCP_REGION,
+# GCP_WIF_PROVIDER and GCP_DEPLOY_SA. Optional environment secrets
+# SMOKE_EMAIL and SMOKE_PASSWORD let the smoke test sign in.
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [test]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+# One deploy at a time, in order.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # After a push to master whose tests passed (not a pull request's run).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ steps.promote.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      PROJECT: ${{ vars.GCP_PROJECT }}
+      REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      SERVICE: omnifilter
+    steps:
+      - name: Check the environment is set up
+        env:
+          PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
+        run: |
+          for v in PROJECT PROVIDER DEPLOY_SA; do
+            if [ -z "${!v}" ]; then
+              echo "::error title=Not set up::The production environment needs GCP_PROJECT, GCP_WIF_PROVIDER and GCP_DEPLOY_SA (docs/CLOUD_RUN.md, Part 1 step 6)."
+              exit 1
+            fi
+          done
+          echo "IMAGE=$REGION-docker.pkg.dev/$PROJECT/omnifilter/omnifilter:$SHA" >> "$GITHUB_ENV"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - name: Build the image and push it to Artifact Registry
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build --progress=plain -f docker/cloud-run.Dockerfile \
+            --label org.opencontainers.image.revision=$SHA -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # A new service can't start without traffic, so the first deploy is live
+      # straight away; later ones wait, tagged "candidate", for the checks.
+      - name: Deploy a revision, with no visitors yet
+        id: candidate
+        run: |
+          flags=(--image="$IMAGE" --region="$REGION" --project="$PROJECT"
+            --service-account="omnifilter-run@$PROJECT.iam.gserviceaccount.com"
+            --set-secrets=MONGOLAB_URI=mongodb-uri:latest,APP_SECRET=app-secret:latest
+            --set-env-vars=OMNIFILTER_MODE=cloud,TRUST_PROXY=1
+            --cpu=1 --memory=512Mi --concurrency=40 --min-instances=0 --max-instances=1
+            --cpu-throttling --allow-unauthenticated --tag=candidate --quiet)
+          if gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" > /dev/null 2>&1; then
+            gcloud run deploy "$SERVICE" "${flags[@]}" --no-traffic
+          else
+            echo "::notice title=First deploy::The service is new, so this revision serves visitors straight away."
+            gcloud run deploy "$SERVICE" "${flags[@]}"
+          fi
+          url=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" \
+            --format=json | jq -r '.status.traffic[] | select(.tag == "candidate") | .url')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Candidate::$url"
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+          cache: npm
+      # Playwright and sharp (for the test helpers); not the native addon.
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Smoke test the revision
+        env:
+          SMOKE_URL: ${{ steps.candidate.outputs.url }}
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        run: |
+          # The runner's own public address, as a website sees it.
+          export SMOKE_PUBLIC_IP=$(curl -fsS --retry 3 https://checkip.amazonaws.com)
+          npx playwright test -c e2e/smoke
+      - name: Lighthouse on the revision
+        env:
+          LHCI_URL: ${{ steps.candidate.outputs.url }}/
+        run: bash .github/run-and-annotate.sh npx --yes @lhci/cli@0.15.1 autorun
+      - name: Scores
+        if: ${{ !cancelled() }}
+        run: node .github/lighthouse-summary.js
+
+      - name: Send visitors to it
+        id: promote
+        run: |
+          gcloud run services update-traffic "$SERVICE" --to-tags=candidate=100 \
+            --region="$REGION" --project="$PROJECT" --quiet
+          url=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" \
+            --format='value(status.url)')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Live::$url is serving ${SHA:0:7}"
+          echo "Live at $url, serving ${SHA:0:7}." >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: deploy-reports
+          path: |
+            lighthouse-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore

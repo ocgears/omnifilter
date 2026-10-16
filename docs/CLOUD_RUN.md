@@ -8,7 +8,7 @@ visitor's browser ──HTTPS──▶ Cloud Run (the API, serving the built cli
                                   └──▶ MongoDB Atlas (free cluster): accounts, kept photos
 ```
 
-Part 1 is accounts and settings, done once by hand, and can be done now. Parts 2 and 3 use files that the deploy work (the plan at the end) adds to the repository.
+Part 1 is accounts and settings, done once by hand. After that, GitHub Actions deploys every change that passes the tests on master (Part 2). [How a deploy works](#how-a-deploy-works) describes the pieces.
 
 ## What it costs
 
@@ -127,11 +127,13 @@ In https://github.com/ocgears/omnifilter → **Settings → Environments → New
 | `GCP_WIF_PROVIDER` | what the last command above printed |
 | `GCP_DEPLOY_SA` | `omnifilter-deploy@PROJECT_ID.iam.gserviceaccount.com` |
 
+Optionally, two **environment secrets**, `SMOKE_EMAIL` and `SMOKE_PASSWORD`: an email address and a long password for an account the smoke test signs in with (it makes the account the first time). Without them the smoke test skips signing in.
+
 ## Part 2: the first deploy
 
-Once the deploy workflow is merged: **Actions → deploy → Run workflow** on master. It builds the image, deploys it as a new revision with no traffic, runs the smoke test against that revision, and only then sends visitors to it. The run's summary gives the address, `https://omnifilter-<something>.us-central1.run.app`.
+**Actions → deploy → Run workflow** on master. It builds the image, deploys it, runs the smoke test and Lighthouse against it, and sends visitors to it. The run's summary gives the address, `https://omnifilter-<something>.us-central1.run.app`. (The very first deploy serves visitors as soon as it starts, since a new service can't start with none; there's nothing older to keep serving anyway.)
 
-After that, every merge to master deploys the same way. If a smoke test fails, the revision that was serving keeps serving, and the run says what failed.
+After that, every change merged to master deploys the same way once the test workflow has passed on it. If a check fails, the revision that was serving keeps serving, and the run says what failed.
 
 **Going back to an earlier version:** the console's **Cloud Run → omnifilter → Revisions** lists every deploy; **Manage traffic** sends 100% to any of them. Or: `gcloud run services update-traffic omnifilter --to-revisions=REVISION=100`.
 
@@ -141,36 +143,28 @@ After that, every merge to master deploys the same way. If a smoke test fails, t
 
 The `run.app` address works as it is. For a domain such as `omnifilter.example.com`: **Cloud Run → Manage custom domains → Add mapping**, verify the domain with Google (it walks through adding a DNS record), then add the DNS records it shows. The certificate is issued automatically, which can take up to a day. Domain mapping is in preview and offered in some regions, `us-central1` among them.
 
-## The plan: what the deploy work adds
+## How a deploy works
 
-### Step 4: building and deploying
+**The image**, `docker/cloud-run.Dockerfile` (177 MB compressed):
+- the client is built with `OMNIFILTER_API=/`, so the page calls the API at its own address. (The root `Dockerfile`'s client calls port 3000 of the page's host, which is right for `docker compose` but not on Cloud Run, where everything is on one HTTPS address.)
+- no OpenCL, no native addon and no neural style models: in cloud mode the server doesn't filter, and doesn't try to set up a device (`/device` answers `null`).
+- `OMNIFILTER_MODE=cloud`, `NODE_ENV=production`, and port 8080, which Cloud Run expects.
+- CI's `cloud-run` job builds it on every push, runs it beside a MongoDB, and runs the smoke test against it.
 
-1. **An image for Cloud Run**, `docker/cloud-run.Dockerfile`, from the same stages as the root `Dockerfile`, with:
-   - the client built with `OMNIFILTER_API=/`, so the page calls the API at its own address. (The root image's client calls port 3000 of the page's host, which is right for `docker compose` but not on Cloud Run, where everything is on one HTTPS address.)
-   - no neural style models, and no pocl: in cloud mode the server doesn't filter. The server already starts without OpenCL (`server/lib/native.js` reports it as unavailable instead of failing). Smaller images start faster from zero.
-   - `OMNIFILTER_MODE=cloud` and `NODE_ENV=production` set in the image; `PORT` comes from Cloud Run.
-   - checked locally under Colima, and by CI's existing `docker` job.
-2. **Server settings for Cloud Run**: `TRUST_PROXY` set so the per-IP limits see visitors' addresses rather than Google's front end (the smoke test checks which address the server sees), and a quick health route if `/device` turns out to be slow without OpenCL.
-3. **`.github/workflows/deploy.yml`**, on pushes to master and on demand, in the `production` environment:
-   - signs in to Google Cloud through Workload Identity Federation (`google-github-actions/auth`),
-   - builds the image and pushes it to Artifact Registry, tagged with the commit,
-   - `gcloud run deploy omnifilter --image=... --no-traffic --tag=candidate` with: `--service-account=omnifilter-run`, `--set-secrets=MONGOLAB_URI=mongodb-uri:latest,APP_SECRET=app-secret:latest`, `--max-instances=1`, `--min-instances=0`, `--cpu=1 --memory=512Mi`, `--concurrency=40`, `--allow-unauthenticated` (it's a public website), and request-based billing,
-   - runs step 5 against the candidate's own address,
-   - then `gcloud run services update-traffic omnifilter --to-tags=candidate=100`.
-4. Optionally, **`docs/cloud-run/setup.sh`**, Part 1 steps 4 to 6 as one script for Cloud Shell, so a second environment (a staging copy, say) is one command.
+**`.github/workflows/deploy.yml`**, after the test workflow passes on master, or on demand, in the `production` environment:
+1. signs in to Google Cloud through Workload Identity Federation (`google-github-actions/auth`),
+2. builds the image and pushes it to Artifact Registry, tagged with the commit,
+3. deploys it as a revision tagged `candidate`, with no visitors: one instance at most, none when idle, 1 CPU and 512 MiB, billed only while answering requests, with the two secrets and `TRUST_PROXY=1`,
+4. runs the smoke test and Lighthouse against the candidate's own address (`https://candidate---omnifilter-....run.app`),
+5. sends all visitors to it.
 
-### Step 5: checking each deploy
+**The smoke test**, `e2e/smoke/deployed.smoke.js` (`SMOKE_URL=<address> npx playwright test -c e2e/smoke` runs it from anywhere):
+- `GET /health`: the database is connected, and the server sees the test at the runner's own public address, not at an address made up in an `X-Forwarded-For` header (that checks `TRUST_PROXY`, which the per-address limits on sign-ins rely on);
+- `GET /settings` says cloud mode with 5 photos each, and `/device` is `null`;
+- the page has the API address meta tag, and its scripts come compressed and cacheable for a year;
+- as a guest, the sample photo is filtered at full size in the browser (CI's Chromium has WebGPU through SwiftShader) and the result card says 12.0 MP, with no errors on the page;
+- with `SMOKE_EMAIL` and `SMOKE_PASSWORD`, signing in works. Nothing is kept, so the database doesn't fill up.
 
-Before a revision gets traffic, the workflow tests it where it runs:
+**Lighthouse** on the candidate (`LHCI_URL=<address> npx @lhci/cli autorun`), with the same budgets as CI's lighthouse job. The smoke test has woken the instance by then, so a cold start doesn't count against it. Against the image on a Mac: performance 80, accessibility, best practices and SEO 100.
 
-1. **`e2e/smoke.spec.js`**, a short Playwright test run against the candidate's address (`SMOKE_URL`; it uses no local servers):
-   - the page loads with no console errors, over HTTPS, with its replies compressed;
-   - `GET /settings` says `cloud`, with 5 stored photos;
-   - as a guest: the sample photo is filtered on the device (CI's Chromium has WebGPU through SwiftShader) and the result card shows 12.0 MP;
-   - signing in with a dedicated smoke-test account (its password a GitHub secret) works, and the account's photo count is within the limit. It keeps nothing, so the database doesn't fill up.
-   - The server's view of the visitor's address is right (the `TRUST_PROXY` check above).
-2. **Lighthouse on the live address** (`lhci autorun --collect.url=<candidate>`), with the same assertions as CI's lighthouse job. The real network and HTTPS show things a local run can't, such as compression through Google's front end and cold-start time. A cold start that pushes the score below the bar would be a warning, not a failure, since the first visitor after an idle spell always pays it.
-3. **If anything fails**, traffic stays on the old revision, the run ends red with the failure as an annotation, and the candidate is left (with no traffic) to look at.
-4. **Nightly**, the same smoke test against the live address, so a broken database connection or an expired setting is noticed without a deploy.
-
-What you'd do: Part 1 (about 30 minutes, mostly waiting for pages), then merge the deploy branch and run the workflow.
+**Nightly**, `.github/workflows/smoke.yml` runs the smoke test against the live address, so a broken database connection or an expired setting shows up without waiting for a deploy.

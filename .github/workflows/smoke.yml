@@ -1,0 +1,61 @@
+# The deploy's smoke test (e2e/smoke), nightly against the live hosted demo,
+# so a broken database connection or an expired setting shows up without
+# waiting for a deploy. See docs/CLOUD_RUN.md.
+name: smoke
+
+on:
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT }}
+      REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+    steps:
+      - name: Check the environment is set up
+        run: |
+          if [ -z "$PROJECT" ]; then
+            echo "::notice title=Not set up::No production environment yet (docs/CLOUD_RUN.md), so nothing to check."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        if: env.SKIP != '1'
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.SKIP != '1'
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - name: Find the live address
+        if: env.SKIP != '1'
+        run: |
+          url=$(gcloud run services describe omnifilter --region="$REGION" --project="$PROJECT" \
+            --format='value(status.url)')
+          echo "SMOKE_URL=$url" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        if: env.SKIP != '1'
+        with:
+          node-version: 24
+          cache: npm
+      - if: env.SKIP != '1'
+        run: npm ci --ignore-scripts && npx playwright install --with-deps chromium
+      - name: Smoke test the live site
+        if: env.SKIP != '1'
+        env:
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        run: |
+          export SMOKE_PUBLIC_IP=$(curl -fsS --retry 3 https://checkip.amazonaws.com)
+          npx playwright test -c e2e/smoke
