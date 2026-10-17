@@ -1,5 +1,5 @@
 require(__dirname + '/../server.js');
-const { clearCollections } = require(__dirname + '/setup');
+const { clearCollections, keptPhoto } = require(__dirname + '/setup');
 const User = require(__dirname + '/../models/user');
 const imageCodec = require(__dirname + '/../lib/image_codec');
 const ref = require(__dirname + '/reference');
@@ -325,8 +325,10 @@ describe('POST /newcontent with a transformation', function() {
           expect(err).to.eql(null);
           expect(res).to.have.status(200);
           expect(res.body.tOption).to.eql(tOption);
-          expect(res.body.content).to.match(/^data:image\/jpeg;base64,/);
-          imageCodec.decodeDataUrl(res.body.content).then((result) => {
+          keptPhoto(baseUri, userToken, res.body._id).then((kept) => {
+            expect(kept).to.match(/^data:image\/jpeg;base64,/);
+            return imageCodec.decodeDataUrl(kept);
+          }).then((result) => {
             expect([result.width, result.height]).to.eql([width, height]);
             // The filter must actually have changed the picture.
             expect(ref.compare(result.data, original).max).to.be.above(20);
@@ -419,7 +421,7 @@ describe('POST /newcontent with a transformation', function() {
       })
       .then((res) => {
         expect(res).to.have.status(200);
-        expect(res.body.content).to.match(/^data:image\/jpeg;/);
+        expect(res.body.mime).to.eql('image/jpeg');
       })
       .finally(() => { imageCodec.MAX_DATA_URL_LENGTH = limit; });
   });

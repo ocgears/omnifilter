@@ -60,8 +60,9 @@ if (process.env.TRUST_PROXY) {
 
 // Replies are compressed (the page's scripts and styles shrink to a third,
 // which matters on a phone's connection), except those carrying photos,
-// which hardly shrink and would cost the server time.
-const PHOTO_ROUTES = /^\/(getAll|newcontent|transform|import)\b/;
+// which hardly shrink and would cost the server time. (The gallery's list
+// carries only small thumbnails, so it's compressed with the rest.)
+const PHOTO_ROUTES = /^\/(newcontent|transform|import|content)\b/;
 const compression = require('compression');
 app.use(compression({
   filter: (req, res) => !PHOTO_ROUTES.test(req.path) && compression.filter(req, res)

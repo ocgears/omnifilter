@@ -1,7 +1,7 @@
 // Filter stacks: the GPU blend kernel against the W3C formulas, stack
 // validation, the presets, and the API.
 require(__dirname + '/../server.js');
-const { clearCollections } = require(__dirname + '/setup');
+const { clearCollections, keptPhoto } = require(__dirname + '/setup');
 const User = require(__dirname + '/../models/user');
 const gpu = require(__dirname + '/../lib/gpu_filters');
 const stack = require(__dirname + '/../lib/stack');
@@ -164,13 +164,13 @@ describe('stacks through the API', () => {
         { tOption: 'sepia' },
         { tOption: 'vignette', params: { strength: 80 }, blend: 'multiply', amount: 60 }
       ] })
-      .then((res) => {
+      .then(async (res) => {
         expect(res).to.have.status(200);
         expect(res.body.tOption).to.equal('');
         expect(res.body.tStack.map((l) => [l.tOption, l.amount, l.blend]))
           .to.eql([['sepia', 100, 'normal'], ['vignette', 60, 'multiply']]);
         expect(res.body.tStack[1].tParams.strength).to.equal(80);
-        expect(res.body.content).to.not.equal(content);
+        expect(await keptPhoto(baseUri, token, res.body._id)).to.not.equal(content);
       });
   });
 

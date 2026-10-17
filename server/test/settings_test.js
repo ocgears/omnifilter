@@ -1,5 +1,5 @@
 require(__dirname + '/../server.js');
-const { clearCollections } = require(__dirname + '/setup');
+const { clearCollections, keptPhoto } = require(__dirname + '/setup');
 const User = require(__dirname + '/../models/user');
 const Content = require(__dirname + '/../models/content');
 const contentRouter = require(__dirname + '/../routes/content_routes');
@@ -13,26 +13,27 @@ var chaiHTTP = require('chai-http');
 chai.use(chaiHTTP);
 var expect = chai.expect;
 
-const KEYS = ['OMNIFILTER_MODE', 'OMNIFILTER_PROCESSING', 'OMNIFILTER_GUESTS', 'OMNIFILTER_MAX_STORED_PHOTOS'];
+const KEYS = ['OMNIFILTER_MODE', 'OMNIFILTER_PROCESSING', 'OMNIFILTER_GUESTS', 'OMNIFILTER_MAX_STORED_PHOTOS',
+  'OMNIFILTER_KEEP_MAX_SIDE'];
 
 describe('the server settings (lib/settings.js)', () => {
   it('filters on the server for everyone by default, and keeps any number of photos', () => {
     expect(settings.read({})).to.eql({
-      mode: 'standard', processing: 'server', guests: 'server', maxStoredPhotos: null
+      mode: 'standard', processing: 'server', guests: 'server', maxStoredPhotos: null, keepMaxSide: null
     });
   });
 
   it('in cloud mode, filters on the visitor\'s device and keeps 5 photos each', () => {
     expect(settings.read({ OMNIFILTER_MODE: 'cloud' })).to.eql({
-      mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5
+      mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048
     });
   });
 
   it('lets each cloud setting be changed on its own', () => {
     expect(settings.read({
       OMNIFILTER_MODE: 'Cloud', OMNIFILTER_PROCESSING: 'device-first', OMNIFILTER_GUESTS: 'off',
-      OMNIFILTER_MAX_STORED_PHOTOS: '12'
-    })).to.eql({ mode: 'cloud', processing: 'device-first', guests: 'off', maxStoredPhotos: 12 });
+      OMNIFILTER_MAX_STORED_PHOTOS: '12', OMNIFILTER_KEEP_MAX_SIDE: '4096'
+    })).to.eql({ mode: 'cloud', processing: 'device-first', guests: 'off', maxStoredPhotos: 12, keepMaxSide: 4096 });
   });
 
   it('reads the old on and off values for guests, and ignores nonsense', () => {
@@ -138,6 +139,26 @@ describe('cloud mode on the server', () => {
     expect(statuses.filter((s) => s === 200).length).to.be.at.most(5);
     expect(statuses.every((s) => [200, 409, 429, 503].includes(s))).to.eql(true);
     expect(await Content.countDocuments({})).to.be.at.most(5);
+    await Content.deleteMany({});
+  });
+
+  it('keeps a smaller copy of a big photo, and a thumbnail', async () => {
+    const big = await sharp({ create: { width: 3000, height: 1500, channels: 3, background: '#406080' } })
+      .png().toBuffer();
+    const res = await chai.request(baseUri).post('/import').set({ token: token })
+      .send({ content: 'data:image/png;base64,' + big.toString('base64'), tOption: 'invert' });
+    expect(res).to.have.status(200);
+    expect(res.body).to.include({ width: 2048, height: 1024, mime: 'image/jpeg' });
+    const kept = await keptPhoto(baseUri, token, res.body._id);
+    const meta = await sharp(Buffer.from(kept.split(',')[1], 'base64')).metadata();
+    expect([meta.format, meta.width, meta.height]).to.eql(['jpeg', 2048, 1024]);
+    const thumb = await sharp(Buffer.from(res.body.thumb.split(',')[1], 'base64')).metadata();
+    expect([thumb.format, thumb.width, thumb.height]).to.eql(['webp', 640, 320]);
+    // The gallery's list has the thumbnail, not the photo.
+    const list = await chai.request(baseUri).get('/getAll').set({ token: token });
+    expect(list.body).to.have.length(1);
+    expect(list.body[0]).to.include({ thumb: res.body.thumb, width: 2048 });
+    expect(list.body[0]).to.not.have.property('content');
     await Content.deleteMany({});
   });
 

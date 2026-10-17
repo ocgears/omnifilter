@@ -17,8 +17,12 @@
 //     off (also false, 0, no)        can't use the page without signing in
 //   OMNIFILTER_MAX_STORED_PHOTOS     how many photos each account may keep
 //                                    (default: no limit; cloud: 5)
+//   OMNIFILTER_KEEP_MAX_SIDE         kept photos longer than this many pixels
+//                                    on a side are kept scaled down to it
+//                                    (default: kept as they are; cloud: 2048,
+//                                    so a free database holds a few hundred)
 
-const CLOUD = { processing: 'device', guests: 'device', maxStoredPhotos: 5 };
+const CLOUD = { processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048 };
 const PROCESSING = ['server', 'device', 'device-first'];
 
 function read(env) {
@@ -38,12 +42,15 @@ function read(env) {
 
   const max = parseInt(e.OMNIFILTER_MAX_STORED_PHOTOS, 10);
   const maxStoredPhotos = max > 0 ? max : fallback('maxStoredPhotos') || null;
+  const side = parseInt(e.OMNIFILTER_KEEP_MAX_SIDE, 10);
+  const keepMaxSide = side > 0 ? side : fallback('keepMaxSide') || null;
 
   return {
     mode: cloud ? 'cloud' : 'standard',
     processing: processing,
     guests: guests,
-    maxStoredPhotos: maxStoredPhotos
+    maxStoredPhotos: maxStoredPhotos,
+    keepMaxSide: keepMaxSide
   };
 }
 

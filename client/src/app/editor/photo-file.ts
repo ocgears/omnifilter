@@ -86,3 +86,62 @@ export function imageFrom(items: DataTransfer | null): File | null {
   }
   return null;
 }
+
+// A photo (a file or a data URL) drawn at most maxSide pixels on its longer
+// side, or null if it's no bigger than that or the browser can't.
+async function drawnAtMost(
+  source: Blob | string,
+  maxSide: number,
+): Promise<{ canvas: HTMLCanvasElement; width: number; height: number } | null> {
+  const blob = typeof source === 'string' ? await (await fetch(source)).blob() : source;
+  const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  try {
+    const side = Math.max(bitmap.width, bitmap.height);
+    if (side <= maxSide) return null;
+    const k = maxSide / side;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * k));
+    canvas.height = Math.max(1, Math.round(bitmap.height * k));
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return { canvas, width: canvas.width, height: canvas.height };
+  } finally {
+    bitmap.close();
+  }
+}
+
+// The gallery's small copy of a photo, as the server makes it
+// (server/lib/image_codec.js): 640 pixels on its longer side, a WebP data
+// URL (a JPEG where the browser can't make WebP). undefined if it can't be
+// made, when the gallery shows the photo itself.
+export async function makeThumb(source: Blob | string): Promise<string | undefined> {
+  try {
+    const drawn = await drawnAtMost(source, 640);
+    if (!drawn) return undefined;
+    const webp = drawn.canvas.toDataURL('image/webp', 0.75);
+    return webp.startsWith('data:image/webp') ? webp : drawn.canvas.toDataURL('image/jpeg', 0.8);
+  } catch {
+    return undefined;
+  }
+}
+
+// A photo to keep on a server that keeps them at most maxSide pixels on a
+// side (GET /settings keepMaxSide): scaled down here, so less goes over the
+// network, as a JPEG, or a PNG where there's transparency. The file as it
+// is if it's small enough already, or the browser can't.
+export async function fitForKeeping(file: Blob, maxSide: number | null): Promise<Blob> {
+  if (!maxSide) return file;
+  try {
+    const drawn = await drawnAtMost(file, maxSide);
+    if (!drawn) return file;
+    const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    const smaller = await new Promise<Blob | null>((resolve) =>
+      drawn.canvas.toBlob(resolve, type, 0.92),
+    );
+    return smaller ?? file;
+  } catch {
+    return file;
+  }
+}

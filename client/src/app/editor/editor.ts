@@ -29,7 +29,7 @@ import { MadeOnDevice, ResultCard } from '../result-card/result-card';
 import { PhotoApi } from '../photo-api.service';
 import { LiveCamera, cameraSupported } from './live-camera';
 import { LivePreview } from './live-preview';
-import { PhotoFileError, fitPhoto, imageFrom, readPhoto } from './photo-file';
+import { PhotoFileError, fitForKeeping, fitPhoto, imageFrom, readPhoto } from './photo-file';
 import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { EditHistory, StackState } from './history';
@@ -124,6 +124,15 @@ export class Editor {
   });
   // A photo just made on this device, until it's kept or discarded.
   readonly made = signal<MadeOnDevice | null>(null);
+  // When the server keeps a smaller copy of it than was made, says so.
+  readonly keepNote = computed(() => {
+    const side = this.settings()?.keepMaxSide;
+    const made = this.made();
+    if (!side || !made || !this.signedIn() || Math.max(made.width, made.height) <= side) return null;
+    return (
+      'The gallery keeps a copy ' + side + ' pixels on its longer side; Save keeps the full size.'
+    );
+  });
   readonly keeping = signal(false);
   readonly deviceProgress = this.deviceTransform.progress;
   // Photos made as a guest that are still in this browser, once signed in.
@@ -325,7 +334,10 @@ export class Editor {
             this.addError(this.fullMessage());
             break;
           }
-          const saved = await this.api.import(photo);
+          const saved = await this.api.import({
+            ...photo,
+            content: await this.keepable(photo.content ?? ''),
+          });
           await this.guestStore.remove(photo);
           this.waitingPhotos.update((list) => list.filter((p) => p !== photo));
           this.photos.update((list) =>
@@ -812,11 +824,15 @@ export class Editor {
     }
     this.keeping.set(true);
     try {
-      const content = await blobToDataUrl(made.file);
-      const photo = madePhoto(transformRequest('', this.madeLayers), content);
-      const kept = this.signedIn()
-        ? await this.api.import(photo)
-        : await this.guestStore.add(photo);
+      // The server may keep a smaller copy; guests keep theirs as it is.
+      const signedIn = this.signedIn();
+      const file = signedIn
+        ? await fitForKeeping(made.file, this.settings()?.keepMaxSide ?? null)
+        : made.file;
+      const photo = madePhoto(transformRequest('', this.madeLayers), await blobToDataUrl(file));
+      const kept = signedIn ? await this.api.import(photo) : await this.guestStore.add(photo);
+      // The gallery's Save and Share need not fetch it again.
+      if (signedIn) this.api.remember(kept._id, file);
       this.photos.update((photos) => [kept, ...photos]);
       this.latestId.set(kept._id);
       this.discardMade();
@@ -825,6 +841,16 @@ export class Editor {
     } finally {
       this.keeping.set(false);
     }
+  }
+
+  // A photo (a data URL) as this server keeps it: scaled down in the
+  // browser if the server would anyway, so less goes over the network.
+  private async keepable(content: string): Promise<string> {
+    const side = this.settings()?.keepMaxSide;
+    if (!side || !content) return content;
+    const file = await (await fetch(content)).blob();
+    const fitted = await fitForKeeping(file, side);
+    return fitted === file ? content : blobToDataUrl(fitted);
   }
 
   discardMade(): void {

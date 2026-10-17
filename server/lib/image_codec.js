@@ -178,3 +178,47 @@ exports.encodeDataUrl = function(image) {
       });
   });
 };
+
+// The gallery's copy of a photo: this many pixels on its longer side (sharp
+// on a 2x screen at the gallery's widest cards), as a WebP.
+const THUMB_SIDE = 640;
+exports.THUMB_SIDE = THUMB_SIDE;
+
+// A photo as it's kept (models/content.js), from a data URL validateDataUrl
+// or encodeDataUrl made: { image, mime, width, height, thumb }, with its
+// bytes, their type, its size as shown (EXIF orientation applied) and a
+// thumbnail as a WebP data URL. With options.maxSide, a photo longer than
+// that on either side is kept scaled down to it: a JPEG, or a WebP if it has
+// transparency.
+exports.toStored = function(dataUrl, options) {
+  const maxSide = options && options.maxSide;
+  const match = typeof dataUrl === 'string' && DATA_URL.exec(dataUrl);
+  if (!match) return Promise.reject(codecError(400, 'Expected a base64 image data URL'));
+  const original = Buffer.from(dataUrl.slice(match[0].length), 'base64');
+  const read = (bytes) => sharp(bytes, { limitInputPixels: MAX_PIXELS });
+  return read(original).metadata().then((meta) => {
+    // Orientations 5 to 8 turn the photo on its side.
+    const sideways = meta.orientation >= 5;
+    const width = sideways ? meta.height : meta.width;
+    const height = sideways ? meta.width : meta.height;
+    if (!maxSide || Math.max(width, height) <= maxSide) {
+      return { image: original, mime: match[1], width: width, height: height };
+    }
+    const smaller = read(original).rotate().resize({ width: maxSide, height: maxSide, fit: 'inside' });
+    const encoded = meta.hasAlpha ?
+      smaller.webp({ quality: 90, alphaQuality: 100 }) : smaller.jpeg({ quality: JPEG_QUALITY });
+    return encoded.toBuffer({ resolveWithObject: true }).then((out) => ({
+      image: out.data,
+      mime: meta.hasAlpha ? 'image/webp' : 'image/jpeg',
+      width: out.info.width,
+      height: out.info.height
+    }));
+  }).then((kept) => read(kept.image).rotate()
+    .resize({ width: THUMB_SIDE, height: THUMB_SIDE, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 75 })
+    .toBuffer()
+    .then((thumb) => Object.assign(kept, { thumb: 'data:image/webp;base64,' + thumb.toString('base64') })))
+    .catch((err) => {
+      throw readError(err);
+    });
+};

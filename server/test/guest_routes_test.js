@@ -1,5 +1,5 @@
 require(__dirname + '/../server.js');
-const { clearCollections } = require(__dirname + '/setup');
+const { clearCollections, keptPhoto } = require(__dirname + '/setup');
 const User = require(__dirname + '/../models/user');
 const Content = require(__dirname + '/../models/content');
 const contentRouter = require(__dirname + '/../routes/content_routes');
@@ -115,9 +115,9 @@ describe('guest mode', () => {
       const made = '2026-10-01T12:00:00.000Z';
       return chai.request(baseUri).post('/import').set({ token: userToken })
         .send({ content: photo, stack: [{ tOption: 'invert' }, { tOption: 'sepia' }], createdAt: made })
-        .then((res) => {
+        .then(async (res) => {
           expect(res).to.have.status(200);
-          expect(res.body.content).to.eql(photo);
+          expect(await keptPhoto(baseUri, userToken, res.body._id)).to.eql(photo);
           expect(res.body.tStack.map((l) => l.tOption)).to.eql(['invert', 'sepia']);
           expect(res.body.createdAt).to.eql(made);
           return chai.request(baseUri).get('/getAll').set({ token: userToken });

@@ -112,11 +112,62 @@ contentRouter.get('/presets', (req, res) => {
   });
 });
 
-contentRouter.get('/getAll', jwtAuth, (req, res) => {
-  Content.find({ user_id: req.user._id }).sort({ createdAt: -1 })
-    .then((data) => res.status(200).json(data))
-    .catch((err) => handleDBError(err, res));
-});
+// The user's photos, newest first: what each was made with, its size and
+// type, and its thumbnail; not the photos themselves (GET /content/:id).
+contentRouter.get('/getAll', jwtAuth, asyncRoute(async (req, res) => {
+  await upgradeOldPhotos(req.user._id);
+  const data = await Content.find({ user_id: req.user._id }).select('-image -content')
+    .sort({ createdAt: -1 });
+  res.status(200).json(data);
+}));
+
+// Photos kept before there were thumbnails hold the photo as a data URL;
+// this moves them to the binary photo and a thumbnail, once, one at a time.
+// One that can't be read stays as it was (its thumbnail is missing).
+async function upgradeOldPhotos(userId) {
+  const old = await Content.find({ user_id: userId, image: mongoose.trusted({ $exists: false }) })
+    .select('_id');
+  for (const { _id } of old) {
+    const photo = await Content.findById(_id);
+    if (!photo || photo.image || typeof photo.content !== 'string') continue;
+    try {
+      const stored = await imageCodec.toStored(photo.content);
+      photo.set(stored);
+      photo.content = undefined;
+      await photo.save();
+    } catch (e) {
+      console.log('Could not upgrade the kept photo ' + _id + ': ' + e.message);
+    }
+  }
+}
+
+// A kept photo itself, as its own type of file (?download for a file to
+// save, named like the page names it, or ?download=name). Not cached: the
+// address is the same for anyone who signs in on this browser.
+contentRouter.get('/content/:id', jwtAuth, validId, asyncRoute(async (req, res) => {
+  const photo = await Content.findOne({ _id: req.params.id, user_id: req.user._id });
+  if (!photo) return res.status(404).json({ msg: 'No such content' });
+  var bytes = photo.image;
+  var mime = photo.mime;
+  if (!bytes) {
+    const legacy = typeof photo.content === 'string' && /^data:(image\/[\w.+-]+);base64,/.exec(photo.content);
+    if (!legacy) return res.status(404).json({ msg: 'No such content' });
+    mime = legacy[1];
+    bytes = Buffer.from(photo.content.slice(legacy[0].length), 'base64');
+  }
+  res.set('Cache-Control', 'private, no-store');
+  if (req.query.download !== undefined) {
+    const asked = typeof req.query.download === 'string' ? req.query.download : '';
+    const name = /^[\w.-]{1,100}$/.test(asked) ? asked : 'omnifilter-' + String(photo._id).slice(-6) + '.' +
+      (EXTENSIONS[mime] || 'img');
+    res.set('Content-Disposition', 'attachment; filename="' + name + '"');
+  }
+  res.type(mime).send(bytes);
+}));
+
+const EXTENSIONS = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif'
+};
 
 // What a request asks to be applied: either one filter ({ tOption, params })
 // or a stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }).
@@ -256,6 +307,12 @@ const roomForAnother = asyncRoute(async (req, res, next) => {
 // What comes before a photo to keep is read: who it's for, its turn, and room.
 const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, photoParser];
 
+// A checked photo (a data URL) as it's kept, scaled down to the server's
+// OMNIFILTER_KEEP_MAX_SIDE if there is one.
+function keptPhoto(content) {
+  return imageCodec.toStored(content, { maxSide: settings.read().keepMaxSide });
+}
+
 function checkContent(req, res) {
   const content = req.body.content;
   if (typeof content !== 'string' || !content.length) {
@@ -280,13 +337,12 @@ contentRouter.post('/newcontent', keepingPhoto, asyncRoute(async (req, res) => {
   });
   if (content === undefined) return;
 
-  const data = await Content.create({
+  const data = await Content.create(Object.assign({
     user_id: req.user._id,
     tOption: recipe.tOption,
     tParams: recipe.tParams,
-    tStack: recipe.tStack,
-    content: content
-  });
+    tStack: recipe.tStack
+  }, await keptPhoto(content)));
   res.status(200).json(data);
 }));
 
@@ -320,6 +376,7 @@ contentRouter.get('/settings', (req, res) => {
     processing: s.processing,
     guests: s.guests,
     maxStoredPhotos: s.maxStoredPhotos,
+    keepMaxSide: s.keepMaxSide,
     maxPixels: imageCodec.MAX_PIXELS,
     guestMaxPixels: Math.min(GUEST_MAX_PIXELS, imageCodec.MAX_PIXELS)
   });
@@ -369,15 +426,14 @@ contentRouter.post('/import', keepingPhoto, asyncRoute(async (req, res) => {
     return res.status(e.status).json({ msg: e.message });
   }
   const made = new Date(req.body.createdAt);
-  const data = await Content.create({
+  const data = await Content.create(Object.assign({
     user_id: req.user._id,
     tOption: recipe.tOption,
     tParams: recipe.tParams,
     tStack: recipe.tStack,
-    content: content,
     // When it was made, if that's believable.
     createdAt: made.getTime() > 0 && made <= new Date() ? made : new Date()
-  });
+  }, await keptPhoto(content)));
   res.status(200).json(data);
 }));
 

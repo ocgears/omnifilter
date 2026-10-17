@@ -18,7 +18,14 @@
           [id]="'photo-' + photo._id"
           [class.latest]="photo._id === highlight()"
         >
-          <img [src]="photo.content" [alt]="label(photo)" loading="lazy" decoding="async" />
+          <img
+            [src]="photo.thumb ?? photo.content"
+            [alt]="label(photo)"
+            [attr.width]="photo.width"
+            [attr.height]="photo.height"
+            loading="lazy"
+            decoding="async"
+          />
           <div class="caption">
             <span class="label">{{ label(photo) }}</span>
             @if (photo.createdAt) {
@@ -31,9 +38,22 @@
               <button type="button" class="danger" (click)="confirmDelete(photo)">Delete</button>
               <button type="button" (click)="confirming.set(null)">Keep</button>
             } @else {
-              <a class="button" [href]="photo.content" [download]="fileName(photo)">Save</a>
+              <button
+                type="button"
+                (click)="save(photo)"
+                [disabled]="fetching() === photo._id"
+                [title]="photo.width ? 'Save the photo, ' + photo.width + '×' + photo.height : 'Save the photo'"
+              >
+                Save
+              </button>
               @if (canShare) {
-                <button type="button" (click)="share(photo)">Share</button>
+                <button
+                  type="button"
+                  (click)="share(photo)"
+                  [disabled]="fetching() === photo._id"
+                >
+                  Share
+                </button>
               }
               @if (photo.tOption || photo.tStack?.length) {
                 <button

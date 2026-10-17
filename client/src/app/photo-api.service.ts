@@ -5,12 +5,19 @@ import { API_BASE } from './api-base';
 import { AuthService } from './auth.service';
 import { Device, Filter, Photo, PresetList, ServerSettings, TransformRequest } from './models';
 
+// How many photos' files PhotoApi.file keeps, for Save and Share again.
+const FILES_KEPT = 3;
+
 // The photo and filter endpoints of the API (server/routes/content_routes.js).
 @Injectable({ providedIn: 'root' })
 export class PhotoApi {
   private readonly http = inject(HttpClient);
   private readonly apiBase = inject(API_BASE);
   private readonly auth = inject(AuthService);
+
+  // The last few photo files fetched (or just kept), newest last, and the
+  // file itself once it has arrived.
+  private readonly files = new Map<string, { file: Promise<Blob>; ready?: Blob }>();
 
   private authHeaders(): Record<string, string> {
     const token = this.auth.token();
@@ -61,7 +68,7 @@ export class PhotoApi {
   // account, with what it was made with.
   import(photo: Omit<Photo, '_id'>): Promise<Photo> {
     const body = {
-      content: photo.content,
+      content: photo.content ?? '',
       createdAt: photo.createdAt,
       ...(photo.tStack?.length
         ? {
@@ -77,6 +84,42 @@ export class PhotoApi {
     return firstValueFrom(
       this.http.post<Photo>(this.apiBase + '/import', body, { headers: this.authHeaders() }),
     );
+  }
+
+  // The photo itself, as a file: from the server (GET /content/:id), or for
+  // one kept in this browser, from its data URL. The last few are kept, so
+  // Save then Share fetches it once.
+  file(photo: Photo): Promise<Blob> {
+    const known = this.files.get(photo._id);
+    if (known) return known.file;
+    const fetched = photo.content
+      ? fetch(photo.content).then((res) => res.blob())
+      : firstValueFrom(
+          this.http.get(this.apiBase + '/content/' + encodeURIComponent(photo._id), {
+            headers: this.authHeaders(),
+            responseType: 'blob',
+          }),
+        );
+    this.remember(photo._id, fetched);
+    return fetched;
+  }
+
+  // The file of a photo that's already to hand, such as one just kept.
+  remember(id: string, file: Blob | Promise<Blob>): void {
+    const entry: { file: Promise<Blob>; ready?: Blob } = { file: Promise.resolve(file) };
+    entry.file.then(
+      (blob) => (entry.ready = blob),
+      () => this.files.get(id) === entry && this.files.delete(id),
+    );
+    this.files.delete(id);
+    this.files.set(id, entry);
+    while (this.files.size > FILES_KEPT) this.files.delete(this.files.keys().next().value!);
+  }
+
+  // A photo's file if it has already arrived, or null: Share has to call
+  // the browser straight from the tap, without waiting.
+  fileIfReady(photo: Photo): Blob | null {
+    return this.files.get(photo._id)?.ready ?? null;
   }
 
   delete(photo: Photo): Promise<{ msg: string }> {

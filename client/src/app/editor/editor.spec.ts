@@ -26,10 +26,18 @@ describe('Editor', () => {
     processing: 'server',
     guests: 'server',
     maxStoredPhotos: null,
+    keepMaxSide: null,
     maxPixels: 50e6,
     guestMaxPixels: 16e6,
   };
-  const CLOUD = { ...SETTINGS, mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5 };
+  const CLOUD = {
+    ...SETTINGS,
+    mode: 'cloud',
+    processing: 'device',
+    guests: 'device',
+    maxStoredPhotos: 5,
+    keepMaxSide: 2048,
+  };
 
   const saved: Photo = { _id: 'p1', content: 'data:image/png;base64,AA==', tOption: 'invert' };
 
@@ -56,6 +64,9 @@ describe('Editor', () => {
       settings: vi.fn().mockResolvedValue(SETTINGS),
       preview: vi.fn(),
       import: vi.fn(),
+      file: vi.fn(),
+      fileIfReady: vi.fn().mockReturnValue(null),
+      remember: vi.fn(),
     };
     guestPhotos = {
       list: vi.fn().mockResolvedValue([]),
@@ -549,6 +560,7 @@ describe('Editor', () => {
       const card = el.querySelector('of-result-card')!;
       expect(card.textContent).toContain('12.0 MP, made on Test GPU in 1.9 s (6.3 MP/s)');
       expect(card.textContent).toContain('Keep in gallery (2 of 5)');
+      expect(card.textContent).toContain('keeps a copy 2048 pixels on its longer side');
       expect(el.querySelector('#gallery-title')?.textContent).toContain('1 of 5 kept');
 
       await editor.keepMade();
@@ -558,6 +570,8 @@ describe('Editor', () => {
         tOption: 'invert',
       });
       expect(editor.photos().map((p) => p._id)).toEqual(['kept', 'p1']);
+      // Ready for the gallery's Save and Share.
+      expect(api.remember).toHaveBeenCalledWith('kept', made.file);
       expect(editor.made()).toBeNull();
       expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:made');
     });

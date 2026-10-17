@@ -1,6 +1,6 @@
 # Hosting the demo on Google Cloud Run
 
-The hosted demo runs in cloud mode (`OMNIFILTER_MODE=cloud`): visitors' photos are filtered on their own GPU, in the browser, and the server only signs people in and keeps up to 5 photos each. That makes the server small enough for Cloud Run's free allowance. Cloud Run runs a Docker image, starts it when a request comes in, and stops it when there's nothing to do (so it costs nothing while idle). It can't keep a database on its own disk, so MongoDB lives on MongoDB Atlas's free cluster.
+The hosted demo runs in cloud mode (`OMNIFILTER_MODE=cloud`): visitors' photos are filtered on their own GPU, in the browser, and the server only signs people in and keeps up to 5 photos each, as copies at most 2048 pixels on a side (about 1 MB each, so the free database holds a few hundred; Save on the result gives the full size). That makes the server small enough for Cloud Run's free allowance. Cloud Run runs a Docker image, starts it when a request comes in, and stops it when there's nothing to do (so it costs nothing while idle). It can't keep a database on its own disk, so MongoDB lives on MongoDB Atlas's free cluster.
 
 ```
 visitor's browser ──HTTPS──▶ Cloud Run (the API, serving the built client)

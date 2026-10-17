@@ -11,6 +11,9 @@
         {{ result().width }}×{{ result().height }}.
       </p>
     }
+    @if (keepNote(); as note) {
+      <p class="parts keep-note">{{ note }}</p>
+    }
     @if (shareError(); as message) {
       <p class="share-error" role="alert">{{ message }}</p>
     }

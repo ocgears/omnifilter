@@ -122,12 +122,17 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
   await expect(photos(page)).toHaveCount(1);
   const result = photos(page).first();
   await expect(result).toContainText('Invert');
+  // The gallery shows a thumbnail; Save fetches the photo itself.
   const src = await result.locator('img').getAttribute('src');
-  expect(src).toMatch(/^data:image\/jpeg;base64,/);
-  await expect(result.getByRole('link', { name: 'Save' })).toHaveAttribute('download', /\.jpg$/);
+  expect(src).toMatch(/^data:image\/webp;base64,/);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    result.getByRole('button', { name: 'Save' }).click()
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^omnifilter-invert-\w{6}\.jpg$/);
 
   // The left edge of the gradient is dark, so inverted it's light.
-  const image = sharp(Buffer.from(src.split(',')[1], 'base64'));
+  const image = sharp(await download.path());
   const { data } = await image.extract({ left: 0, top: 0, width: 4, height: 4 }).raw()
     .toBuffer({ resolveWithObject: true });
   expect(data[0]).toBeGreaterThan(200);

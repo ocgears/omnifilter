@@ -12,8 +12,31 @@ var contentSchema = new mongoose.Schema({
     amount: Number,
     blend: String
   }],
-  content: { type: mongoose.Schema.Types.Mixed, required: true },
+  // The photo (lib/image_codec.js toStored): its bytes and their type
+  // (image/jpeg, ...), its size, and a small copy for the gallery, as a WebP
+  // data URL. GET /content/:id sends the photo itself.
+  image: Buffer,
+  mime: String,
+  width: Number,
+  height: Number,
+  thumb: String,
+  // Photos kept before there were thumbnails: the photo as a data URL, which
+  // GET /getAll moves to the fields above.
+  content: mongoose.Schema.Types.Mixed,
   createdAt: { type: Date, default: Date.now }
+}, {
+  // Replies describe a photo; the photo itself only comes from /content/:id.
+  toJSON: {
+    transform: (doc, ret) => {
+      delete ret.image;
+      delete ret.content;
+      return ret;
+    }
+  }
+});
+
+contentSchema.pre('validate', function() {
+  if (!this.image && !this.content) this.invalidate('image', 'A photo is required');
 });
 
 // Each user's photos, newest first: the gallery's query, and the count

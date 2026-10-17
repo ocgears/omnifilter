@@ -53,6 +53,8 @@ export class ResultCard {
   readonly result = input.required<MadeOnDevice>();
   // "Keep in gallery (2 of 5)" and the like, and whether there's room.
   readonly keepText = input('Keep in gallery');
+  // About the copy Keep keeps, if it differs from this one.
+  readonly keepNote = input<string | null>(null);
   readonly canKeep = input(true);
   readonly keeping = input(false);
   readonly keep = output<void>();
