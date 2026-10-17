@@ -5,7 +5,8 @@
 // surviving a reload, deleting, and signing out.
 const { test, expect } = require('@playwright/test');
 const sharp = require('sharp');
-const { setUp, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu } = require('./helpers');
+const { setUp, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu, gradientJpeg } =
+  require('./helpers');
 
 setUp();
 
@@ -106,6 +107,35 @@ test('makes photos as a guest, then adds them to a new account', async ({ page }
   await expect(photos(page)).toHaveCount(1);
   await expect(photos(page).first()).toContainText('Invert');
   await expect(page.locator('.banner')).toHaveCount(0);
+});
+
+test('moves a photo kept in this browser by an older version to a file', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.banner.guest')).toBeVisible();
+  // As older versions kept them: the photo as a data URL.
+  const content = 'data:image/jpeg;base64,' + (await gradientJpeg(1200, 900)).toString('base64');
+  await page.evaluate((url) => new Promise((resolve, reject) => {
+    const req = indexedDB.open('omnifilter');
+    req.onsuccess = () => {
+      const tx = req.result.transaction('photos', 'readwrite');
+      tx.objectStore('photos').put({ _id: 'local-legacy', content: url, tOption: 'invert',
+        createdAt: '2026-10-01T00:00:00.000Z' }, 'local-legacy');
+      tx.oncomplete = () => { req.result.close(); resolve(); };
+      tx.onerror = () => reject(tx.error);
+    };
+  }), content);
+  await page.reload();
+  await expect(photos(page)).toHaveCount(1);
+  await expect(photos(page).first().locator('img')).toHaveAttribute('src', /^data:image\/(webp|jpeg);base64,/);
+  const stored = await page.evaluate(() => new Promise((resolve) => {
+    const req = indexedDB.open('omnifilter');
+    req.onsuccess = () => {
+      const get = req.result.transaction('photos').objectStore('photos').get('local-legacy');
+      get.onsuccess = () => resolve({ file: get.result.file instanceof Blob, content: 'content' in get.result &&
+        get.result.content !== undefined, type: get.result.file && get.result.file.type });
+    };
+  }));
+  expect(stored).toEqual({ file: true, content: false, type: 'image/jpeg' });
 });
 
 test('filters a photo on the device and shows the result', async ({ page }) => {

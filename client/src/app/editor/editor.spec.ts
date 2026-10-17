@@ -577,10 +577,9 @@ describe('Editor', () => {
 
       await editor.keepMade();
       expect(api.import).toHaveBeenCalledTimes(1);
-      expect(api.import.mock.calls[0][0]).toMatchObject({
-        content: 'data:image/jpeg;base64,anBlZw==',
-        tOption: 'invert',
-      });
+      // The file itself goes to the server.
+      expect(api.import.mock.calls[0][0]).toMatchObject({ tOption: 'invert' });
+      expect(api.import.mock.calls[0][1]).toBe(made.file);
       expect(editor.photos().map((p) => p._id)).toEqual(['kept', 'p1']);
       // Ready for the gallery's Save and Share.
       expect(api.remember).toHaveBeenCalledWith('kept', made.file);
@@ -610,7 +609,12 @@ describe('Editor', () => {
       await editor.transform();
       expect(editor.keepText()).toBe('Keep in this browser (1 of 5)');
       await editor.keepMade();
-      expect(guestPhotos.add).toHaveBeenCalled();
+      expect(guestPhotos.add.mock.calls[0][0]).toMatchObject({
+        file: made.file,
+        mime: 'image/jpeg',
+        width: 4000,
+        tOption: 'invert',
+      });
       expect(api.import).not.toHaveBeenCalled();
       expect(editor.photos()[0]._id).toBe('local-1');
     });

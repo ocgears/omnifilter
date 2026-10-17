@@ -93,9 +93,11 @@ export interface Layer {
 // A saved photo, from GET /getAll or POST /newcontent: what it was made
 // with, its size and type, and a thumbnail; the photo itself comes from GET
 // /content/:id (PhotoApi.file). A photo kept in this browser (as a guest)
-// has the photo itself in `content`, as a data URL, instead.
+// has the photo itself in `file` instead (older ones: in `content`, as a
+// data URL).
 export interface Photo {
   _id: string;
+  file?: Blob;
   content?: string;
   thumb?: string;
   mime?: string;

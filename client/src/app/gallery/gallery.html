@@ -19,7 +19,7 @@
           [class.latest]="photo._id === highlight()"
         >
           <img
-            [src]="photo.thumb ?? photo.content"
+            [src]="imageOf(photo)"
             [alt]="label(photo)"
             [attr.width]="photo.width"
             [attr.height]="photo.height"

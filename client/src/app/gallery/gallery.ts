@@ -1,5 +1,14 @@
 import { DatePipe } from '@angular/common';
-import { Component, ElementRef, effect, inject, input, output, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { errorMessage } from '../auth.service';
 import { Filter, Photo } from '../models';
 import { PhotoApi } from '../photo-api.service';
@@ -39,8 +48,13 @@ export class Gallery {
 
   // The photo last scrolled to, so other changes (a delete) don't scroll.
   private scrolledTo: string | null = null;
+  // Object URLs for photos kept in this browser without a thumbnail.
+  private readonly fileUrls = new Map<Blob, string>();
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      for (const url of this.fileUrls.values()) URL.revokeObjectURL(url);
+    });
     effect(() => {
       const id = this.highlight();
       if (!id || id === this.scrolledTo || !this.photos().some((p) => p._id === id)) return;
@@ -54,6 +68,18 @@ export class Gallery {
         card?.scrollIntoView?.({ behavior: still ? 'auto' : 'smooth', block: 'center' });
       });
     });
+  }
+
+  // What the card shows: the thumbnail, or for a photo kept in this browser
+  // without one, the photo itself.
+  imageOf(photo: Photo): string {
+    if (photo.thumb) return photo.thumb;
+    if (photo.file) {
+      let url = this.fileUrls.get(photo.file);
+      if (!url) this.fileUrls.set(photo.file, (url = URL.createObjectURL(photo.file)));
+      return url;
+    }
+    return photo.content ?? '';
   }
 
   label(photo: Photo): string {

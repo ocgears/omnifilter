@@ -194,16 +194,17 @@ function readRecipe(body) {
   };
 }
 
-// Applies the recipe's filters to the photo in req.body.content, waiting its
-// turn in `queue` under `key`. Resolves with the new data URL, or with
-// undefined once it has sent an error reply (or the client has gone).
-// A recipe with no filters checks the photo and returns it as it is.
+// Applies the recipe's filters to the photo in req.photo (see readUpload),
+// waiting its turn in `queue` under `key`. Resolves with the new photo, as
+// { bytes, mime }, or with undefined once it has sent an error reply (or the
+// client has gone). A recipe with no filters checks the photo and returns
+// it as it is.
 async function transformPhoto(req, res, recipe, options) {
-  const content = req.body.content;
+  const photo = req.photo;
   if (!recipe.layers) {
     // Saved as is, so check it the same way as a photo to transform.
     try {
-      return await imageCodec.validateDataUrl(content);
+      return await imageCodec.validatePhoto(photo);
     } catch (e) {
       if (!e.status) throw e;
       res.status(e.status).json({ msg: e.message });
@@ -229,7 +230,7 @@ async function transformPhoto(req, res, recipe, options) {
     result = await options.queue.run(options.key, async () => {
       var image;
       try {
-        image = await imageCodec.decodeDataUrl(content, { maxPixels: options.maxPixels });
+        image = await imageCodec.decode(photo, { maxPixels: options.maxPixels });
       } catch (e) {
         if (!e.status) console.log('Error in decoding the image: ', e);
         return { status: 400, msg: 'Could not read the image' + (e.status ? ': ' + e.message : '') };
@@ -253,7 +254,7 @@ async function transformPhoto(req, res, recipe, options) {
       }
 
       try {
-        return { content: await imageCodec.encodeDataUrl(image) };
+        return { photo: await imageCodec.encode(image) };
       } catch (e) {
         if (e.status) return { status: e.status, msg: e.message };
         console.log('Error in encoding the image: ', e);
@@ -271,7 +272,7 @@ async function transformPhoto(req, res, recipe, options) {
     res.status(result.status).json({ msg: result.msg });
     return undefined;
   }
-  return result.content;
+  return result.photo;
 }
 
 // Replies 403 and returns false when this server doesn't run filters for
@@ -301,45 +302,80 @@ const roomForAnother = async (req, res, next) => {
   });
 };
 
-// What comes before a photo to keep is read: who it's for, its turn, and room.
-const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, photoParser];
+// A photo comes either as the image file itself (Content-Type image/...,
+// which the page sends), with what it was made with as JSON in an
+// Omnifilter-Recipe header ({ tOption, params } or { stack }, and for
+// /import createdAt), or as JSON with the photo as a data URL in `content`
+// and the rest alongside. The file takes a quarter less to send, and the
+// server holds one copy of it rather than three.
+const photoFile = express.raw({ type: 'image/*', limit: 16000000 });
+const RECIPE_HEADER = 'Omnifilter-Recipe';
 
-// A checked photo (a data URL) as it's kept, scaled down to the server's
-// OMNIFILTER_KEEP_MAX_SIDE if there is one.
-function keptPhoto(content) {
-  return imageCodec.toStored(content, { maxSide: settings.read().keepMaxSide });
+// Middleware, after the body parsers: the photo's bytes go in req.photo,
+// and req.body is the recipe.
+function readUpload(req, res, next) {
+  if (Buffer.isBuffer(req.body)) {
+    var recipe = {};
+    const header = req.get(RECIPE_HEADER);
+    if (header) {
+      try {
+        recipe = header.length <= 8192 ? JSON.parse(header) : null;
+      } catch (e) {
+        recipe = null;
+      }
+      if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) {
+        return res.status(400).json({ msg: RECIPE_HEADER + ' must be a JSON object of at most 8 kB' });
+      }
+    }
+    req.photo = req.body;
+    req.body = recipe;
+  } else {
+    const content = req.body.content;
+    if (typeof content !== 'string' || !content.length) {
+      return res.status(400).json({ msg: 'No image content was sent' });
+    }
+    try {
+      req.photo = imageCodec.bytesOf(content);
+    } catch (e) {
+      return res.status(e.status || 400).json({ msg: e.message });
+    }
+    // The long string can go now.
+    req.body.content = undefined;
+  }
+  if (!req.photo.length) return res.status(400).json({ msg: 'No image content was sent' });
+  next();
 }
 
-function checkContent(req, res) {
-  const content = req.body.content;
-  if (typeof content !== 'string' || !content.length) {
-    res.status(400).json({ msg: 'No image content was sent' });
-    return false;
-  }
-  return true;
+// What comes before a photo to keep is used: who it's for, its turn, room,
+// and the photo itself.
+const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, photoParser, photoFile, readUpload];
+
+// A checked photo ({ bytes, mime }) as it's kept, scaled down to the
+// server's OMNIFILTER_KEEP_MAX_SIDE if there is one.
+function keptPhoto(photo) {
+  return imageCodec.stored(photo, { maxSide: settings.read().keepMaxSide });
 }
 
 // Saves a photo, after applying either one filter ({ tOption, params }) or a
 // stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }). With
 // neither, the photo is saved as it is.
 contentRouter.post('/newcontent', keepingPhoto, async (req, res) => {
-  if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
   if (recipe.layers && !serverMayFilter(res, false)) return;
 
-  const content = await transformPhoto(req, res, recipe, {
+  const photo = await transformPhoto(req, res, recipe, {
     queue: transforms,
     key: String(req.user._id)
   });
-  if (content === undefined) return;
+  if (photo === undefined) return;
 
   const data = await Content.create(Object.assign({
     user_id: req.user._id,
     tOption: recipe.tOption,
     tParams: recipe.tParams,
     tStack: recipe.tStack
-  }, await keptPhoto(content)));
+  }, await keptPhoto(photo)));
   res.status(200).json(data);
 });
 
@@ -383,24 +419,23 @@ contentRouter.get('/settings', (req, res) => {
 // photo and what was applied, in the shape of a saved photo without an _id.
 contentRouter.post('/transform', (req, res, next) => {
   if (serverMayFilter(res, true)) next();
-}, guestLimiter, photoParser, async (req, res) => {
-  if (!checkContent(req, res)) return;
+}, guestLimiter, photoParser, photoFile, readUpload, async (req, res) => {
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
   if (!recipe.layers) return res.status(400).json({ msg: 'Choose a filter to apply' });
 
-  const content = await transformPhoto(req, res, recipe, {
+  const photo = await transformPhoto(req, res, recipe, {
     queue: guestTransforms,
     key: 'guest:' + rateLimit.clientKey(req.ip),
     maxPixels: GUEST_MAX_PIXELS,
     guest: true
   });
-  if (content === undefined) return;
+  if (photo === undefined) return;
   res.status(200).json({
     tOption: recipe.tOption,
     tParams: recipe.tParams,
     tStack: recipe.tStack,
-    content: content,
+    content: 'data:' + photo.mime + ';base64,' + photo.bytes.toString('base64'),
     createdAt: new Date()
   });
 });
@@ -411,13 +446,12 @@ contentRouter.post('/transform', (req, res, next) => {
 // saved without a filter is; the filters are only a description, so they're
 // checked to be real but not applied.
 contentRouter.post('/import', keepingPhoto, async (req, res) => {
-  if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
 
-  var content;
+  var photo;
   try {
-    content = await imageCodec.validateDataUrl(req.body.content);
+    photo = await imageCodec.validatePhoto(req.photo);
   } catch (e) {
     if (!e.status) throw e;
     return res.status(e.status).json({ msg: e.message });
@@ -430,7 +464,7 @@ contentRouter.post('/import', keepingPhoto, async (req, res) => {
     tStack: recipe.tStack,
     // When it was made, if that's believable.
     createdAt: made.getTime() > 0 && made <= new Date() ? made : new Date()
-  }, await keptPhoto(content)));
+  }, await keptPhoto(photo)));
   res.status(200).json(data);
 });
 

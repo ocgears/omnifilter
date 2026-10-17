@@ -64,15 +64,25 @@ function readError(err, maxPixels) {
 // Whether a string looks like an image data URL (without decoding it).
 exports.isImageDataUrl = (value) => typeof value === 'string' && DATA_URL.test(value);
 
-// Reads just the header: checks the format and size limits (maxPixels, or
-// MAX_PIXELS). Resolves with { sharp, meta, bytes }.
-function inspect(dataUrl, maxPixels) {
-  const limit = Math.min(maxPixels || MAX_PIXELS, MAX_PIXELS);
+// A data URL's bytes, or an Error with a status for the client.
+function bytesOf(dataUrl) {
   const match = typeof dataUrl === 'string' && DATA_URL.exec(dataUrl);
-  if (!match) {
-    return Promise.reject(codecError(400, 'Expected a base64 image data URL'));
-  }
-  const bytes = Buffer.from(dataUrl.slice(match[0].length), 'base64');
+  if (!match) throw codecError(400, 'Expected a base64 image data URL');
+  return Buffer.from(dataUrl.slice(match[0].length), 'base64');
+}
+exports.bytesOf = bytesOf;
+
+const toDataUrl = (photo) => 'data:' + photo.mime + ';base64,' + photo.bytes.toString('base64');
+
+// The most bytes of photo that are saved: what a data URL of
+// MAX_DATA_URL_LENGTH holds (MongoDB documents can be at most 16 MiB).
+const maxBytes = () => Math.floor(exports.MAX_DATA_URL_LENGTH / 4) * 3;
+
+// Reads just the header of a photo's bytes: checks the format and size
+// limits (maxPixels, or MAX_PIXELS). Resolves with { sharp, meta, bytes }.
+function inspect(bytes, maxPixels) {
+  const limit = Math.min(maxPixels || MAX_PIXELS, MAX_PIXELS);
+  if (!Buffer.isBuffer(bytes) || !bytes.length) return Promise.reject(codecError(400, 'No image was sent'));
   var image;
   try {
     image = sharp(bytes, { limitInputPixels: limit });
@@ -96,32 +106,37 @@ function inspect(dataUrl, maxPixels) {
 
 // Checks a photo that is to be saved as it was sent: an allowed format,
 // within the size limits, one a browser can show, and small enough to store.
-// Resolves with the data URL, its type corrected to what the bytes really
-// are.
-exports.validateDataUrl = function(dataUrl) {
-  return inspect(dataUrl).then((found) => {
+// Resolves with { bytes, mime }, the type being what the bytes really are.
+exports.validatePhoto = function(bytes) {
+  return inspect(bytes).then((found) => {
     const meta = found.meta;
     const avif = meta.format === 'heif' && meta.compression === 'av1';
     const mime = avif ? 'image/avif' : BROWSER_FORMATS[meta.format];
     if (!mime) {
       throw codecError(400, 'Photos saved without a filter must be JPEG, PNG, WebP, GIF or AVIF');
     }
-    const out = 'data:' + mime + ';base64,' + found.bytes.toString('base64');
-    if (out.length > exports.MAX_DATA_URL_LENGTH) {
-      throw codecError(413, 'The photo is too large to save');
-    }
-    return out;
+    if (bytes.length > maxBytes()) throw codecError(413, 'The photo is too large to save');
+    return { bytes: bytes, mime: mime };
   });
+};
+
+// The same for a data URL; resolves with the data URL, its type corrected.
+exports.validateDataUrl = function(dataUrl) {
+  try {
+    return exports.validatePhoto(bytesOf(dataUrl)).then(toDataUrl);
+  } catch (e) {
+    return Promise.reject(e);
+  }
 };
 
 // Resolves with { mime, width, height, data } where data is width * height * 4
 // bytes of RGBA. mime is the format the result should be saved in: JPEGs stay
 // JPEGs, and anything else (PNG, WebP, GIF, ...) becomes a PNG so transparency
-// survives. Rejects if the data URL isn't an allowed image sharp can decode,
-// or has more than options.maxPixels pixels (at most MAX_PIXELS).
-exports.decodeDataUrl = function(dataUrl, options) {
+// survives. Rejects if the bytes aren't an allowed image sharp can decode,
+// or have more than options.maxPixels pixels (at most MAX_PIXELS).
+exports.decode = function(bytes, options) {
   const maxPixels = options && options.maxPixels;
-  return inspect(dataUrl, maxPixels).then((found) => found.sharp
+  return inspect(bytes, maxPixels).then((found) => found.sharp
     .rotate() // apply the EXIF orientation, so phone photos stay upright
     .ensureAlpha()
     .raw()
@@ -136,6 +151,14 @@ exports.decodeDataUrl = function(dataUrl, options) {
     }));
 };
 
+exports.decodeDataUrl = function(dataUrl, options) {
+  try {
+    return exports.decode(bytesOf(dataUrl), options);
+  } catch (e) {
+    return Promise.reject(e);
+  }
+};
+
 const ENCODERS = {
   'image/jpeg': (pipeline, quality) => pipeline.jpeg({ quality: quality || JPEG_QUALITY }),
   'image/png': (pipeline) => pipeline.png(),
@@ -146,18 +169,18 @@ function encodeAs(image, mime, quality) {
   const pipeline = sharp(image.data, {
     raw: { width: image.width, height: image.height, channels: 4 }
   });
-  return ENCODERS[mime](pipeline, quality).toBuffer()
-    .then((bytes) => 'data:' + mime + ';base64,' + bytes.toString('base64'));
+  return ENCODERS[mime](pipeline, quality).toBuffer().then((bytes) => ({ bytes: bytes, mime: mime }));
 }
 
-// Inverse of decodeDataUrl. If the result would be too big to save (a PNG of
-// a large photo can be ten times the size of the WebP it came from), falls
-// back to lossy encodings: JPEG if the image is fully opaque, else WebP, which
-// keeps the transparency. Rejects with a 413 if even those are too big.
-exports.encodeDataUrl = function(image) {
-  const limit = exports.MAX_DATA_URL_LENGTH;
+// Inverse of decode(): resolves with { bytes, mime }. If the result would be
+// too big to save (a PNG of a large photo can be ten times the size of the
+// WebP it came from), falls back to lossy encodings: JPEG if the image is
+// fully opaque, else WebP, which keeps the transparency. Rejects with a 413
+// if even those are too big.
+exports.encode = function(image) {
+  const limit = maxBytes();
   return encodeAs(image, image.mime).then((first) => {
-    if (first.length <= limit) return first;
+    if (first.bytes.length <= limit) return first;
     return sharp(image.data, { raw: { width: image.width, height: image.height, channels: 4 } })
       .stats()
       .then((stats) => {
@@ -172,29 +195,29 @@ exports.encodeDataUrl = function(image) {
           if (fallbacks[i][0] === image.mime && fallbacks[i][1] === JPEG_QUALITY) return next(i + 1);
           // (WebP can't encode images more than 16383 pixels wide or tall.)
           return encodeAs(image, fallbacks[i][0], fallbacks[i][1])
-            .then((url) => (url.length <= limit ? url : next(i + 1)), () => next(i + 1));
+            .then((out) => (out.bytes.length <= limit ? out : next(i + 1)), () => next(i + 1));
         };
         return next(0);
       });
   });
 };
 
+exports.encodeDataUrl = (image) => exports.encode(image).then(toDataUrl);
+
 // The gallery's copy of a photo: this many pixels on its longer side (sharp
 // on a 2x screen at the gallery's widest cards), as a WebP.
 const THUMB_SIDE = 640;
 exports.THUMB_SIDE = THUMB_SIDE;
 
-// A photo as it's kept (models/content.js), from a data URL validateDataUrl
-// or encodeDataUrl made: { image, mime, width, height, thumb }, with its
-// bytes, their type, its size as shown (EXIF orientation applied) and a
-// thumbnail as a WebP data URL. With options.maxSide, a photo longer than
-// that on either side is kept scaled down to it: a JPEG, or a WebP if it has
-// transparency.
-exports.toStored = function(dataUrl, options) {
+// A photo as it's kept (models/content.js), from bytes and their type as
+// validatePhoto or encode give them: { image, mime, width, height, thumb },
+// with its bytes, their type, its size as shown (EXIF orientation applied)
+// and a thumbnail as a WebP data URL. With options.maxSide, a photo longer
+// than that on either side is kept scaled down to it: a JPEG, or a WebP if
+// it has transparency.
+exports.stored = function(photo, options) {
   const maxSide = options && options.maxSide;
-  const match = typeof dataUrl === 'string' && DATA_URL.exec(dataUrl);
-  if (!match) return Promise.reject(codecError(400, 'Expected a base64 image data URL'));
-  const original = Buffer.from(dataUrl.slice(match[0].length), 'base64');
+  const original = photo.bytes;
   const read = (bytes) => sharp(bytes, { limitInputPixels: MAX_PIXELS });
   return read(original).metadata().then((meta) => {
     // Orientations 5 to 8 turn the photo on its side.
@@ -202,7 +225,7 @@ exports.toStored = function(dataUrl, options) {
     const width = sideways ? meta.height : meta.width;
     const height = sideways ? meta.width : meta.height;
     if (!maxSide || Math.max(width, height) <= maxSide) {
-      return { image: original, mime: match[1], width: width, height: height };
+      return { image: original, mime: photo.mime, width: width, height: height };
     }
     const smaller = read(original).rotate().resize({ width: maxSide, height: maxSide, fit: 'inside' });
     const encoded = meta.hasAlpha ?
@@ -221,4 +244,11 @@ exports.toStored = function(dataUrl, options) {
     .catch((err) => {
       throw readError(err);
     });
+};
+
+// The same from a data URL.
+exports.toStored = function(dataUrl, options) {
+  const match = typeof dataUrl === 'string' && DATA_URL.exec(dataUrl);
+  if (!match) return Promise.reject(codecError(400, 'Expected a base64 image data URL'));
+  return exports.stored({ bytes: bytesOf(dataUrl), mime: match[1] }, options);
 };

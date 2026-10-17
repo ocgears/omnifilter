@@ -10,8 +10,12 @@ const EXTENSIONS: Record<string, string> = {
 };
 
 // A file name for saving a photo, like omnifilter-sepia-vignette-1a2b3c.jpg.
-export function downloadName(label: string, photo: Photo): string {
-  const type = photo.mime ?? /^data:([^;,]+)/.exec(photo.content ?? '')?.[1] ?? '';
+export function downloadName(
+  label: string,
+  photo: Pick<Photo, '_id' | 'mime' | 'file' | 'content'>,
+): string {
+  const type =
+    photo.mime ?? photo.file?.type ?? /^data:([^;,]+)/.exec(photo.content ?? '')?.[1] ?? '';
   const slug = label
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')

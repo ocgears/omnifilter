@@ -82,10 +82,10 @@ export function transformRequest(content: string, layers: readonly Layer[]): Tra
 }
 
 // A photo made from a request's filters (as the server describes the photos
-// it makes), for a photo made on this device: what POST /import takes.
-export function madePhoto(body: TransformRequest, content: string): Omit<Photo, '_id'> {
+// it makes), for a photo made on this device: what POST /import takes, with
+// the photo's file.
+export function madePhoto(body: TransformRequest): Omit<Photo, '_id'> {
   return {
-    content,
     tOption: body.tOption ?? '',
     tParams: body.params,
     tStack: (body.stack ?? []).map((layer) => ({
