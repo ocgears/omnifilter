@@ -3,13 +3,20 @@ import { LivePreview } from './live-preview';
 import { stackLayers } from './preview-engine';
 
 describe('LivePreview', () => {
+  // Until the preview has asked for the GPU engine (its code loads on
+  // demand) and been told there's none.
+  async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
+    for (let n = 0; n < 5; n++) {
+      await new Promise((resolve) => setTimeout(resolve));
+      await fixture.whenStable();
+    }
+  }
+
   it('shows the photo as it is, and says why, where there is no WebGPU', async () => {
     const fixture = TestBed.createComponent(LivePreview);
     fixture.componentRef.setInput('source', 'data:image/png;base64,AA==');
     fixture.componentRef.setInput('layers', []);
-    await fixture.whenStable();
-    await new Promise((resolve) => setTimeout(resolve));
-    await fixture.whenStable();
+    await settle(fixture);
     const el: HTMLElement = fixture.nativeElement;
     expect(fixture.componentInstance.mode()).toBe('static');
     expect(el.querySelector('#preview')?.hasAttribute('hidden')).toBe(false);
@@ -22,7 +29,7 @@ describe('LivePreview', () => {
     const fixture = TestBed.createComponent(LivePreview);
     fixture.componentRef.setInput('source', 'data:image/png;base64,AA==');
     fixture.componentRef.setInput('layers', []);
-    await fixture.whenStable();
+    await settle(fixture);
     const preview = fixture.componentInstance;
     const clearCache = vi.fn();
     (preview as unknown as { renderer: unknown }).renderer = { clearCache, destroy: () => {} };

@@ -14,7 +14,8 @@ import { Router, RouterLink } from '@angular/router';
 import { Alerts } from '../alerts/alerts';
 import { AuthService, errorMessage as serverMessage } from '../auth.service';
 import { BrowserStorageError } from '../browser-db';
-import { Gallery, downloadName } from '../gallery/gallery';
+import { Gallery } from '../gallery/gallery';
+import { downloadName } from '../photo-names';
 import { GuestPhotos, LOCAL_ID, isLocal } from '../guest-photos';
 import {
   Device,
@@ -26,15 +27,24 @@ import {
   Preset,
   ServerSettings,
 } from '../models';
-import { MadeOnDevice, ResultCard } from '../result-card/result-card';
-import { PhotoApi } from '../photo-api.service';
-import { LiveCamera, cameraSupported } from './live-camera';
+import type { MadeOnDevice } from '../result-card/result-card';
+import { ResultCard } from '../result-card/result-card';
+import { PhotoApi, photoFile } from '../photo-api.service';
+import { cameraSupported } from './camera-support';
+import { LiveCamera } from './live-camera';
 import { LivePreview } from './live-preview';
-import { PhotoFileError, fitForKeeping, fitPhoto, imageFrom, readPhoto } from './photo-file';
+import {
+  MAX_FILE_BYTES,
+  PhotoFileError,
+  fitForKeeping,
+  fitPhoto,
+  imageFrom,
+  readPhoto,
+} from './photo-file';
 import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { EditHistory, StackState } from './history';
-import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
+import { PreviewEngine, previewPhoto, smallerPhoto, stackLayers } from './preview-engine';
 import {
   filterLabel,
   findFilter,
@@ -53,9 +63,8 @@ import { ImageDataCanvas, renderThumbnails } from './thumbnails';
 // How long after an edit the draft is saved.
 const DRAFT_SAVE_MS = 300;
 
-// The longest photo (as a data URL) the server takes to keep: POST /import
-// takes bodies up to 16 MB, with room for the settings.
-const MAX_KEPT_DATA_URL = 15_900_000;
+// How many saved photos the gallery loads at a time.
+const PHOTOS_PAGE = 24;
 
 // The sample photo: the Apollo 17 crew's view of Earth (NASA's
 // AS17-148-22727, from images.nasa.gov, credited to NASA as its media
@@ -116,16 +125,18 @@ export class Editor {
   readonly deviceSupported = DeviceTransform.supported();
   // How many photos may be kept, or null for any number.
   readonly storageLimit = computed(() => this.settings()?.maxStoredPhotos ?? null);
+  // How many photos are kept: those shown, and the server's not loaded yet.
+  readonly photoCount = computed(() => this.photos().length + this.unloaded());
   readonly roomToKeep = computed(() => {
     const limit = this.storageLimit();
-    return !limit || this.photos().length < limit;
+    return !limit || this.photoCount() < limit;
   });
   readonly keepText = computed(() => {
     const limit = this.storageLimit();
     const where = this.signedIn() ? 'Keep in gallery' : 'Keep in this browser';
     if (!limit) return where;
     if (!this.roomToKeep()) return 'Gallery full (' + limit + ' of ' + limit + ')';
-    return where + ' (' + (this.photos().length + 1) + ' of ' + limit + ')';
+    return where + ' (' + (this.photoCount() + 1) + ' of ' + limit + ')';
   });
   // A photo just made on this device, until it's kept or discarded.
   readonly made = signal<MadeOnDevice | null>(null);
@@ -178,6 +189,10 @@ export class Editor {
   readonly cameraOn = signal(false);
 
   readonly photos = signal<Photo[]>([]);
+  // How many of the server's photos aren't loaded yet (they come a page at
+  // a time), and whether the next page is on its way.
+  readonly unloaded = signal(0);
+  readonly loadingMore = signal(false);
   // The photo just made, to point it out.
   readonly latestId = signal<string | null>(null);
 
@@ -236,7 +251,8 @@ export class Editor {
     try {
       const engine = await this.previewEngine.get();
       if (!engine || run !== this.thumbnailRun) return;
-      const photo = await decodePhoto(source, THUMB_SIZE);
+      // From the copy the live preview decodes, not the photo again.
+      const photo = await smallerPhoto(await previewPhoto(source), THUMB_SIZE);
       if (run !== this.thumbnailRun) return;
       const stacks = [{ key: '', layers: [] as ReturnType<typeof stackLayers> }].concat(
         presets
@@ -308,9 +324,30 @@ export class Editor {
     }
     this.waitingPhotos.set(local);
     try {
-      this.photos.set(await this.api.all());
+      const page = await this.api.all(PHOTOS_PAGE);
+      this.photos.set(page.photos);
+      this.unloaded.set(Math.max(0, page.total - page.photos.length));
     } catch (err) {
       this.addError(errorMessage(err, 'Could not load your photos.'));
+    }
+  }
+
+  // The next page of the server's photos, after the last one shown.
+  async loadMorePhotos(): Promise<void> {
+    const last = this.photos()
+      .filter((p) => !isLocal(p))
+      .at(-1);
+    if (!last || this.loadingMore()) return;
+    this.loadingMore.set(true);
+    try {
+      const page = await this.api.all(PHOTOS_PAGE, last);
+      const shown = new Set(this.photos().map((p) => p._id));
+      this.photos.update((list) => [...list, ...page.photos.filter((p) => !shown.has(p._id))]);
+      this.unloaded.set(Math.max(0, page.total - this.photos().filter((p) => !isLocal(p)).length));
+    } catch (err) {
+      this.addError(errorMessage(err, 'Could not load more of your photos.'));
+    } finally {
+      this.loadingMore.set(false);
     }
   }
 
@@ -345,10 +382,7 @@ export class Editor {
             this.addError(this.fullMessage());
             break;
           }
-          const saved = await this.api.import({
-            ...photo,
-            content: await this.keepable(photo.content ?? ''),
-          });
+          const saved = await this.api.import(photo, await this.keepable(photo));
           await this.guestStore.remove(photo);
           this.waitingPhotos.update((list) => list.filter((p) => p !== photo));
           this.photos.update((list) =>
@@ -757,7 +791,9 @@ export class Editor {
         if (max) body.content = await fitPhoto(body.content, max);
         const made = await this.api.preview(body);
         try {
-          photo = await this.guestStore.add(made);
+          // Kept as a file (guest-photos.ts).
+          const file = await (await fetch(made.content!)).blob();
+          photo = await this.guestStore.add({ ...made, content: undefined, file, mime: file.type });
         } catch (err) {
           if (!(err instanceof BrowserStorageError)) throw err;
           // Shown anyway, to save, until the page is left.
@@ -790,16 +826,13 @@ export class Editor {
         stackLayers(layers),
         this.blendModeNames(),
       );
-      const photo = madePhoto(transformRequest('', layers), '');
+      const photo = madePhoto(transformRequest('', layers));
       const label = photoLabel(this.filters(), { ...photo, _id: '' });
       this.made.set({
         ...result,
         url: URL.createObjectURL(result.file),
         label,
-        fileName: downloadName(label, {
-          _id: Date.now().toString(36),
-          content: 'data:' + result.file.type + ',',
-        }),
+        fileName: downloadName(label, { _id: Date.now().toString(36), mime: result.file.type }),
       });
       this.madeLayers = layers;
     } catch (err) {
@@ -850,13 +883,20 @@ export class Editor {
       const file = signedIn
         ? await fitForKeeping(made.file, this.settings()?.keepMaxSide ?? null)
         : made.file;
-      const content = await blobToDataUrl(file);
-      if (signedIn && content.length > MAX_KEPT_DATA_URL) {
+      if (signedIn && file.size > MAX_FILE_BYTES) {
         this.addError('This photo is too large to keep on the server. Save it instead.');
         return;
       }
-      const photo = madePhoto(transformRequest('', this.madeLayers), content);
-      const kept = signedIn ? await this.api.import(photo) : await this.guestStore.add(photo);
+      const photo = madePhoto(transformRequest('', this.madeLayers));
+      const kept = signedIn
+        ? await this.api.import(photo, file)
+        : await this.guestStore.add({
+            ...photo,
+            file,
+            mime: file.type,
+            width: made.width,
+            height: made.height,
+          });
       // The gallery's Save and Share need not fetch it again.
       if (signedIn) this.api.remember(kept._id, file);
       this.photos.update((photos) => [kept, ...photos]);
@@ -869,14 +909,11 @@ export class Editor {
     }
   }
 
-  // A photo (a data URL) as this server keeps it: scaled down in the
-  // browser if the server would anyway, so less goes over the network.
-  private async keepable(content: string): Promise<string> {
-    const side = this.settings()?.keepMaxSide;
-    if (!side || !content) return content;
-    const file = await (await fetch(content)).blob();
-    const fitted = await fitForKeeping(file, side);
-    return fitted === file ? content : blobToDataUrl(fitted);
+  // A photo kept in this browser, as a file the way this server keeps it:
+  // scaled down here if the server would anyway, so less goes over the
+  // network.
+  private async keepable(photo: Photo): Promise<Blob> {
+    return fitForKeeping(await photoFile(photo), this.settings()?.keepMaxSide ?? null);
   }
 
   discardMade(): void {
@@ -905,13 +942,4 @@ export class Editor {
 // when it couldn't keep a photo, or the fallback.
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof BrowserStorageError ? err.message : serverMessage(err, fallback);
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 }

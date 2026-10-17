@@ -23,11 +23,12 @@
     "@angular/build": "^22.2.2",
     "@angular/cli": "^22.2.2",
     "@angular/compiler-cli": "^22.2.0",
+    "@vitest/coverage-v8": "^5.0.3",
     "@webgpu/types": "^0.1.74",
     "jsdom": "^30.0.0",
     "prettier": "^3.8.1",
     "typescript": "~6.0.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.3"
   },
   "description": "The OmniFilter web client (Angular). Build it from the repository root with npm run build.",
   "engines": {

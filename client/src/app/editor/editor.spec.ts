@@ -62,7 +62,7 @@ describe('Editor', () => {
         ]),
       presets: vi.fn().mockResolvedValue(PRESETS),
       device: vi.fn().mockResolvedValue({ name: 'Test GPU', type: 'gpu', platform: 'Test' }),
-      all: vi.fn().mockResolvedValue([saved]),
+      all: vi.fn().mockResolvedValue({ photos: [saved], total: 1 }),
       transform: vi.fn(),
       delete: vi.fn(),
       settings: vi.fn().mockResolvedValue(SETTINGS),
@@ -109,6 +109,24 @@ describe('Editor', () => {
       g.getAttribute('label'),
     );
     expect(options).toEqual(['Blur', 'Colour']);
+  });
+
+  it('loads the gallery a page at a time', async () => {
+    const page = (from: number, n: number) =>
+      Array.from({ length: n }, (_, i) => ({ ...saved, _id: 'p' + (from + i) }));
+    api.all.mockResolvedValueOnce({ photos: page(0, 24), total: 30 });
+    await create();
+    expect(api.all).toHaveBeenCalledWith(24);
+    expect(el.querySelectorAll('.photo-card').length).toBe(24);
+    expect(el.querySelector('#gallery-title')?.textContent).toContain('30');
+    const more = el.querySelector<HTMLButtonElement>('.more button')!;
+    expect(more.textContent).toContain('Show more (6 more)');
+    api.all.mockResolvedValueOnce({ photos: page(24, 6), total: 30 });
+    more.click();
+    await fixture.whenStable();
+    expect(api.all.mock.calls[1]).toEqual([24, expect.objectContaining({ _id: 'p23' })]);
+    expect(el.querySelectorAll('.photo-card').length).toBe(30);
+    expect(el.querySelector('.more')).toBeNull();
   });
 
   it("shows an error when the photos can't be loaded", async () => {
@@ -564,7 +582,11 @@ describe('Editor', () => {
       expect(device.run.mock.calls[0][1]).toEqual([
         { tOption: 'invert', params: {}, amount: 100, blend: 'normal' },
       ]);
-      fixture.detectChanges();
+      // The card's code loads when it's first shown.
+      for (let n = 0; n < 5 && !el.querySelector('of-result-card'); n++) {
+        await new Promise((resolve) => setTimeout(resolve));
+        await fixture.whenStable();
+      }
       const card = el.querySelector('of-result-card')!;
       expect(card.textContent).toContain('12.0 MP, made on Test GPU in 1.9 s (6.3 MP/s)');
       expect(card.textContent).toContain('Keep in gallery (2 of 5)');
@@ -573,10 +595,9 @@ describe('Editor', () => {
 
       await editor.keepMade();
       expect(api.import).toHaveBeenCalledTimes(1);
-      expect(api.import.mock.calls[0][0]).toMatchObject({
-        content: 'data:image/jpeg;base64,anBlZw==',
-        tOption: 'invert',
-      });
+      // The file itself goes to the server.
+      expect(api.import.mock.calls[0][0]).toMatchObject({ tOption: 'invert' });
+      expect(api.import.mock.calls[0][1]).toBe(made.file);
       expect(editor.photos().map((p) => p._id)).toEqual(['kept', 'p1']);
       // Ready for the gallery's Save and Share.
       expect(api.remember).toHaveBeenCalledWith('kept', made.file);
@@ -585,7 +606,10 @@ describe('Editor', () => {
     });
 
     it('keeps no more than the server allows', async () => {
-      api.all.mockResolvedValue([1, 2, 3, 4, 5].map((n) => ({ ...saved, _id: 'p' + n })));
+      api.all.mockResolvedValue({
+        photos: [1, 2, 3, 4, 5].map((n) => ({ ...saved, _id: 'p' + n })),
+        total: 5,
+      });
       device.run.mockResolvedValue(made);
       await create();
       editor.source.set('data:image/png;base64,BB==');
@@ -606,7 +630,12 @@ describe('Editor', () => {
       await editor.transform();
       expect(editor.keepText()).toBe('Keep in this browser (1 of 5)');
       await editor.keepMade();
-      expect(guestPhotos.add).toHaveBeenCalled();
+      expect(guestPhotos.add.mock.calls[0][0]).toMatchObject({
+        file: made.file,
+        mime: 'image/jpeg',
+        width: 4000,
+        tOption: 'invert',
+      });
       expect(api.import).not.toHaveBeenCalled();
       expect(editor.photos()[0]._id).toBe('local-1');
     });

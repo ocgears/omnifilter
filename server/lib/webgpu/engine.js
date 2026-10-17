@@ -167,31 +167,69 @@ class GpuEngine {
     return k;
   }
 
-  pipeline(name) {
-    var p = this.pipelines.get(name);
-    if (!p) {
-      const k = this.kernel(name);
-      const entries = k.bindings.map((b, i) => ({
-        binding: i,
-        visibility: COMPUTE_STAGE,
-        buffer: { type: isWritable(b.kind) ? 'storage' : 'read-only-storage' }
-      }));
-      entries.push({
-        binding: k.bindings.length,
-        visibility: COMPUTE_STAGE,
-        buffer: { type: 'uniform' }
-      });
-      const layout = this.device.createBindGroupLayout({ entries: entries });
-      const module = this.device.createShaderModule({ code: k.source, label: name });
-      const pipeline = this.device.createComputePipeline({
+  // What a kernel's pipeline is made from: its bind group layout and the
+  // pipeline's description.
+  pipelineSpec(name) {
+    const k = this.kernel(name);
+    const entries = k.bindings.map((b, i) => ({
+      binding: i,
+      visibility: COMPUTE_STAGE,
+      buffer: { type: isWritable(b.kind) ? 'storage' : 'read-only-storage' }
+    }));
+    entries.push({
+      binding: k.bindings.length,
+      visibility: COMPUTE_STAGE,
+      buffer: { type: 'uniform' }
+    });
+    const layout = this.device.createBindGroupLayout({ entries: entries });
+    const module = this.device.createShaderModule({ code: k.source, label: name });
+    return {
+      layout: layout,
+      descriptor: {
         label: name,
         layout: this.device.createPipelineLayout({ bindGroupLayouts: [layout] }),
         compute: { module: module, entryPoint: 'main' }
-      });
-      p = { pipeline: pipeline, layout: layout };
+      }
+    };
+  }
+
+  pipeline(name) {
+    var p = this.pipelines.get(name);
+    if (!p) {
+      const spec = this.pipelineSpec(name);
+      p = { pipeline: this.device.createComputePipeline(spec.descriptor), layout: spec.layout };
       this.pipelines.set(name, p);
     }
     return p;
+  }
+
+  // Compiles kernels' pipelines in the background (createComputePipeline-
+  // Async), so the first use of a filter doesn't stall the page while the
+  // GPU's compiler works; run() then finds them ready. Resolves once they
+  // are. Kernels this engine doesn't have are left for run() to report.
+  preparePipelines(names) {
+    if (!this.compiling) this.compiling = new Map();
+    const device = this.device;
+    return Promise.all(Array.from(new Set(names)).map((name) => {
+      if (this.pipelines.has(name) || !GpuEngine.hasKernel(name)) return null;
+      if (!this.compiling.has(name)) {
+        const spec = this.pipelineSpec(name);
+        const made = typeof device.createComputePipelineAsync === 'function' ?
+          device.createComputePipelineAsync(spec.descriptor) :
+          Promise.resolve(device.createComputePipeline(spec.descriptor));
+        this.compiling.set(name, made.then((pipeline) => {
+          if (!this.pipelines.has(name)) this.pipelines.set(name, { pipeline: pipeline, layout: spec.layout });
+        }, () => {
+          // run() compiles it again, and reports what's wrong.
+        }).finally(() => this.compiling.delete(name)));
+      }
+      return this.compiling.get(name);
+    })).then(() => undefined);
+  }
+
+  // Whether every one of these kernels' pipelines is ready.
+  hasPipelines(names) {
+    return names.every((name) => this.pipelines.has(name) || !GpuEngine.hasKernel(name));
   }
 
   // Compiles kernels ahead of time (they compile on first use otherwise),

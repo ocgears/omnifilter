@@ -126,7 +126,7 @@ echo "GCP_DEPLOY_SA:    $DEPLOY"
 
 ### 6. Tell GitHub where to deploy
 
-In https://github.com/ocgears/omnifilter → **Settings → Environments → New environment** named `production`. Under **Deployment branches and tags**, allow only `master`. Then add these **environment variables** (they name things; none of them is a secret):
+In https://github.com/ocgears/omnifilter → **Settings → Secrets and variables → Actions → Variables → New repository variable**, add these four (they name things; none of them is a secret):
 
 | Variable | Value |
 |---|---|
@@ -135,7 +135,9 @@ In https://github.com/ocgears/omnifilter → **Settings → Environments → New
 | `GCP_WIF_PROVIDER` | printed by the last commands above |
 | `GCP_DEPLOY_SA` | printed by the last commands above |
 
-Optionally, two **environment secrets**, `SMOKE_EMAIL` and `SMOKE_PASSWORD`: an email address and a long password for an account the smoke test signs in with (it makes the account the first time). Without them the smoke test skips signing in.
+Then **Settings → Environments → New environment** named `production`: under **Deployment branches and tags**, allow only `master`, and tick **Required reviewers** with yourself. A deploy waits for that approval once, after its checks have passed, before visitors see it.
+
+Optionally, the smoke test can sign in: in **Settings → Environments**, the `smoke` environment (made by the first deploy, or make it now; no reviewers), add two **environment secrets**, `SMOKE_EMAIL` and `SMOKE_PASSWORD`: an email address and a long password for an account kept for this (the test makes it the first time). Without them it skips signing in.
 
 ## Part 2: the first deploy
 
@@ -153,20 +155,23 @@ The `run.app` address works as it is. For a domain such as `omnifilter.example.c
 
 ## How a deploy works
 
-**The image**, `docker/cloud-run.Dockerfile` (177 MB compressed):
+**The image**, `docker/cloud-run.Dockerfile` (about 100 MB compressed):
 - the client is built with `OMNIFILTER_API=/`, so the page calls the API at its own address. (The root `Dockerfile`'s client calls port 3000 of the page's host, which is right for `docker compose` but not on Cloud Run, where everything is on one HTTPS address.)
 - no OpenCL, no native addon and no neural style models: in cloud mode the server doesn't filter, and doesn't try to set up a device (`/device` answers `null`).
 - `OMNIFILTER_MODE=cloud`, `NODE_ENV=production`, and port 8080, which Cloud Run expects.
-- quick to start, since the first visitor after an idle spell waits for it: Node's compile cache is filled when the image is built, sharp loads only when a photo is read or written, and Cloud Run's startup CPU boost is on. `/health` gives a server that has just started a few seconds to connect to the database, and a server that can't reach the database keeps trying (every 5 s, doubling up to a minute) rather than giving up.
+- quick to start, since the first visitor after an idle spell waits for it: no ONNX Runtime (the neural style filters' 180 MB, which cloud mode doesn't run), Node's compile cache filled when the image is built (as the user the server runs as: Node keeps one per user), sharp loads only when a photo is read or written, and Cloud Run's startup CPU boost is on. `/health` gives a server that has just started a few seconds to connect to the database, and a server that can't reach the database keeps trying (every 5 s, doubling up to a minute) rather than giving up.
+- logs that read well in Cloud Logging: every line is a JSON entry with a severity (a stack trace is one entry, errors show as errors), and what's logged while a request is handled carries the request's trace, so it shows under Cloud Run's own line for that request (`GOOGLE_CLOUD_PROJECT`, set by the deploy, names the project for that).
 - CI's `cloud-run` job builds it on every push, runs it beside a MongoDB, and runs the smoke test against it.
 
-**`.github/workflows/deploy.yml`**, after the test workflow passes on master, or on demand from master, in the `production` environment, in three jobs:
+**`.github/workflows/deploy.yml`**, after the test workflow passes on master, or on demand from master, in three jobs:
 1. **candidate**: stops if another commit has reached master since this one (that commit's deploy follows, so an older commit can't go live over a newer one); signs in to Google Cloud through Workload Identity Federation (`google-github-actions/auth`); builds the image and pushes it to Artifact Registry, tagged with the commit; deploys it as a revision tagged `candidate`, with no visitors: one instance at most, none when idle, 1 CPU and 512 MiB, billed only while answering requests, with the two secrets and `TRUST_PROXY=1`.
 2. **check**: runs the smoke test and Lighthouse against the candidate's own address (`https://candidate---omnifilter-....run.app`). This job can't sign in to Google Cloud, so the test tools it downloads never hold the deploy account's credentials.
-3. **promote**: if the checks passed and the commit is still master's newest, sends all visitors to it. Otherwise it removes the `candidate` address, so a failed revision isn't left reachable, and the revision serving before carries on.
+3. **promote**, if the checks passed, in the `production` environment, so it waits for its reviewer's approval: if the commit is still master's newest, sends all visitors to it.
+
+If the checks fail, **withdraw** removes the `candidate` address without waiting for anyone, so a failed revision isn't left reachable, and the revision serving before carries on.
 
 **The smoke test**, `e2e/smoke/deployed.smoke.js` (`SMOKE_URL=<address> npx playwright test -c e2e/smoke` runs it from anywhere):
-- `GET /health`: the database is connected, and the server sees the test at the runner's own public address, not at an address made up in an `X-Forwarded-For` header (that checks `TRUST_PROXY`, which the per-address limits on sign-ins rely on);
+- `GET /health` (the first request to a new revision, so its time, noted on the run, is a cold start's): the database is connected, and the server sees the test at the runner's own public address, not at an address made up in an `X-Forwarded-For` header (that checks `TRUST_PROXY`, which the per-address limits on sign-ins rely on);
 - `GET /settings` says cloud mode with 5 photos each, and `/device` is `null`;
 - the page has the API address meta tag, and its scripts come compressed and cacheable for a year;
 - as a guest, the sample photo is filtered at full size in the browser (CI's Chromium has WebGPU through SwiftShader) and the result card says 12.0 MP, with no errors on the page;

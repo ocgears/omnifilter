@@ -34,7 +34,11 @@ const plainIp = (ip) => String(ip).replace(/^::ffff:/, '');
 test('is healthy, and sees callers at their own addresses', async ({ request }) => {
   // A made-up X-Forwarded-For must not be believed: the per-address limits
   // on sign-ins and transforms would be easy to dodge.
+  // The deploy's first request to a new revision starts an instance: how
+  // long visitors wait after an idle spell.
+  const start = Date.now();
   const res = await request.get('/health', { headers: { 'X-Forwarded-For': '203.0.113.7' } });
+  notice('notice', 'First answer', ((Date.now() - start) / 1000).toFixed(1) + ' s (a cold start, for a new revision)');
   expect(res.status()).toBe(200);
   const health = await res.json();
   expect(health).toMatchObject({ ok: true, database: true });

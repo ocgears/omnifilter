@@ -1,5 +1,5 @@
 import { Directive, ElementRef, effect, inject, input } from '@angular/core';
-import { GpuEngine, StackLayer, StackRenderer } from '../../gpu';
+import type { GpuEngine, StackLayer } from '../../gpu';
 import { PreviewPhoto } from './preview-engine';
 
 // Small previews of whole stacks (the preset looks) on the user's photo,
@@ -17,9 +17,13 @@ export async function renderThumbnails(
   stale: () => boolean = () => false,
 ): Promise<Map<string, ImageData>> {
   const out = new Map<string, ImageData>();
+  // Loaded already, with the engine.
+  const { StackRenderer } = await import('../../gpu');
   const renderer = new StackRenderer(engine, blendModes, MAX_WORKING_SIDE);
   try {
     renderer.setSource(photo.rgba, photo.width, photo.height, photo.fullWidth, photo.fullHeight);
+    // Every look's kernels, compiled in the background first.
+    await engine.preparePipelines(stacks.flatMap((stack) => renderer.kernelsFor(stack.layers)));
     for (const { key, layers } of stacks) {
       if (stale()) break;
       const result = renderer.render(layers);

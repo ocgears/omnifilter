@@ -16,12 +16,6 @@ import { PreviewEngine, stackLayers } from './preview-engine';
 // The longer side frames are filtered at.
 const FRAME_SIZE = 960;
 
-// Whether this browser can open a camera at all (it needs a secure page:
-// HTTPS, or localhost).
-export function cameraSupported(): boolean {
-  return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
-}
-
 // The camera, with the filter stack applied to every frame on this device's
 // GPU. The shutter takes the frame as it comes from the camera, so the
 // server can then filter it at full size.
@@ -170,6 +164,9 @@ export class LiveCamera implements OnDestroy {
       renderer.setBlendModes(this.blendModes());
       renderer.setSourceImage(this.frame);
       const layers = stackLayers(this.layers());
+      // A filter used for the first time is compiled in the background.
+      const kernels = renderer.kernelsFor(layers);
+      if (!engine.hasPipelines(kernels)) await engine.preparePipelines(kernels);
       let result = renderer.render(layers);
       if ('unsupported' in result) {
         this.stoppedAt.set(

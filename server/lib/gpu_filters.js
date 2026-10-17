@@ -48,9 +48,9 @@ for (const def of definitions) {
 }
 const filters = Array.from(registry.values());
 
-var device = null;       // the chosen device's description, once initialised
-var skipped = [];        // devices tried first that failed, as 'name: reason'
-var initFailure = null;  // { message, at } after every device failed
+var device = null; // the chosen device's description, once initialised
+var skipped = []; // devices tried first that failed, as 'name: reason'
+var initFailure = null; // { message, at } after every device failed
 
 // An Error for a filter or plan this device can't run (or can't fit), which
 // is the request's fault rather than the server's: status 400.
@@ -195,7 +195,7 @@ function runOnDevice(rgba, width, height, plan) {
     }
     throw e;
   });
-  gpuQueue = run.catch(() => {});  // a failed run mustn't block the ones after it
+  gpuQueue = run.catch(() => {}); // a failed run mustn't block the ones after it
   return run;
 }
 

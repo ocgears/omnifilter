@@ -11,12 +11,7 @@ import {
 } from '@angular/core';
 import { GpuEngine, StackRenderer } from '../../gpu';
 import { Layer } from '../models';
-import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
-
-// The longer side of the copy the preview filters: about what a phone or
-// laptop screen shows, so filters run in milliseconds. The server always
-// filters the full photo.
-export const PREVIEW_SIZE = 1024;
+import { PreviewEngine, previewPhoto, stackLayers } from './preview-engine';
 
 type Mode = 'starting' | 'live' | 'static';
 
@@ -123,7 +118,7 @@ export class LivePreview implements OnDestroy {
       this.engine = engine;
       this.software.set(engine.adapterInfo.fallback);
       this.failed.set(false);
-      const photo = await decodePhoto(src, PREVIEW_SIZE);
+      const photo = await previewPhoto(src);
       if (token !== this.loading || this.destroyed) return;
       if (!this.renderer) this.renderer = new StackRenderer(engine, this.blendModes());
       this.renderer.setSource(
@@ -172,6 +167,14 @@ export class LivePreview implements OnDestroy {
       // The blend modes can arrive after the photo.
       renderer.setBlendModes(this.blendModes());
       const layers = stackLayers(this.layers());
+      // A filter used for the first time is compiled first, in the
+      // background, rather than stalling the page while the GPU's compiler
+      // works.
+      const kernels = renderer.kernelsFor(layers);
+      if (!engine.hasPipelines(kernels)) {
+        await engine.preparePipelines(kernels);
+        if (this.destroyed || renderer !== this.renderer) return;
+      }
       let result = renderer.render(layers);
       if ('unsupported' in result) {
         this.stoppedAt.set({ layer: result.unsupported + 1, reason: result.reason });

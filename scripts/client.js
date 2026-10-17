@@ -2,7 +2,7 @@
 // Builds or tests the Angular client (client/).
 //
 //   node scripts/client.js build [--production]   (npm run build / build:prod)
-//   node scripts/client.js test                   (npm run test:client)
+//   node scripts/client.js test [--coverage]      (npm run test:client)
 //
 // The build goes into dist/, which the API server and clientserver.js serve:
 // a development build with source maps, or with --production (or
@@ -57,7 +57,10 @@ if (process.platform === 'darwin' && parseInt(os.release(), 10) < 23) {
 }
 
 if (command === 'test') {
-  run(npm, ['exec', '--', 'ng', 'test', '--watch=false'], env);
+  // With --coverage, client/coverage/omnifilter/coverage-summary.json too.
+  const coverage = process.argv.includes('--coverage') ?
+    ['--coverage', '--coverage-reporters=json-summary', '--coverage-reporters=text-summary'] : [];
+  run(npm, ['exec', '--', 'ng', 'test', '--watch=false'].concat(coverage), env);
   process.exit(0);
 }
 if (command !== 'build') {

@@ -34,7 +34,8 @@ module.exports = [
       'no-empty-character-class': 2,
       'no-ex-assign': 2,
       'no-extra-boolean-cast': 2,
-      '@stylistic/no-extra-parens': 1,
+      // Parentheses that make an expression easier to read are welcome.
+      '@stylistic/no-extra-parens': 0,
       '@stylistic/no-extra-semi': 2,
       'no-func-assign': 2,
       'no-inner-declarations': 2,
@@ -99,7 +100,8 @@ module.exports = [
       'no-shadow-restricted-names': 2,
       'no-undef': 2,
       'no-undef-init': 2,
-      'no-undefined': 1,
+      // undefined is how some functions say "no answer" (see content_routes.js).
+      'no-undefined': 0,
       // As ESLint 8 had it: an unused caught error is fine.
       'no-unused-vars': [2, { caughtErrors: 'none' }],
       'no-use-before-define': 0,
@@ -107,7 +109,8 @@ module.exports = [
       'no-mixed-requires': 2,
       'no-new-require': 2,
       '@stylistic/brace-style': [2, '1tbs', { allowSingleLine: true }],
-      'camelcase': 1,
+      // Property names include filter names and others from outside (oil_paint).
+      'camelcase': [1, { properties: 'never', ignoreDestructuring: true }],
       '@stylistic/comma-spacing': [2, { before: false, after: true }],
       '@stylistic/comma-style': [2, 'last'],
       'consistent-this': 0,
@@ -119,7 +122,8 @@ module.exports = [
       'new-cap': [0, { capIsNewExceptions: ['Router'] }],
       '@stylistic/new-parens': 2,
       'no-array-constructor': 2,
-      'no-inline-comments': 1,
+      // A few words at the end of a line are fine.
+      'no-inline-comments': 0,
       'no-lonely-if': 1,
       '@stylistic/no-mixed-spaces-and-tabs': 2,
       '@stylistic/no-multiple-empty-lines': [1, { max: 2 }],
@@ -145,12 +149,16 @@ module.exports = [
       '@stylistic/space-infix-ops': 2,
       '@stylistic/space-unary-ops': [1, { words: true, nonwords: false }],
       '@stylistic/spaced-comment': [2, 'always', { exceptions: ['-'] }],
-      '@stylistic/wrap-regex': 1,
+      '@stylistic/wrap-regex': 0,
       'max-depth': 0,
-      '@stylistic/max-len': [1, 100, 2],
+      // Not counting strings and templates (messages, WGSL kernels), which read
+      // better whole.
+      '@stylistic/max-len': [1, { code: 120, tabWidth: 2, ignoreStrings: true, ignoreTemplateLiterals: true,
+        ignoreRegExpLiterals: true, ignoreUrls: true }],
       'max-params': 0,
       'max-statements': 0,
-      'no-bitwise': 1,
+      // Pixels are packed into words, and GPU flags are bits.
+      'no-bitwise': 0,
       'no-plusplus': 0,
       '@stylistic/arrow-spacing': 2,
       'constructor-super': 2,

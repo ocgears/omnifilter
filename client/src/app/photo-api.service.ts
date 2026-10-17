@@ -36,18 +36,26 @@ export class PhotoApi {
     return firstValueFrom(this.http.get<Device>(this.apiBase + '/device'));
   }
 
-  // The user's saved photos, newest first.
-  all(): Promise<Photo[]> {
-    return firstValueFrom(
-      this.http.get<Photo[]>(this.apiBase + '/getAll', { headers: this.authHeaders() }),
+  // A page of the user's saved photos, newest first: at most `limit`, the
+  // ones after `before`; and how many there are in all.
+  async all(limit: number, before?: Photo): Promise<{ photos: Photo[]; total: number }> {
+    const res = await firstValueFrom(
+      this.http.get<Photo[]>(this.apiBase + '/getAll', {
+        headers: this.authHeaders(),
+        params: before ? { limit, before: before._id } : { limit },
+        observe: 'response',
+      }),
     );
+    const photos = res.body ?? [];
+    const total = Number(res.headers.get('Omnifilter-Total'));
+    return { photos, total: Number.isFinite(total) && total > 0 ? total : photos.length };
   }
 
-  // Runs the filters on the server and saves the result.
-  transform(body: TransformRequest): Promise<Photo> {
-    return firstValueFrom(
-      this.http.post<Photo>(this.apiBase + '/newcontent', body, { headers: this.authHeaders() }),
-    );
+  // Runs the filters on the server and saves the result. The photo goes as
+  // a file (see sendPhoto).
+  async transform(body: TransformRequest): Promise<Photo> {
+    const { content, ...recipe } = body;
+    return this.sendPhoto('/newcontent', await (await fetch(content)).blob(), recipe);
   }
 
   // How the server is set up: where filters run, for whom, and how many
@@ -63,10 +71,9 @@ export class PhotoApi {
   }
 
   // Saves a photo made elsewhere (as a guest, or on this device's GPU) to the
-  // account, with what it was made with.
-  import(photo: Omit<Photo, '_id'>): Promise<Photo> {
-    const body = {
-      content: photo.content ?? '',
+  // account, with what it was made with: `file`, or the photo's own.
+  async import(photo: Omit<Photo, '_id'>, file?: Blob): Promise<Photo> {
+    const recipe = {
       createdAt: photo.createdAt,
       ...(photo.tStack?.length
         ? {
@@ -79,25 +86,43 @@ export class PhotoApi {
           }
         : { tOption: photo.tOption ?? '', params: photo.tParams }),
     };
+    return this.sendPhoto('/import', file ?? (await photoFile(photo)), recipe);
+  }
+
+  // Sends a photo as the file itself, and what it was made with as JSON in
+  // a header (server/routes/content_routes.js): a quarter less to upload
+  // than a data URL, and the server holds one copy of it rather than three.
+  private sendPhoto(path: string, file: Blob, recipe: object): Promise<Photo> {
     return firstValueFrom(
-      this.http.post<Photo>(this.apiBase + '/import', body, { headers: this.authHeaders() }),
+      this.http.post<Photo>(this.apiBase + path, file, {
+        headers: {
+          ...this.authHeaders(),
+          'Content-Type': file.type.startsWith('image/') ? file.type : 'image/unknown',
+          // Headers carry only ASCII, which this is once escaped.
+          'Omnifilter-Recipe': JSON.stringify(recipe).replace(
+            /[\u007f-\uffff]/g,
+            (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'),
+          ),
+        },
+      }),
     );
   }
 
   // The photo itself, as a file: from the server (GET /content/:id), or for
-  // one kept in this browser, from its data URL. The last few are kept, so
-  // Save then Share fetches it once.
+  // one kept in this browser, its own. The last few are kept, so Save then
+  // Share fetches it once.
   file(photo: Photo): Promise<Blob> {
     const known = this.files.get(photo._id);
     if (known) return known.file;
-    const fetched = photo.content
-      ? fetch(photo.content).then((res) => res.blob())
-      : firstValueFrom(
-          this.http.get(this.apiBase + '/content/' + encodeURIComponent(photo._id), {
-            headers: this.authHeaders(),
-            responseType: 'blob',
-          }),
-        );
+    const fetched =
+      photo.file || photo.content
+        ? photoFile(photo)
+        : firstValueFrom(
+            this.http.get(this.apiBase + '/content/' + encodeURIComponent(photo._id), {
+              headers: this.authHeaders(),
+              responseType: 'blob',
+            }),
+          );
     this.remember(photo._id, fetched);
     return fetched;
   }
@@ -127,4 +152,11 @@ export class PhotoApi {
       }),
     );
   }
+}
+
+// A photo kept in this browser as a file: its own, or one from its data URL.
+export async function photoFile(photo: Pick<Photo, 'file' | 'content'>): Promise<Blob> {
+  if (photo.file) return photo.file;
+  if (!photo.content) throw new Error('The photo is not in this browser');
+  return (await fetch(photo.content)).blob();
 }

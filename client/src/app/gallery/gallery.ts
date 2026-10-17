@@ -1,35 +1,19 @@
 import { DatePipe } from '@angular/common';
-import { Component, ElementRef, effect, inject, input, output, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { errorMessage } from '../auth.service';
 import { Filter, Photo } from '../models';
 import { PhotoApi } from '../photo-api.service';
 import { photoLabel } from '../editor/stack';
-
-const EXTENSIONS: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/avif': 'avif',
-  'image/tiff': 'tif',
-};
-
-// A file name for saving a photo, like omnifilter-sepia-vignette-1a2b3c.jpg.
-export function downloadName(label: string, photo: Photo): string {
-  const type = photo.mime ?? /^data:([^;,]+)/.exec(photo.content ?? '')?.[1] ?? '';
-  const slug = label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-  return (
-    'omnifilter-' +
-    (slug || 'photo') +
-    '-' +
-    photo._id.slice(-6) +
-    '.' +
-    (EXTENSIONS[type] ?? 'img')
-  );
-}
+import { downloadName } from '../photo-names';
 
 // The user's saved photos, newest first, to save, share or delete. The
 // cards show thumbnails; Save and Share fetch the photo itself.
@@ -49,6 +33,11 @@ export class Gallery {
   readonly highlight = input<string | null>(null);
   // How many photos may be kept, when there's a limit (the hosted demo).
   readonly limit = input<number | null>(null);
+  // How many there are in all, when more than are shown (they're loaded a
+  // page at a time), and whether the next page is on its way.
+  readonly total = input<number | null>(null);
+  readonly loadingMore = input(false);
+  readonly more = output<void>();
   readonly remove = output<Photo>();
   // Use the stack a photo was made with again.
   readonly reuse = output<Photo>();
@@ -64,8 +53,13 @@ export class Gallery {
 
   // The photo last scrolled to, so other changes (a delete) don't scroll.
   private scrolledTo: string | null = null;
+  // Object URLs for photos kept in this browser without a thumbnail.
+  private readonly fileUrls = new Map<Blob, string>();
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      for (const url of this.fileUrls.values()) URL.revokeObjectURL(url);
+    });
     effect(() => {
       const id = this.highlight();
       if (!id || id === this.scrolledTo || !this.photos().some((p) => p._id === id)) return;
@@ -79,6 +73,18 @@ export class Gallery {
         card?.scrollIntoView?.({ behavior: still ? 'auto' : 'smooth', block: 'center' });
       });
     });
+  }
+
+  // What the card shows: the thumbnail, or for a photo kept in this browser
+  // without one, the photo itself.
+  imageOf(photo: Photo): string {
+    if (photo.thumb) return photo.thumb;
+    if (photo.file) {
+      let url = this.fileUrls.get(photo.file);
+      if (!url) this.fileUrls.set(photo.file, (url = URL.createObjectURL(photo.file)));
+      return url;
+    }
+    return photo.content ?? '';
   }
 
   label(photo: Photo): string {

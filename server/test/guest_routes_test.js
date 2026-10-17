@@ -125,6 +125,33 @@ describe('guest mode', () => {
         .then((res) => expect(res.body.map((p) => p.createdAt)).to.include(made));
     });
 
+    it('takes the photo as a file, with what it was made with in a header', async () => {
+      const bytes = Buffer.from(photo.split(',')[1], 'base64');
+      const made = '2026-10-02T08:30:00.000Z';
+      const res = await request.execute(baseUri).post('/import').set({ token: userToken })
+        .set('Content-Type', 'image/jpeg')
+        .set('Omnifilter-Recipe', JSON.stringify({ stack: [{ tOption: 'sepia', amount: 60 }], createdAt: made }))
+        .send(bytes);
+      expect(res).to.have.status(200);
+      expect(res.body.tStack.map((l) => [l.tOption, l.amount])).to.eql([['sepia', 60]]);
+      expect(res.body.createdAt).to.eql(made);
+      expect(await keptPhoto(baseUri, userToken, res.body._id)).to.eql(photo);
+    });
+
+    it('refuses a file with a recipe that isn\'t JSON, or no file at all', async () => {
+      const bytes = Buffer.from(photo.split(',')[1], 'base64');
+      const bad = await request.execute(baseUri).post('/import').set({ token: userToken })
+        .set('Content-Type', 'image/jpeg').set('Omnifilter-Recipe', '{nope').send(bytes);
+      expect(bad).to.have.status(400);
+      expect(bad.body.msg).to.match(/Omnifilter-Recipe must be a JSON object/);
+      const empty = await request.execute(baseUri).post('/import').set({ token: userToken })
+        .set('Content-Type', 'image/jpeg').send(Buffer.alloc(0));
+      expect(empty).to.have.status(400);
+      const fake = await request.execute(baseUri).post('/import').set({ token: userToken })
+        .set('Content-Type', 'image/png').send(Buffer.from('not an image'));
+      expect(fake).to.have.status(400);
+    });
+
     it('refuses made-up filters, and a date in the future', () => {
       const future = new Date(Date.now() + 864e5).toISOString();
       return request.execute(baseUri).post('/import').set({ token: userToken })

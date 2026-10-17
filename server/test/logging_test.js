@@ -24,3 +24,25 @@ describe('logging on Cloud Run (lib/cloud_logging.js)', () => {
     ]);
   });
 });
+
+describe('logging under a request (lib/cloud_logging.js)', () => {
+  it('marks what a request logs with its trace, and nothing else', (done) => {
+    const lines = [];
+    const log = logging.writer('INFO', { write: (line) => lines.push(JSON.parse(line)) });
+    const middleware = logging.middleware('my-project');
+    const req = { get: () => '0123456789ABCDEF0123456789abcdef/42;o=1' };
+    middleware(req, {}, () => {
+      setTimeout(() => {
+        log('during the request');
+        expect(lines[0]['logging.googleapis.com/trace'])
+          .to.equal('projects/my-project/traces/0123456789abcdef0123456789abcdef');
+        log('still during it');
+        expect(lines).to.have.length(2);
+        done();
+      });
+    });
+    log('outside any request');
+    expect(lines[0]).to.not.have.property('logging.googleapis.com/trace');
+    lines.length = 0;
+  });
+});

@@ -337,6 +337,16 @@ describe('POST /newcontent with a transformation', function() {
     });
   });
 
+  it('filters a photo sent as a file', async () => {
+    const res = await request.execute(baseUri).post('/newcontent').set({ token: userToken })
+      .set('Content-Type', 'image/jpeg').set('Omnifilter-Recipe', JSON.stringify({ tOption: 'invert' }))
+      .send(Buffer.from(jpegUrl.split(',')[1], 'base64'));
+    expect(res).to.have.status(200);
+    expect(res.body.tOption).to.eql('invert');
+    const result = await imageCodec.decodeDataUrl(await keptPhoto(baseUri, userToken, res.body._id));
+    expect(ref.compare(result.data, original).max).to.be.above(20);
+  });
+
   it('uses and stores the parameters, clamped to their ranges', (done) => {
     request.execute(baseUri)
       .post('/newcontent')

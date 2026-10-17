@@ -4,7 +4,7 @@
 // kept only when asked, up to 5 for each account. Browsers without WebGPU
 // (the iphone project's WebKit) are told what they need instead.
 const { test, expect } = require('@playwright/test');
-const { setUp, choosePhoto, photos, hasWebGpu } = require('./helpers');
+const { setUp, choosePhoto, photos, hasWebGpu, expectAccessible } = require('./helpers');
 
 const CLOUD_PORT = Number(process.env.E2E_CLOUD_PORT) || 3931;
 test.use({ baseURL: 'http://localhost:' + CLOUD_PORT });
@@ -49,6 +49,7 @@ test('filters a guest\'s photo at full size on this device, and keeps it when as
   await expect(card(page)).toBeVisible({ timeout: 60000 });
   await expect(card(page).getByRole('status')).toContainText(/^3\.8 MP, made on .+ in [\d.]+ s \([\d.]+ MP\/s\)$/);
   await expect(card(page)).toContainText(/decode [\d.]+ s · to the GPU .* · encode [\d.]+ s/);
+  await expectAccessible(page, 'with the result card');
   // The live preview carries on after the job.
   await expect(page.locator('of-live-preview .status')).toContainText('Live preview');
   await expect(page.locator('of-live-preview .status')).not.toContainText('paused');

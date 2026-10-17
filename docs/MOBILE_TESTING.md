@@ -38,4 +38,10 @@ Both were found in October 2026. Neither has a documented cause that I could fin
   - the WebKit bug tracker's WebDriver component, for related bugs (for example [218232](https://bugs.webkit.org/show_bug.cgi?id=218232), touch actions returning "not implemented" in Safari 14)
 - **Real phone GPUs and timings** aren't available on GitHub's runners at all. A device cloud (BrowserStack, Sauce Labs) runs Playwright on real iPhones and Android phones, if that's ever wanted.
 
+What was tried on 17 October 2026, in one nightly run each (commit `c3530ab`, reverted):
+- **iOS:** touches aimed at an element itself (WebDriver's `origin: element`, so Safari places the touch rather than our arithmetic) land off just the same: one aimed at the "Neon night" look landed on the "Remove" button above it, and one aimed at Undo reached nothing. So it isn't the coordinates we compute; Safari's own mapping from WebDriver's touch to the page is off.
+- **Android:** taps at the middle of the screen through `adb shell input tap` and through `input touchscreen swipe` delivered no `touchstart`, `pointerdown` or `click` at all. So it isn't where taps land: input injected into the emulator doesn't reach Chrome's page.
+
+That leaves the drivers that inject input another way (Appium's XCUITest and UiAutomator2), or real devices in a device cloud.
+
 When the touch problems are solved, the `ios` job's tap and hold, and the `android` job's long press (Android's image menu), can come back. Git history has the earlier versions: commits `f376a70` to `3ff422b` on the `mobile-ci` branch.
