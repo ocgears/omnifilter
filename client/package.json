@@ -27,7 +27,7 @@
     "@webgpu/types": "^0.1.74",
     "jsdom": "^30.0.0",
     "prettier": "^3.8.1",
-    "typescript": "~6.0.2",
+    "typescript": "~7.0.2",
     "vitest": "^5.0.3"
   },
   "description": "The OmniFilter web client (Angular). Build it from the repository root with npm run build.",
