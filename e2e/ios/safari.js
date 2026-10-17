@@ -74,12 +74,11 @@ class Session {
   find(css) {
     return call('POST', this.base + '/element', { using: 'css selector', value: css });
   }
-  // Clicks the element matching `css`, or with `text`, the one of them that
-  // has that text, from inside the page. (WebDriver's touch actions landed
-  // at varying distances from where they were aimed; see the top.)
-  // Taps the first element matching css (and saying text), once there is
-  // one: what it's in may still be loading (the preset looks come from the
-  // server after the page opens).
+  // Clicks the first element matching `css` (and with `text`, the one that
+  // says that), from inside the page, once there is one: what it's in may
+  // still be loading (the preset looks come from the server after the page
+  // opens). WebDriver's touch actions landed at varying distances from where
+  // they were aimed; see the top.
   async tap(css, text, timeout = 15000) {
     const script = 'const el = Array.from(document.querySelectorAll(arguments[0]))' +
       '.find((e) => !arguments[1] || e.textContent.trim() === arguments[1]);' +
