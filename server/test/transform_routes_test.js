@@ -14,9 +14,8 @@ var PORT = process.env.PORT || process.env.$PORT || 3000;
 var baseUri = 'localhost:' + PORT;
 
 var chai = require('chai');
-var chaiHTTP = require('chai-http');
+var { default: chaiHTTP, request } = require('chai-http');
 chai.use(chaiHTTP);
-var mongoose = require('mongoose');
 var expect = chai.expect;
 
 // A gradient with a hard edge in the middle, so blur and sharpen both change it.
@@ -267,7 +266,7 @@ describe('neural style sessions', () => {
 
 describe('GET /device', () => {
   it('names the device the filters run on', () => {
-    return chai.request(baseUri).get('/device').then((res) => {
+    return request.execute(baseUri).get('/device').then((res) => {
       expect(res).to.have.status(200);
       expect(res.body.name).to.be.a('string').that.is.not.empty;
       expect(['gpu', 'cpu', 'accelerator', 'other']).to.include(res.body.type);
@@ -277,7 +276,7 @@ describe('GET /device', () => {
 
 describe('GET /filters', () => {
   it('lists the filters with their groups and parameters', (done) => {
-    chai.request(baseUri)
+    request.execute(baseUri)
       .get('/filters')
       .end((err, res) => {
         expect(err).to.eql(null);
@@ -317,7 +316,7 @@ describe('POST /newcontent with a transformation', function() {
 
   ['blur', 'sharpen', 'cartoon', 'stained_glass'].forEach((tOption) => {
     it('applies ' + tOption + ' and returns a JPEG', (done) => {
-      chai.request(baseUri)
+      request.execute(baseUri)
         .post('/newcontent')
         .set({ token: userToken })
         .send({ content: jpegUrl, tOption: tOption })
@@ -339,11 +338,11 @@ describe('POST /newcontent with a transformation', function() {
   });
 
   it('uses and stores the parameters, clamped to their ranges', (done) => {
-    chai.request(baseUri)
+    request.execute(baseUri)
       .post('/newcontent')
       .set({ token: userToken })
       .send({ content: jpegUrl, tOption: 'pixelate', params: { block: 500, extra: 'ignored' } })
-      .end((err, res) => {
+      .end((_err, res) => {
         expect(res).to.have.status(200);
         expect(res.body.tParams).to.eql({ block: 10 });
         done();
@@ -351,11 +350,11 @@ describe('POST /newcontent with a transformation', function() {
   });
 
   it('rejects an unknown transformation', (done) => {
-    chai.request(baseUri)
+    request.execute(baseUri)
       .post('/newcontent')
       .set({ token: userToken })
       .send({ content: jpegUrl, tOption: 'explode' })
-      .end((err, res) => {
+      .end((_err, res) => {
         expect(res).to.have.status(400);
         expect(res.body.msg).to.match(/Unknown transformation/);
         done();
@@ -366,7 +365,7 @@ describe('POST /newcontent with a transformation', function() {
     const list = gpuFilters.list;
     gpuFilters.list = () => list().map((f) => (f.name !== 'blur' ? f :
       Object.assign({}, f, { available: false, unavailableReason: 'needs image (texture) support' })));
-    return chai.request(baseUri).post('/newcontent').set({ token: userToken })
+    return request.execute(baseUri).post('/newcontent').set({ token: userToken })
       .send({ content: jpegUrl, tOption: 'blur' })
       .then((res) => {
         expect(res).to.have.status(400);
@@ -383,7 +382,7 @@ describe('POST /newcontent with a transformation', function() {
     it('answers a ' + (c[0].code || 'filter') + ' error with a ' + c[1], () => {
       const apply = gpuFilters.apply;
       gpuFilters.apply = () => Promise.reject(Object.assign(new Error(c[0].message), c[0]));
-      return chai.request(baseUri).post('/newcontent').set({ token: userToken })
+      return request.execute(baseUri).post('/newcontent').set({ token: userToken })
         .send({ content: jpegUrl, tOption: 'blur' })
         .then((res) => {
           expect(res).to.have.status(c[1]);
@@ -396,7 +395,7 @@ describe('POST /newcontent with a transformation', function() {
   it('answers a result too large to store with a 413', () => {
     const limit = imageCodec.MAX_DATA_URL_LENGTH;
     imageCodec.MAX_DATA_URL_LENGTH = 100;
-    return chai.request(baseUri).post('/newcontent').set({ token: userToken })
+    return request.execute(baseUri).post('/newcontent').set({ token: userToken })
       .send({ content: jpegUrl, tOption: 'invert' })
       .then((res) => {
         expect(res).to.have.status(413);
@@ -416,7 +415,7 @@ describe('POST /newcontent with a transformation', function() {
       .then((image) => imageCodec.encodeDataUrl(image))
       .then((png) => {
         imageCodec.MAX_DATA_URL_LENGTH = Math.floor(png.length / 2);
-        return chai.request(baseUri).post('/newcontent').set({ token: userToken })
+        return request.execute(baseUri).post('/newcontent').set({ token: userToken })
           .send({ content: webpUrl, tOption: 'invert' });
       })
       .then((res) => {
@@ -431,10 +430,10 @@ describe('POST /newcontent with a transformation', function() {
     var release;
     const gate = new Promise((resolve) => { release = resolve; });
     gpuFilters.apply = (name, rgba) => gate.then(() => Buffer.from(rgba));
-    const first = chai.request(baseUri).post('/newcontent').set({ token: userToken })
+    const first = request.execute(baseUri).post('/newcontent').set({ token: userToken })
       .send({ content: jpegUrl, tOption: 'invert' }).then((res) => res);
     return new Promise((resolve) => setTimeout(resolve, 200))
-      .then(() => chai.request(baseUri).post('/newcontent').set({ token: userToken })
+      .then(() => request.execute(baseUri).post('/newcontent').set({ token: userToken })
         .send({ content: jpegUrl, tOption: 'invert' }))
       .then((res) => {
         expect(res).to.have.status(429);
@@ -447,11 +446,11 @@ describe('POST /newcontent with a transformation', function() {
   });
 
   it('rejects an image type it cannot decode', (done) => {
-    chai.request(baseUri)
+    request.execute(baseUri)
       .post('/newcontent')
       .set({ token: userToken })
       .send({ content: 'data:image/gif;base64,bm90IGFuIGltYWdl', tOption: 'blur' })
-      .end((err, res) => {
+      .end((_err, res) => {
         expect(res).to.have.status(400);
         expect(res.body.msg).to.match(/Could not read the image/);
         done();

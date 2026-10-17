@@ -101,8 +101,8 @@ function inspect(dataUrl, maxPixels) {
 exports.validateDataUrl = function(dataUrl) {
   return inspect(dataUrl).then((found) => {
     const meta = found.meta;
-    const mime = meta.format === 'heif' ?
-      (meta.compression === 'av1' ? 'image/avif' : null) : BROWSER_FORMATS[meta.format];
+    const avif = meta.format === 'heif' && meta.compression === 'av1';
+    const mime = avif ? 'image/avif' : BROWSER_FORMATS[meta.format];
     if (!mime) {
       throw codecError(400, 'Photos saved without a filter must be JPEG, PNG, WebP, GIF or AVIF');
     }

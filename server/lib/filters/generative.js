@@ -86,11 +86,10 @@ module.exports = [
       }
       // One extra 1-pixel pass fixes JFA's rare mistakes.
       plan.pass('jfa_step', [buf(mapA), buf(mapB), buf(seedBuf), int(w), int(h), int(1)]);
-      [mapA, mapB] = [mapB, mapA];
-
-      plan.pass('cell_accumulate', [buf('src'), buf(mapA), buf(sums), int(w), int(h)]);
+      // The nearest seeds are in mapB now.
+      plan.pass('cell_accumulate', [buf('src'), buf(mapB), buf(sums), int(w), int(h)]);
       const out = plan.rgba();
-      plan.pass('stained_glass', [buf(mapA), buf(sums), buf(out), int(w), int(h),
+      plan.pass('stained_glass', [buf(mapB), buf(sums), buf(out), int(w), int(h),
         float(Math.max(1.5, P.px(w, h, p.lead)))]);
       plan.current = out;
       return plan;

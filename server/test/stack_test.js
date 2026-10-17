@@ -11,7 +11,7 @@ var PORT = process.env.PORT || process.env.$PORT || 3000;
 var baseUri = 'localhost:' + PORT;
 
 var chai = require('chai');
-var chaiHTTP = require('chai-http');
+var { default: chaiHTTP, request } = require('chai-http');
 chai.use(chaiHTTP);
 var expect = chai.expect;
 
@@ -150,7 +150,7 @@ describe('stacks through the API', () => {
   after(() => clearCollections());
 
   it('lists the presets and layer controls', () => {
-    return chai.request(baseUri).get('/presets').then((res) => {
+    return request.execute(baseUri).get('/presets').then((res) => {
       expect(res).to.have.status(200);
       expect(res.body.maxLayers).to.equal(stack.MAX_LAYERS);
       expect(res.body.layerParams.map((p) => p.name)).to.eql(['amount', 'blend']);
@@ -159,7 +159,7 @@ describe('stacks through the API', () => {
   });
 
   it('applies a stack and stores its layers', () => {
-    return chai.request(baseUri).post('/newcontent').set({ token: token })
+    return request.execute(baseUri).post('/newcontent').set({ token: token })
       .send({ content: content, stack: [
         { tOption: 'sepia' },
         { tOption: 'vignette', params: { strength: 80 }, blend: 'multiply', amount: 60 }
@@ -175,7 +175,7 @@ describe('stacks through the API', () => {
   });
 
   it('rejects a bad stack with a 400', () => {
-    return chai.request(baseUri).post('/newcontent').set({ token: token })
+    return request.execute(baseUri).post('/newcontent').set({ token: token })
       .send({ content: content, stack: [{ tOption: 'nope' }] })
       .then((res) => {
         expect(res).to.have.status(400);

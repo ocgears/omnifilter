@@ -18,7 +18,7 @@ Our application is still under development, thank you for your patience.
 # Usage
 
 ### Requirements
-* Node.js 20.9 or newer for the API server, and 22.22 or newer (or 24.15+) to build the web client, which uses Angular 22
+* Node.js 22.13 or newer for the API server (Node 20 reached its end of life in April 2026), and 22.22 or newer (or 24.15+) to build the web client, which uses Angular 22
 * MongoDB (`brew install mongodb-community`, or any MongoDB 4.2+ server)
 * An OpenCL runtime:
   * **macOS:** built in, nothing to install. (Apple has deprecated OpenCL in favour of Metal, but it still works on current macOS, Intel and Apple Silicon.)

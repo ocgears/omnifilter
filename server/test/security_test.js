@@ -8,14 +8,14 @@ const authRouter = require(__dirname + '/../routes/auth_routes');
 const userRouter = require(__dirname + '/../routes/user_routes');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
 const migrateEmails = require(__dirname + '/../../scripts/migrate-emails');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const sharp = require('sharp');
 var PORT = process.env.PORT || process.env.$PORT || 3000;
 var baseUri = 'localhost:' + PORT;
 
 var chai = require('chai');
-var chaiHTTP = require('chai-http');
+var { default: chaiHTTP, request } = require('chai-http');
 chai.use(chaiHTTP);
 var expect = chai.expect;
 
@@ -62,17 +62,17 @@ describe('security', () => {
 
   describe('crafted requests', () => {
     it('rejects a non-string tOption instead of crashing', () => {
-      return chai.request(baseUri).post('/newcontent').set({ token: aliceToken })
+      return request.execute(baseUri).post('/newcontent').set({ token: aliceToken })
         .send({ content: 'data:image/png;base64,AAAA', tOption: { toString: 1 } })
         .then((res) => {
           expect(res).to.have.status(400);
-          return chai.request(baseUri).get('/filters');
+          return request.execute(baseUri).get('/filters');
         })
         .then((res) => expect(res).to.have.status(200));
     });
 
     it('ignores parameter values that are objects', () => {
-      return pngDataUrl(4, 4).then((content) => chai.request(baseUri).post('/newcontent')
+      return pngDataUrl(4, 4).then((content) => request.execute(baseUri).post('/newcontent')
         .set({ token: aliceToken })
         .send({ content: content, tOption: 'blur', params: { radius: { toString: 1 } } }))
         .then((res) => {
@@ -82,13 +82,14 @@ describe('security', () => {
     });
 
     it('refuses to save something that is not an image', () => {
-      return chai.request(baseUri).post('/newcontent').set({ token: aliceToken })
+      return request.execute(baseUri).post('/newcontent').set({ token: aliceToken })
+        // eslint-disable-next-line no-script-url
         .send({ content: 'javascript:alert(1)' })
         .then((res) => expect(res).to.have.status(400));
     });
 
     it('answers a malformed JSON body with JSON, not a stack trace', () => {
-      return chai.request(baseUri).post('/signup').set('content-type', 'application/json')
+      return request.execute(baseUri).post('/signup').set('content-type', 'application/json')
         .send('{"email":')
         .then((res) => {
           expect(res).to.have.status(400);
@@ -101,25 +102,25 @@ describe('security', () => {
   describe('login tokens', () => {
     it('rejects a token carrying a query operator as the user id', () => {
       const forged = jwt.sign({ id: { $ne: null } }, secret);
-      return chai.request(baseUri).get('/getAll').set({ token: forged })
+      return request.execute(baseUri).get('/getAll').set({ token: forged })
         .then((res) => expect(res).to.have.status(401));
     });
 
     it('rejects a token signed with the old default secret', () => {
       const forged = jwt.sign({ id: String(alice._id) }, 'changethis');
-      return chai.request(baseUri).get('/getAll').set({ token: forged })
+      return request.execute(baseUri).get('/getAll').set({ token: forged })
         .then((res) => expect(res).to.have.status(401));
     });
 
     it('rejects an unsigned token', () => {
       const unsigned = jwt.sign({ id: String(alice._id) }, null, { algorithm: 'none' });
-      return chai.request(baseUri).get('/getAll').set({ token: unsigned })
+      return request.execute(baseUri).get('/getAll').set({ token: unsigned })
         .then((res) => expect(res).to.have.status(401));
     });
 
     it('rejects an expired token', () => {
       const expired = jwt.sign({ id: String(alice._id), exp: Math.floor(Date.now() / 1000) - 10 }, secret);
-      return chai.request(baseUri).get('/getAll').set({ token: expired })
+      return request.execute(baseUri).get('/getAll').set({ token: expired })
         .then((res) => expect(res).to.have.status(401));
     });
 
@@ -135,7 +136,7 @@ describe('security', () => {
       .then((data) => { photo = data; }));
 
     it('does not let another user delete a photo', () => {
-      return chai.request(baseUri).delete('/delete/' + photo._id).set({ token: bobToken })
+      return request.execute(baseUri).delete('/delete/' + photo._id).set({ token: bobToken })
         .then((res) => {
           expect(res).to.have.status(404);
           return Content.findById(photo._id);
@@ -144,32 +145,32 @@ describe('security', () => {
     });
 
     it('does not show one user the photos of another', () => {
-      return chai.request(baseUri).get('/getAll').set({ token: bobToken })
+      return request.execute(baseUri).get('/getAll').set({ token: bobToken })
         .then((res) => expect(res.body).to.eql([]));
     });
 
     it('answers 404 for an id that is not an id', () => {
-      return chai.request(baseUri).delete('/delete/not-an-id').set({ token: aliceToken })
+      return request.execute(baseUri).delete('/delete/not-an-id').set({ token: aliceToken })
         .then((res) => expect(res).to.have.status(404));
     });
   });
 
   describe('accounts', () => {
     it('does not allow two accounts with the same email, in any case', () => {
-      return chai.request(baseUri).post('/signup').send({ email: 'Alice@Tester.com ', password: 'password9' })
+      return request.execute(baseUri).post('/signup').send({ email: 'Alice@Tester.com ', password: 'password9' })
         .then((res) => expect(res).to.have.status(409));
     });
 
     it('signs in with a password containing a colon', () => {
       return makeUser('colon@tester.com', 'pass:word:1')
-        .then(() => chai.request(baseUri).get('/signin').auth('colon@tester.com', 'pass:word:1'))
+        .then(() => request.execute(baseUri).get('/signin').auth('colon@tester.com', 'pass:word:1'))
         .then((res) => expect(res).to.have.status(200));
     });
 
     it('gives the same answer for an unknown email and a wrong password', () => {
       return Promise.all([
-        chai.request(baseUri).get('/signin').auth('nobody@tester.com', 'password1'),
-        chai.request(baseUri).get('/signin').auth('alice@tester.com', 'wrongpassword')
+        request.execute(baseUri).get('/signin').auth('nobody@tester.com', 'password1'),
+        request.execute(baseUri).get('/signin').auth('alice@tester.com', 'wrongpassword')
       ]).then((results) => {
         expect(results[0]).to.have.status(401);
         expect(results[0].body).to.eql(results[1].body);
@@ -177,7 +178,7 @@ describe('security', () => {
     });
 
     it('ignores operators in a settings update', () => {
-      return chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+      return request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
         .send({ $set: { email: 'hijacked@tester.com' } })
         .then((res) => {
           expect(res).to.have.status(400);
@@ -187,13 +188,13 @@ describe('security', () => {
     });
 
     it('needs the current password to change the password', () => {
-      return chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+      return request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
         .send({ password: 'newpassword' })
         .then((res) => expect(res).to.have.status(403));
     });
 
     it('does not let one user change another user\'s account', () => {
-      return chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: bobToken })
+      return request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: bobToken })
         .send({ email: 'bob2@tester.com', currentPassword: 'password2' })
         .then((res) => expect(res).to.have.status(403));
     });
@@ -203,23 +204,23 @@ describe('security', () => {
       this.timeout(5000);
       var newToken;
       return new Promise((resolve) => setTimeout(resolve, 1100))
-        .then(() => chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+        .then(() => request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
           .send({ password: 'newpassword', currentPassword: 'password1' }))
         .then((res) => {
           expect(res).to.have.status(200);
           newToken = res.body.token;
-          return chai.request(baseUri).get('/getAll').set({ token: aliceToken });
+          return request.execute(baseUri).get('/getAll').set({ token: aliceToken });
         })
         .then((res) => {
           expect(res).to.have.status(401);
-          return chai.request(baseUri).get('/getAll').set({ token: newToken });
+          return request.execute(baseUri).get('/getAll').set({ token: newToken });
         })
         .then((res) => expect(res).to.have.status(200));
     });
 
     it('deletes a user\'s photos along with the account', () => {
       return Content.create({ user_id: alice._id, content: 'data:image/png;base64,AAAA' })
-        .then(() => chai.request(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })
+        .then(() => request.execute(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })
           .send({ currentPassword: 'password1' }))
         .then((res) => {
           expect(res).to.have.status(200);
@@ -232,7 +233,7 @@ describe('security', () => {
   describe('account details', () => {
     ['plainaddress', 'no@tld', 'a b@tester.com', 'x@' + 'y'.repeat(250) + '.com'].forEach((email) => {
       it('refuses to sign up with the email ' + email.slice(0, 20), () => {
-        return chai.request(baseUri).post('/signup').send({ email: email, password: 'password9' })
+        return request.execute(baseUri).post('/signup').send({ email: email, password: 'password9' })
           .then((res) => {
             expect(res).to.have.status(400);
             expect(res.body.msg).to.match(/valid email/);
@@ -241,7 +242,7 @@ describe('security', () => {
     });
 
     it('refuses a password longer than bcrypt can use', () => {
-      return chai.request(baseUri).post('/signup')
+      return request.execute(baseUri).post('/signup')
         .send({ email: 'long@tester.com', password: 'é'.repeat(37) })
         .then((res) => {
           expect(res).to.have.status(400);
@@ -250,11 +251,11 @@ describe('security', () => {
     });
 
     it('refuses a bad email or password in a settings change', () => {
-      return chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+      return request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
         .send({ email: 'not-an-email', currentPassword: 'password1' })
         .then((res) => {
           expect(res).to.have.status(400);
-          return chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+          return request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
             .send({ password: 'x'.repeat(73), currentPassword: 'password1' });
         })
         .then((res) => expect(res).to.have.status(400));
@@ -267,7 +268,7 @@ describe('security', () => {
     it('still signs in with an old cost-8 hash, and upgrades it', function() {
       this.timeout(10000);
       return User.collection.updateOne({ _id: alice._id }, { $set: { password: bcrypt.hashSync('password1', 8) } })
-        .then(() => chai.request(baseUri).get('/signin').auth('alice@tester.com', 'password1'))
+        .then(() => request.execute(baseUri).get('/signin').auth('alice@tester.com', 'password1'))
         .then((res) => {
           expect(res).to.have.status(200);
           // The upgrade is saved after the reply.
@@ -277,7 +278,7 @@ describe('security', () => {
         .then((user) => {
           expect(bcrypt.getRounds(user.password)).to.eql(12);
           // An upgrade isn't a password change, so other sessions stay signed in.
-          return chai.request(baseUri).get('/getAll').set({ token: aliceToken });
+          return request.execute(baseUri).get('/getAll').set({ token: aliceToken });
         })
         .then((res) => expect(res).to.have.status(200));
     });
@@ -285,16 +286,16 @@ describe('security', () => {
     it('signs in to a legacy account saved with a mixed-case email', function() {
       this.timeout(10000);
       return User.collection.updateOne({ _id: alice._id }, { $set: { email: 'Alice@Tester.com' } })
-        .then(() => chai.request(baseUri).get('/signin').auth('alice@tester.com', 'password1'))
+        .then(() => request.execute(baseUri).get('/signin').auth('alice@tester.com', 'password1'))
         .then((res) => {
           expect(res).to.have.status(200);
-          return chai.request(baseUri).get('/signin').auth('ALICE@tester.com', 'password1');
+          return request.execute(baseUri).get('/signin').auth('ALICE@tester.com', 'password1');
         })
         .then((res) => expect(res).to.have.status(200));
     });
 
     it('does not treat an email as a pattern when ignoring case', () => {
-      return chai.request(baseUri).get('/signin').auth('.*@tester.com', 'password1')
+      return request.execute(baseUri).get('/signin').auth('.*@tester.com', 'password1')
         .then((res) => expect(res).to.have.status(401));
     });
 
@@ -302,7 +303,7 @@ describe('security', () => {
       this.timeout(10000);
       const time = (email) => {
         const start = Date.now();
-        return chai.request(baseUri).get('/signin').auth(email, 'wrongpassword')
+        return request.execute(baseUri).get('/signin').auth(email, 'wrongpassword')
           .then((res) => {
             expect(res).to.have.status(401);
             return Date.now() - start;
@@ -344,7 +345,7 @@ describe('security', () => {
       this.timeout(20000);
       const attempts = [];
       for (let i = 0; i < 6; i++) {
-        attempts.push(() => chai.request(baseUri).get('/signin').auth('nobody@tester.com', 'password1'));
+        attempts.push(() => request.execute(baseUri).get('/signin').auth('nobody@tester.com', 'password1'));
       }
       return attempts.reduce((p, attempt) => p.then((list) => attempt().then((res) => list.concat([res]))),
         Promise.resolve([]))
@@ -353,14 +354,14 @@ describe('security', () => {
           expect(results[5]).to.have.status(429);
           expect(Number(results[5].headers['retry-after'])).to.be.above(0);
           // Sign-ups share the same allowance.
-          return chai.request(baseUri).post('/signup').send({ email: 'new@tester.com', password: 'password9' });
+          return request.execute(baseUri).post('/signup').send({ email: 'new@tester.com', password: 'password9' });
         })
         .then((res) => expect(res).to.have.status(429));
     });
 
     it('limits guesses at the current password, for each account', function() {
       this.timeout(20000);
-      const guess = (i) => chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+      const guess = (i) => request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
         .send({ email: 'alice2@tester.com', currentPassword: 'wrong' + i });
       return [0, 1, 2, 3, 4, 5].reduce((p, i) => p.then((list) => guess(i).then((res) => list.concat([res]))),
         Promise.resolve([]))
@@ -369,7 +370,7 @@ describe('security', () => {
           expect(results[5]).to.have.status(429);
           // From another address too: the account's allowance is used up.
           userRouter.addressTries.reset();
-          return chai.request(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })
+          return request.execute(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })
             .send({ currentPassword: 'password1' });
         })
         .then((res) => {
@@ -420,7 +421,7 @@ describe('security', () => {
 
   describe('headers', () => {
     it('sends a Content Security Policy, and no X-Powered-By', () => {
-      return chai.request(baseUri).get('/settings').then((res) => {
+      return request.execute(baseUri).get('/settings').then((res) => {
         expect(res).to.have.status(200);
         expect(res.headers).to.not.have.property('x-powered-by');
         const csp = res.headers['content-security-policy'];
@@ -451,7 +452,7 @@ describe('security', () => {
 
   describe('CORS', () => {
     it('allows the client\'s origin and answers a preflight', () => {
-      return chai.request(baseUri).options('/signin').set('Origin', 'http://localhost:5000')
+      return request.execute(baseUri).options('/signin').set('Origin', 'http://localhost:5000')
         .then((res) => {
           expect(res).to.have.status(204);
           expect(res.headers['access-control-allow-origin']).to.eql('http://localhost:5000');
@@ -460,7 +461,7 @@ describe('security', () => {
     });
 
     it('does not allow other origins', () => {
-      return chai.request(baseUri).get('/filters').set('Origin', 'https://evil.example')
+      return request.execute(baseUri).get('/filters').set('Origin', 'https://evil.example')
         .then((res) => {
           expect(res).to.have.status(200);
           expect(res.headers).to.not.have.property('access-control-allow-origin');
@@ -495,7 +496,7 @@ describe('security', () => {
     it('answers an oversized image with a 400', function() {
       this.timeout(20000);
       return pngDataUrl(8000, 8000)
-        .then((content) => chai.request(baseUri).post('/newcontent').set({ token: aliceToken })
+        .then((content) => request.execute(baseUri).post('/newcontent').set({ token: aliceToken })
           .send({ content: content, tOption: 'invert' }))
         .then((res) => {
           expect(res).to.have.status(400);

@@ -82,6 +82,13 @@ app.get('/health', async (req, res) => {
   res.status(database ? 200 : 503).json({ ok: database, database: database, ip: req.ip });
 });
 
+// The routes read req.body, which the body parsers (body-parser 2) leave
+// unset for a request without one.
+app.use((req, res, next) => {
+  if (req.body === undefined) req.body = {};
+  next();
+});
+
 const contentRouter = require(__dirname + '/routes/content_routes');
 const authRouter = require(__dirname + '/routes/auth_routes');
 const userRouter = require(__dirname + '/routes/user_routes');

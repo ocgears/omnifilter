@@ -39,7 +39,7 @@ jobs:
           - opencl: pocl
             packages: pocl-opencl-icd
             device: pocl
-            node: 20
+            node: 22
           - opencl: pocl
             packages: pocl-opencl-icd
             device: pocl
@@ -203,10 +203,11 @@ jobs:
       - run: node scripts/client.js build --production
       - name: Client tests
         run: bash .github/run-and-annotate.sh node scripts/client.js test
-      # The end-to-end tests and build scripts. The root packages are only
-      # needed for eslint here, so the native addon isn't built.
+      # ESLint on the server, end-to-end tests and scripts (eslint.config.js).
+      # The root packages are only needed for eslint here, so the native
+      # addon isn't built.
       - run: npm ci --ignore-scripts
-      - run: npm run lint:client
+      - run: npm run lint
 
   # The whole app in real browsers (Playwright): Chromium at desktop size and
   # as an Android phone, and WebKit (Safari's engine) as an iPhone. Sign up,

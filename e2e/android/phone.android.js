@@ -14,6 +14,8 @@ const { notice, choosePhoto, photos } = require('../helpers');
 const URL = 'http://localhost:' + (Number(process.env.E2E_PORT) || 3930) + '/';
 
 const test = base.extend({
+  // Playwright needs the fixtures argument written as a pattern, even empty.
+  // eslint-disable-next-line no-empty-pattern
   device: [async ({}, use) => {
     const [device] = await _android.devices();
     if (!device) throw new Error('No Android device: is the emulator running (adb devices)?');

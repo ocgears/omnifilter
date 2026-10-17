@@ -15,8 +15,8 @@ exports.clearCollections = () => Promise.all(
 
 // A kept photo itself (GET /content/:id), as a data URL.
 exports.keptPhoto = (baseUri, token, id) => {
-  const chai = require('chai');
-  return chai.request(baseUri).get('/content/' + id).set({ token: token })
+  const { request } = require('chai-http');
+  return request.execute(baseUri).get('/content/' + id).set({ token: token })
     .buffer(true).parse((res, done) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));

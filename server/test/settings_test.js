@@ -9,7 +9,7 @@ var PORT = process.env.PORT || process.env.$PORT || 3000;
 var baseUri = 'localhost:' + PORT;
 
 var chai = require('chai');
-var chaiHTTP = require('chai-http');
+var { default: chaiHTTP, request } = require('chai-http');
 chai.use(chaiHTTP);
 var expect = chai.expect;
 
@@ -77,7 +77,7 @@ describe('cloud mode on the server', () => {
   });
 
   it('tells the page', () => {
-    return chai.request(baseUri).get('/settings').then((res) => {
+    return request.execute(baseUri).get('/settings').then((res) => {
       expect(res).to.have.status(200);
       expect(res.body).to.include({ mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5 });
       expect(res.body.maxPixels).to.be.above(0);
@@ -89,14 +89,14 @@ describe('cloud mode on the server', () => {
     expect(settings.serverDevice(settings.read({}))).to.eql(true);
     expect(settings.serverDevice(settings.read({ OMNIFILTER_MODE: 'cloud', OMNIFILTER_GUESTS: 'server' })))
       .to.eql(true);
-    return chai.request(baseUri).get('/device').then((res) => {
+    return request.execute(baseUri).get('/device').then((res) => {
       expect(res).to.have.status(200);
       expect(res.body).to.eql(null);
     });
   });
 
   it('runs no filters for guests', () => {
-    return chai.request(baseUri).post('/transform').send({ content: photo, tOption: 'invert' })
+    return request.execute(baseUri).post('/transform').send({ content: photo, tOption: 'invert' })
       .then((res) => {
         expect(res).to.have.status(403);
         expect(res.body.msg).to.match(/run on your own device/);
@@ -104,18 +104,18 @@ describe('cloud mode on the server', () => {
   });
 
   it('runs no filters for signed-in users, but keeps photos as they are', () => {
-    return chai.request(baseUri).post('/newcontent').set({ token: token })
+    return request.execute(baseUri).post('/newcontent').set({ token: token })
       .send({ content: photo, tOption: 'invert' })
       .then((res) => {
         expect(res).to.have.status(403);
-        return chai.request(baseUri).post('/newcontent').set({ token: token }).send({ content: photo });
+        return request.execute(baseUri).post('/newcontent').set({ token: token }).send({ content: photo });
       })
       .then((res) => expect(res).to.have.status(200))
       .then(() => Content.deleteMany({}));
   });
 
   it('keeps 5 photos for each account, then refuses more until one is deleted', async () => {
-    const keep = () => chai.request(baseUri).post('/import').set({ token: token })
+    const keep = () => request.execute(baseUri).post('/import').set({ token: token })
       .send({ content: photo, tOption: 'invert' });
     for (let n = 0; n < 5; n++) expect(await keep()).to.have.status(200);
     const refused = await keep();
@@ -123,18 +123,18 @@ describe('cloud mode on the server', () => {
     expect(refused.body).to.include({ limit: 5 });
     expect(refused.body.msg).to.match(/already keep 5 photos/);
     // Saving the photo as it is counts too.
-    expect(await chai.request(baseUri).post('/newcontent').set({ token: token }).send({ content: photo }))
+    expect(await request.execute(baseUri).post('/newcontent').set({ token: token }).send({ content: photo }))
       .to.have.status(409);
 
     const one = await Content.findOne({});
-    expect(await chai.request(baseUri).delete('/delete/' + one._id).set({ token: token })).to.have.status(200);
+    expect(await request.execute(baseUri).delete('/delete/' + one._id).set({ token: token })).to.have.status(200);
     expect(await keep()).to.have.status(200);
     await Content.deleteMany({});
   });
 
   it('keeps to the limit when many photos are sent at once', async () => {
     const results = await Promise.all(Array.from({ length: 12 }, () =>
-      chai.request(baseUri).post('/import').set({ token: token }).send({ content: photo, tOption: 'invert' })));
+      request.execute(baseUri).post('/import').set({ token: token }).send({ content: photo, tOption: 'invert' })));
     const statuses = results.map((r) => r.status);
     expect(statuses.filter((s) => s === 200).length).to.be.at.most(5);
     expect(statuses.every((s) => [200, 409, 429, 503].includes(s))).to.eql(true);
@@ -145,7 +145,7 @@ describe('cloud mode on the server', () => {
   it('keeps a smaller copy of a big photo, and a thumbnail', async () => {
     const big = await sharp({ create: { width: 3000, height: 1500, channels: 3, background: '#406080' } })
       .png().toBuffer();
-    const res = await chai.request(baseUri).post('/import').set({ token: token })
+    const res = await request.execute(baseUri).post('/import').set({ token: token })
       .send({ content: 'data:image/png;base64,' + big.toString('base64'), tOption: 'invert' });
     expect(res).to.have.status(200);
     expect(res.body).to.include({ width: 2048, height: 1024, mime: 'image/jpeg' });
@@ -155,7 +155,7 @@ describe('cloud mode on the server', () => {
     const thumb = await sharp(Buffer.from(res.body.thumb.split(',')[1], 'base64')).metadata();
     expect([thumb.format, thumb.width, thumb.height]).to.eql(['webp', 640, 320]);
     // The gallery's list has the thumbnail, not the photo.
-    const list = await chai.request(baseUri).get('/getAll').set({ token: token });
+    const list = await request.execute(baseUri).get('/getAll').set({ token: token });
     expect(list.body).to.have.length(1);
     expect(list.body[0]).to.include({ thumb: res.body.thumb, width: 2048 });
     expect(list.body[0]).to.not.have.property('content');
@@ -166,7 +166,7 @@ describe('cloud mode on the server', () => {
     const user = await User.findOne({ email: 'cloud-mode@tester.com' });
     await Content.insertMany(Array.from({ length: 5 }, () => ({ user_id: String(user._id), content: photo })));
     // Not even JSON: a 400 if it were read.
-    const res = await chai.request(baseUri).post('/import').set({ token: token })
+    const res = await request.execute(baseUri).post('/import').set({ token: token })
       .set('Content-Type', 'application/json').send('{"content": "data:image/jpeg;base64,');
     expect(res).to.have.status(409);
     await Content.deleteMany({});
@@ -174,7 +174,7 @@ describe('cloud mode on the server', () => {
 
   it('can still filter on the server for signed-in users with device-first', () => {
     process.env.OMNIFILTER_PROCESSING = 'device-first';
-    return chai.request(baseUri).post('/newcontent').set({ token: token })
+    return request.execute(baseUri).post('/newcontent').set({ token: token })
       .send({ content: photo, tOption: 'invert' })
       .then((res) => expect(res).to.have.status(200))
       .finally(() => {
@@ -185,7 +185,7 @@ describe('cloud mode on the server', () => {
 
   it('turns guests away when guests are off', () => {
     process.env.OMNIFILTER_GUESTS = 'off';
-    return chai.request(baseUri).post('/transform').send({ content: photo, tOption: 'invert' })
+    return request.execute(baseUri).post('/transform').send({ content: photo, tOption: 'invert' })
       .then((res) => {
         expect(res).to.have.status(403);
         expect(res.body.msg).to.match(/Sign in/);
@@ -196,7 +196,7 @@ describe('cloud mode on the server', () => {
 
 describe('GET /health', () => {
   it('says the database is connected, and gives the caller\'s address', () => {
-    return chai.request(baseUri).get('/health').then((res) => {
+    return request.execute(baseUri).get('/health').then((res) => {
       expect(res).to.have.status(200);
       expect(res).to.have.header('cache-control', 'no-store');
       expect(res.body).to.include({ ok: true, database: true });

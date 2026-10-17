@@ -4,9 +4,8 @@ const User = require(__dirname + '/../models/user');
 var PORT = process.env.PORT || process.env.$PORT || 3000;
 var baseUri = 'localhost:' + PORT;
 var chai = require('chai');
-var chaiHTTP = require('chai-http');
+var { default: chaiHTTP, request } = require('chai-http');
 chai.use(chaiHTTP);
-var mongoose = require('mongoose');
 var expect = chai.expect;
 
 var userId;
@@ -17,7 +16,7 @@ describe('authorization route', () => {
     clearCollections().then(() => done(), done);
   });
   it('should create a new user with a POST request', (done) => {
-    chai.request(baseUri)
+    request.execute(baseUri)
       .post('/signup')
       .send( { 'email': 'test@tester.com', 'password': 'password' } )
       .end((err, res) => {
@@ -42,7 +41,7 @@ describe('authorization route', () => {
       }, done);
     });
     it('should check if the user has valid credentials', (done) => {
-      chai.request(baseUri)
+      request.execute(baseUri)
         .get('/signin')
         .auth('test@tester.com', 'password')
         .end((err, res) => {
@@ -54,10 +53,10 @@ describe('authorization route', () => {
         });
     });
     it('should not allow user to enter a bad password', (done) => {
-      chai.request(baseUri)
+      request.execute(baseUri)
         .get('/signin')
         .auth('test@tester.com', 'NOTpassword')
-        .end((err, res) => {
+        .end((_err, res) => {
           expect(res).to.have.status(401);
           expect(res.body).to.not.have.property('token');
           expect(res.body).to.not.have.property('email');

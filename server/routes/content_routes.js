@@ -44,9 +44,6 @@ function oneUploadAtATime(req, res, next) {
   });
 }
 
-// Express 4 doesn't catch errors from async handlers, and an unhandled
-// rejection stops Node, so pass them on to the error handler in server.js.
-const asyncRoute = (handler) => (req, res, next) => handler(req, res, next).catch(next);
 
 // A decoded photo takes width * height * 4 bytes (200 MB at the pixel limit)
 // and the GPU runs one job at a time anyway, so only a couple of transforms
@@ -86,7 +83,7 @@ contentRouter.get('/filters', (req, res) => {
 
 // The device the filters run on, for the page to show; null when this server
 // doesn't filter (cloud mode), so it has no device to set up or report.
-contentRouter.get('/device', asyncRoute(async (req, res) => {
+contentRouter.get('/device', async (req, res) => {
   if (!settings.serverDevice(settings.read())) return res.status(200).json(null);
   try {
     await gpuFilters.ready();
@@ -101,7 +98,7 @@ contentRouter.get('/device', asyncRoute(async (req, res) => {
     console.log('No ' + gpuFilters.backendLabel + ' device: ' + e.message);
     res.status(503).json({ msg: 'No ' + gpuFilters.backendLabel + ' device is available' });
   }
-}));
+});
 
 // Ready-made filter stacks, and the controls every layer of a stack has.
 contentRouter.get('/presets', (req, res) => {
@@ -114,12 +111,12 @@ contentRouter.get('/presets', (req, res) => {
 
 // The user's photos, newest first: what each was made with, its size and
 // type, and its thumbnail; not the photos themselves (GET /content/:id).
-contentRouter.get('/getAll', jwtAuth, asyncRoute(async (req, res) => {
+contentRouter.get('/getAll', jwtAuth, async (req, res) => {
   await upgradeOldPhotos(req.user._id);
   const data = await Content.find({ user_id: req.user._id }).select('-image -content')
     .sort({ createdAt: -1 });
   res.status(200).json(data);
-}));
+});
 
 // Photos kept before there were thumbnails hold the photo as a data URL;
 // this moves them to the binary photo and a thumbnail, once, one at a time.
@@ -144,7 +141,7 @@ async function upgradeOldPhotos(userId) {
 // A kept photo itself, as its own type of file (?download for a file to
 // save, named like the page names it, or ?download=name). Not cached: the
 // address is the same for anyone who signs in on this browser.
-contentRouter.get('/content/:id', jwtAuth, validId, asyncRoute(async (req, res) => {
+contentRouter.get('/content/:id', jwtAuth, validId, async (req, res) => {
   const photo = await Content.findOne({ _id: req.params.id, user_id: req.user._id });
   if (!photo) return res.status(404).json({ msg: 'No such content' });
   var bytes = photo.image;
@@ -163,7 +160,7 @@ contentRouter.get('/content/:id', jwtAuth, validId, asyncRoute(async (req, res) 
     res.set('Content-Disposition', 'attachment; filename="' + name + '"');
   }
   res.type(mime).send(bytes);
-}));
+});
 
 const EXTENSIONS = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif'
@@ -293,7 +290,7 @@ function serverMayFilter(res, guest) {
 // Middleware: replies 409 when the user already keeps as many photos as this
 // server allows (OMNIFILTER_MAX_STORED_PHOTOS), before the photo is read.
 // After oneUploadAtATime, so no other save of theirs is under way.
-const roomForAnother = asyncRoute(async (req, res, next) => {
+const roomForAnother = async (req, res, next) => {
   const limit = settings.read().maxStoredPhotos;
   if (!limit) return next();
   const kept = await Content.countDocuments({ user_id: req.user._id });
@@ -302,7 +299,7 @@ const roomForAnother = asyncRoute(async (req, res, next) => {
     msg: 'You already keep ' + kept + ' photos, as many as this server allows; delete one to keep this',
     limit: limit
   });
-});
+};
 
 // What comes before a photo to keep is read: who it's for, its turn, and room.
 const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, photoParser];
@@ -325,7 +322,7 @@ function checkContent(req, res) {
 // Saves a photo, after applying either one filter ({ tOption, params }) or a
 // stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }). With
 // neither, the photo is saved as it is.
-contentRouter.post('/newcontent', keepingPhoto, asyncRoute(async (req, res) => {
+contentRouter.post('/newcontent', keepingPhoto, async (req, res) => {
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
@@ -344,7 +341,7 @@ contentRouter.post('/newcontent', keepingPhoto, asyncRoute(async (req, res) => {
     tStack: recipe.tStack
   }, await keptPhoto(content)));
   res.status(200).json(data);
-}));
+});
 
 // Guest mode: anyone can try the filters without an account. Their photos
 // aren't saved here (the page keeps them in the browser), and since anyone
@@ -386,7 +383,7 @@ contentRouter.get('/settings', (req, res) => {
 // photo and what was applied, in the shape of a saved photo without an _id.
 contentRouter.post('/transform', (req, res, next) => {
   if (serverMayFilter(res, true)) next();
-}, guestLimiter, photoParser, asyncRoute(async (req, res) => {
+}, guestLimiter, photoParser, async (req, res) => {
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
@@ -406,14 +403,14 @@ contentRouter.post('/transform', (req, res, next) => {
     content: content,
     createdAt: new Date()
   });
-}));
+});
 
 // Saves a photo made elsewhere, with the filters it says it was made with:
 // one made before signing in (by /transform, kept in the browser), or one
 // the browser filtered on the visitor's own GPU. The photo is checked as one
 // saved without a filter is; the filters are only a description, so they're
 // checked to be real but not applied.
-contentRouter.post('/import', keepingPhoto, asyncRoute(async (req, res) => {
+contentRouter.post('/import', keepingPhoto, async (req, res) => {
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
@@ -435,7 +432,7 @@ contentRouter.post('/import', keepingPhoto, asyncRoute(async (req, res) => {
     createdAt: made.getTime() > 0 && made <= new Date() ? made : new Date()
   }, await keptPhoto(content)));
   res.status(200).json(data);
-}));
+});
 
 contentRouter.delete('/delete/:id', jwtAuth, validId, (req, res) => {
   Content.deleteOne({ _id: req.params.id, user_id: req.user._id })

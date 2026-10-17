@@ -71,7 +71,7 @@ function noDevice(message) {
 // markers make compile errors point at the right file and line.
 function kernelSource() {
   const files = fs.readdirSync(KERNEL_DIR).filter((f) => f.endsWith('.cl'))
-    .sort((a, b) => (a === 'common.cl' ? -1 : b === 'common.cl' ? 1 : a.localeCompare(b)));
+    .sort((a, b) => (b === 'common.cl') - (a === 'common.cl') || a.localeCompare(b));
   return files.map((f) => '#line 1 "' + f + '"\n' + fs.readFileSync(path.join(KERNEL_DIR, f), 'utf8'))
     .join('\n');
 }
