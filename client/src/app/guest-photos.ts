@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { request, write } from './browser-db';
+import { request, withFile, writeWithFile } from './browser-db';
 import { makeThumb } from './editor/photo-file';
 import { Photo } from './models';
 
@@ -18,7 +18,8 @@ export const isLocal = (photo: Photo) => photo._id.startsWith(LOCAL_ID);
 export class GuestPhotos {
   // Newest first, like the server's list.
   async list(): Promise<Photo[]> {
-    const photos = (await request<Photo[]>('photos', 'readonly', (s) => s.getAll())) ?? [];
+    const stored = (await request<Photo[]>('photos', 'readonly', (s) => s.getAll())) ?? [];
+    const photos = stored.map(withFile);
     const upgraded = await Promise.all(photos.map((p) => this.upgrade(p)));
     return upgraded.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
   }
@@ -36,7 +37,7 @@ export class GuestPhotos {
         mime: file.type,
         thumb: photo.thumb ?? (await makeThumb(file)),
       };
-      await write('photos', 'readwrite', (s) => s.put(moved, moved._id));
+      await writeWithFile('photos', moved._id, moved);
       return moved;
     } catch {
       return photo;
@@ -54,7 +55,7 @@ export class GuestPhotos {
       _id: LOCAL_ID + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
       createdAt: photo.createdAt ?? new Date().toISOString(),
     };
-    await write('photos', 'readwrite', (s) => s.put(saved, saved._id));
+    await writeWithFile('photos', saved._id, saved);
     return saved;
   }
 

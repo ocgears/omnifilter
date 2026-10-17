@@ -5,21 +5,25 @@ import { Component, input, output } from '@angular/core';
   selector: 'of-alerts',
   template: `
     @if (items().length) {
-      <ul class="alerts" [class]="kind()" [attr.role]="kind() === 'error' ? 'alert' : 'status'">
-        @for (item of items(); track $index) {
-          <li>
-            <span>{{ item }}</span>
-            <button
-              type="button"
-              class="icon-button"
-              (click)="dismiss.emit($index)"
-              aria-label="Dismiss"
-            >
-              &times;
-            </button>
-          </li>
-        }
-      </ul>
+      <!-- The live region wraps the list: a role on the <ul> itself would
+      take away its list role, leaving the <li>s outside any list. -->
+      <div [attr.role]="kind() === 'error' ? 'alert' : 'status'">
+        <ul class="alerts" [class]="kind()">
+          @for (item of items(); track $index) {
+            <li>
+              <span>{{ item }}</span>
+              <button
+                type="button"
+                class="icon-button"
+                (click)="dismiss.emit($index)"
+                aria-label="Dismiss"
+              >
+                &times;
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
     }
   `,
   styles: `

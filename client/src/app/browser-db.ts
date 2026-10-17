@@ -92,3 +92,41 @@ export async function write<T>(
     }
   });
 }
+
+// A record holding a file (`file`, a Blob), as it's stored: Blobs where the
+// browser stores them, else the file's bytes and type. Safari won't store
+// Blobs in a private window (nor in Playwright's WebKit), but takes an
+// ArrayBuffer.
+export interface FileRecord {
+  file?: Blob;
+  fileBytes?: ArrayBuffer;
+  fileType?: string;
+}
+
+// Stores `value` under `key`, with its file as a Blob or, if the browser
+// refuses that, as bytes. Rejects as write() does.
+export async function writeWithFile<T extends FileRecord>(
+  store: Store,
+  key: string,
+  value: T,
+): Promise<void> {
+  try {
+    await write(store, 'readwrite', (s) => s.put(value, key));
+  } catch (err) {
+    if (!value.file) throw err;
+    const asBytes = {
+      ...value,
+      file: undefined,
+      fileBytes: await value.file.arrayBuffer(),
+      fileType: value.file.type,
+    };
+    await write(store, 'readwrite', (s) => s.put(asBytes, key));
+  }
+}
+
+// A stored record with its file as a Blob again, however it was stored.
+export function withFile<T extends FileRecord>(record: T): T {
+  if (record.file || !record.fileBytes) return record;
+  const { fileBytes, fileType, ...rest } = record;
+  return { ...rest, file: new Blob([fileBytes], { type: fileType ?? '' }) } as T;
+}

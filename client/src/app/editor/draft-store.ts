@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { request } from '../browser-db';
+import { FileRecord, request, withFile, writeWithFile } from '../browser-db';
 import { HistoryStep } from './history';
 
 // The work in progress, kept in the browser so that a reload (which phones do
@@ -23,8 +23,7 @@ export interface Draft {
 
 // What's stored for the photo: the file itself (a Blob, a third smaller than
 // its data URL), or, from older versions, the data URL.
-interface StoredPhoto {
-  file?: Blob;
+interface StoredPhoto extends FileRecord {
   source?: string;
   name: string;
 }
@@ -45,11 +44,12 @@ export class DraftStore {
   private photoSaves: Promise<unknown> = Promise.resolve();
 
   async load(): Promise<Draft> {
-    const [stored, stack] = await Promise.all([
+    const [record, stack] = await Promise.all([
       request<StoredPhoto>('draft', 'readonly', (s) => s.get('photo')),
       request<DraftStack>('draft', 'readonly', (s) => s.get('stack')),
     ]);
     let photo: DraftPhoto | null = null;
+    const stored = record && withFile(record);
     try {
       const source = stored?.file ? await readAsDataUrl(stored.file) : stored?.source;
       if (source) photo = { source, name: stored!.name };
@@ -63,8 +63,10 @@ export class DraftStore {
     const save = this.photoSaves.then(async () => {
       if (!photo) return request('draft', 'readwrite', (s) => s.delete('photo'));
       const file = await (await fetch(photo.source)).blob();
-      const stored: StoredPhoto = { file, name: photo.name };
-      return request('draft', 'readwrite', (s) => s.put(stored, 'photo'));
+      // Kept only in case: a draft that can't be stored is no loss.
+      return writeWithFile<StoredPhoto>('draft', 'photo', { file, name: photo.name }).catch(
+        () => undefined,
+      );
     });
     this.photoSaves = save.catch(() => undefined);
     return save.then(
