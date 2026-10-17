@@ -105,10 +105,11 @@ function inspect(bytes, maxPixels) {
 }
 
 // Checks a photo that is to be saved as it was sent: an allowed format,
-// within the size limits, one a browser can show, and small enough to store.
-// Resolves with { bytes, mime }, the type being what the bytes really are.
-exports.validatePhoto = function(bytes) {
-  return inspect(bytes).then((found) => {
+// within the size limits (maxPixels, if given, being lower than MAX_PIXELS),
+// one a browser can show, and small enough to store. Resolves with
+// { bytes, mime }, the type being what the bytes really are.
+exports.validatePhoto = function(bytes, maxPixels) {
+  return inspect(bytes, maxPixels).then((found) => {
     const meta = found.meta;
     const avif = meta.format === 'heif' && meta.compression === 'av1';
     const mime = avif ? 'image/avif' : BROWSER_FORMATS[meta.format];
@@ -212,9 +213,14 @@ exports.THUMB_SIDE = THUMB_SIDE;
 // A photo as it's kept (models/content.js), from bytes and their type as
 // validatePhoto or encode give them: { image, mime, width, height, thumb },
 // with its bytes, their type, its size as shown (EXIF orientation applied)
-// and a thumbnail as a WebP data URL. With options.maxSide, a photo longer
-// than that on either side is kept scaled down to it: a JPEG, or a WebP if
-// it has transparency.
+// and a thumbnail as a WebP data URL.
+//
+// With options.maxSide, the photo is drawn again, scaled down to that if it
+// is longer on either side, and kept as a JPEG, or a WebP if it has
+// transparency. Being drawn again leaves behind its metadata (where it was
+// taken, and the camera) and anything else the file carried, so a small
+// photo padded out to megabytes is kept at the size of its pixels. Without
+// it, the photo is kept as it came.
 exports.stored = function(photo, options) {
   const maxSide = options && options.maxSide;
   const original = photo.bytes;
@@ -224,12 +230,11 @@ exports.stored = function(photo, options) {
     const sideways = meta.orientation >= 5;
     const width = sideways ? meta.height : meta.width;
     const height = sideways ? meta.width : meta.height;
-    if (!maxSide || Math.max(width, height) <= maxSide) {
-      return { image: original, mime: photo.mime, width: width, height: height };
-    }
-    const smaller = read(original).rotate().resize({ width: maxSide, height: maxSide, fit: 'inside' });
+    if (!maxSide) return { image: original, mime: photo.mime, width: width, height: height };
+    const drawn = read(original).rotate()
+      .resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true });
     const encoded = meta.hasAlpha ?
-      smaller.webp({ quality: 90, alphaQuality: 100 }) : smaller.jpeg({ quality: JPEG_QUALITY });
+      drawn.webp({ quality: 90, alphaQuality: 100 }) : drawn.jpeg({ quality: JPEG_QUALITY });
     return encoded.toBuffer({ resolveWithObject: true }).then((out) => ({
       image: out.data,
       mime: meta.hasAlpha ? 'image/webp' : 'image/jpeg',

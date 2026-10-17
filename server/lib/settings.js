@@ -20,9 +20,21 @@
 //   OMNIFILTER_KEEP_MAX_SIDE         kept photos longer than this many pixels
 //                                    on a side are kept scaled down to it
 //                                    (default: kept as they are; cloud: 2048,
-//                                    so a free database holds a few hundred)
+//                                    so a free database holds a few hundred);
+//                                    with a size set, every kept photo is
+//                                    drawn again, which leaves behind its
+//                                    metadata (where it was taken) and
+//                                    anything else the file carried
+//   OMNIFILTER_KEEP_MAX_PIXELS       the largest photo taken in to keep, in
+//                                    pixels (default: the server's pixel
+//                                    limit; cloud: 16 million). The page
+//                                    scales photos down to the kept size
+//                                    first, so this only turns away ones
+//                                    sent some other way, which would take a
+//                                    lot of this server's memory to read
 
-const CLOUD = { processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048 };
+const CLOUD = { processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048,
+  keepMaxPixels: 16e6 };
 const PROCESSING = ['server', 'device', 'device-first'];
 
 function read(env) {
@@ -44,13 +56,16 @@ function read(env) {
   const maxStoredPhotos = max > 0 ? max : fallback('maxStoredPhotos') || null;
   const side = parseInt(e.OMNIFILTER_KEEP_MAX_SIDE, 10);
   const keepMaxSide = side > 0 ? side : fallback('keepMaxSide') || null;
+  const pixels = Number(e.OMNIFILTER_KEEP_MAX_PIXELS);
+  const keepMaxPixels = pixels > 0 ? pixels : fallback('keepMaxPixels') || null;
 
   return {
     mode: cloud ? 'cloud' : 'standard',
     processing: processing,
     guests: guests,
     maxStoredPhotos: maxStoredPhotos,
-    keepMaxSide: keepMaxSide
+    keepMaxSide: keepMaxSide,
+    keepMaxPixels: keepMaxPixels
   };
 }
 

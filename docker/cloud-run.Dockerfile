@@ -21,8 +21,14 @@ RUN OMNIFILTER_API=/ node scripts/client.js build --production
 
 # ---- runtime ----
 FROM node:24-trixie-slim
+# Reading photos takes a lot of memory for a moment, and the server has 512
+# MiB. Fewer malloc arenas and one libvips thread (there's one CPU) keep the
+# peak down: two 16 megapixel GIFs read at once peaked at 407 MiB without
+# these, 283 MiB with them.
 ENV NODE_ENV=production \
-    OMNIFILTER_MODE=cloud
+    OMNIFILTER_MODE=cloud \
+    MALLOC_ARENA_MAX=2 \
+    VIPS_CONCURRENCY=1
 WORKDIR /usr/src/app
 # --ignore-scripts skips building the native OpenCL addon (the "install"
 # script); without it the server reports the filters as unavailable rather
