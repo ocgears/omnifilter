@@ -10,7 +10,7 @@
 # nothing.
 
 # ---- build: the Angular client ----
-FROM node:24-trixie-slim AS client
+FROM node:25-trixie-slim AS client
 WORKDIR /usr/src/app
 COPY client/package.json client/package-lock.json ./client/
 RUN npm ci --prefix client --no-audit --no-fund
@@ -20,7 +20,7 @@ COPY . .
 RUN OMNIFILTER_API=/ node scripts/client.js build --production
 
 # ---- runtime ----
-FROM node:24-trixie-slim
+FROM node:25-trixie-slim
 ENV NODE_ENV=production \
     OMNIFILTER_MODE=cloud
 WORKDIR /usr/src/app
