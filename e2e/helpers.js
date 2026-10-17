@@ -2,6 +2,7 @@
 // reports, test photos, and checks used at every screen size.
 const { test, expect } = require('@playwright/test');
 const sharp = require('sharp');
+const AxeBuilder = require('@axe-core/playwright').default;
 
 // Registers the hooks every test file wants. Call it at the top of the file.
 function setUp() {
@@ -10,7 +11,20 @@ function setUp() {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       window.OMNIFILTER_API = '';
+      // Anything the Content Security Policy blocks (server/lib/
+      // security_headers.js), checked after each test.
+      window.cspViolations = [];
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.cspViolations.push(e.violatedDirective + ' blocked ' + (e.blockedURI || 'inline code'));
+      });
     });
+  });
+
+  // Nothing the page needs may be blocked by its security policy.
+  test.afterEach(async ({ page }, testInfo) => {
+    if (testInfo.status !== testInfo.expectedStatus) return;
+    const blocked = await page.evaluate(() => window.cspViolations || []).catch(() => []);
+    expect(blocked, 'blocked by the Content Security Policy').toEqual([]);
   });
 
   // Errors the page logged or threw during each test, for the report below.
@@ -106,6 +120,21 @@ async function hasWebGpu(page) {
   return page.evaluate(() => window.omnifilterGpu.available());
 }
 
+// axe-core's checks for WCAG 2.2 A and AA, on each page and state.
+async function expectAccessible(page, where) {
+  // Not axe's target-size: it counts the part of a button that the sticky
+  // photo or Transform bar happens to cover where the page is scrolled to.
+  // The layout test checks every button is 44 px, without that.
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .disableRules(['target-size'])
+    .analyze();
+  const problems = results.violations.map((v) => v.id + ' (' + v.impact + '): ' + v.help + ' — ' +
+    v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(', '));
+  expect(problems, where).toEqual([]);
+}
+
 module.exports = {
-  setUp, notice, gradientJpeg, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu
+  setUp, notice, gradientJpeg, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu,
+  expectAccessible
 };

@@ -74,9 +74,15 @@ jobs:
       - run: npm run devices
       - name: Check every filter on the device
         run: bash .github/run-and-annotate.sh npm run check-device
+      # One leg measures coverage too (c8, from V8's own counters).
       - name: Server tests
         if: ${{ !cancelled() }}
-        run: bash .github/run-and-annotate.sh npx mocha --exit --timeout 120000 --file server/test/setup.js server/test
+        env:
+          COVERAGE: ${{ matrix.opencl == 'pocl' && matrix.node == 24 && 'c8 --reporter=text-summary --reporter=json-summary' || '' }}
+        run: bash .github/run-and-annotate.sh npx $COVERAGE mocha --exit --timeout 120000 --file server/test/setup.js server/test
+      - name: Coverage
+        if: ${{ !cancelled() && matrix.opencl == 'pocl' && matrix.node == 24 }}
+        run: node .github/coverage-summary.js server coverage/coverage-summary.json
 
   # The WebGPU backend (OMNIFILTER_BACKEND=webgpu): Dawn for Node on Mesa's
   # lavapipe, a Vulkan driver that runs on the CPU. Its results are compared
@@ -202,7 +208,10 @@ jobs:
         working-directory: client
       - run: node scripts/client.js build --production
       - name: Client tests
-        run: bash .github/run-and-annotate.sh node scripts/client.js test
+        run: bash .github/run-and-annotate.sh node scripts/client.js test --coverage
+      - name: Coverage
+        if: ${{ !cancelled() }}
+        run: node .github/coverage-summary.js client client/coverage/omnifilter/coverage-summary.json
       # ESLint on the server, end-to-end tests and scripts (eslint.config.js).
       # The root packages are only needed for eslint here, so the native
       # addon isn't built.

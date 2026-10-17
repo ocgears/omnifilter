@@ -3,9 +3,8 @@
 // phone widths upright and sideways, through axe's accessibility checks, and
 // on a slowed-down phone. All of it as a guest, which needs no account.
 const { test, expect } = require('@playwright/test');
-const AxeBuilder = require('@axe-core/playwright').default;
 const {
-  setUp, notice, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu
+  setUp, notice, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu, expectAccessible
 } = require('./helpers');
 
 setUp();
@@ -234,20 +233,6 @@ test('fits every common phone width, upright and sideways', async ({ page }) => 
     await check('sign-up page');
   }
 });
-
-// axe-core's checks for WCAG 2.2 A and AA, on each page and state.
-async function expectAccessible(page, where) {
-  // Not axe's target-size: it counts the part of a button that the sticky
-  // photo or Transform bar happens to cover where the page is scrolled to.
-  // The layout test checks every button is 44 px, without that.
-  const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
-    .disableRules(['target-size'])
-    .analyze();
-  const problems = results.violations.map((v) => v.id + ' (' + v.impact + '): ' + v.help + ' — ' +
-    v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(', '));
-  expect(problems, where).toEqual([]);
-}
 
 test('passes the accessibility checks', async ({ page }) => {
   await expectAccessible(page, 'empty photo page');

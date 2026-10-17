@@ -49,3 +49,4 @@ lighthouse-report/
 .Trashes
 ehthumbs.db
 Thumbs.db
+/coverage
