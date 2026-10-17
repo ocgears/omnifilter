@@ -77,12 +77,18 @@ class Session {
   // Clicks the element matching `css`, or with `text`, the one of them that
   // has that text, from inside the page. (WebDriver's touch actions landed
   // at varying distances from where they were aimed; see the top.)
-  async tap(css, text) {
-    const found = await this.run('const el = Array.from(document.querySelectorAll(arguments[0]))' +
+  // Taps the first element matching css (and saying text), once there is
+  // one: what it's in may still be loading (the preset looks come from the
+  // server after the page opens).
+  async tap(css, text, timeout = 15000) {
+    const script = 'const el = Array.from(document.querySelectorAll(arguments[0]))' +
       '.find((e) => !arguments[1] || e.textContent.trim() === arguments[1]);' +
-      'if (!el) return false; el.scrollIntoView({ block: "center" }); el.click(); return true;',
-    css, text || null);
-    if (!found) throw new Error('nothing matches ' + css + (text ? ' saying ' + text : ''));
+      'if (!el) return false; el.scrollIntoView({ block: "center" }); el.click(); return true;';
+    const until = Date.now() + timeout;
+    while (!(await this.run(script, css, text || null))) {
+      if (Date.now() > until) throw new Error('nothing matches ' + css + (text ? ' saying ' + text : ''));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   }
   async screenshot(name) {
     fs.mkdirSync(OUT, { recursive: true });
