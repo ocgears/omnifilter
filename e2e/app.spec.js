@@ -131,8 +131,13 @@ test('moves a photo kept in this browser by an older version to a file', async (
     const req = indexedDB.open('omnifilter');
     req.onsuccess = () => {
       const get = req.result.transaction('photos').objectStore('photos').get('local-legacy');
-      get.onsuccess = () => resolve({ file: get.result.file instanceof Blob, content: 'content' in get.result &&
-        get.result.content !== undefined, type: get.result.file && get.result.file.type });
+      // A Blob, or where the browser won't store one (Safari's private
+      // windows, Playwright's WebKit), the bytes and their type.
+      get.onsuccess = () => resolve({
+        file: get.result.file instanceof Blob || get.result.fileBytes instanceof ArrayBuffer,
+        content: 'content' in get.result && get.result.content !== undefined,
+        type: get.result.file ? get.result.file.type : get.result.fileType
+      });
     };
   }));
   expect(stored).toEqual({ file: true, content: false, type: 'image/jpeg' });

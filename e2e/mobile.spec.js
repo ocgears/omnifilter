@@ -62,8 +62,10 @@ test('is used by touch: looks, filters, sliders, history and Transform', async (
   const chromium = browserName === 'chromium';
   const finger = chromium ? await fingers(page) : null;
 
-  // The row of looks scrolls sideways under a finger.
+  // The row of looks scrolls sideways under a finger. (Once their
+  // thumbnails are in, where there's WebGPU: they change the row's layout.)
   const looks = page.locator('.chips');
+  if (await hasWebGpu(page)) await expect(page.locator('canvas.thumb').first()).toBeVisible();
   if (chromium && await looks.evaluate((el) => el.scrollWidth > el.clientWidth)) {
     await finger.swipe(looks, -250, 0);
     await expect.poll(() => looks.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
