@@ -10,14 +10,16 @@ import { InjectionToken } from '@angular/core';
 // (`OMNIFILTER_API=... npm run build` writes the meta tag for you.) An empty
 // value or '/' means the API is on the same origin as the page, for when the
 // API server also serves the client.
-export function apiBaseFrom(win: Window & { OMNIFILTER_API?: string | null }): string {
-  let override: string | null | undefined = win.OMNIFILTER_API;
-  if (override === undefined || override === null) {
+export function apiBaseFrom(win: Window & { OMNIFILTER_API?: unknown }): string {
+  // Only a string: an element with id="OMNIFILTER_API" also shows up as
+  // window.OMNIFILTER_API.
+  let override: string | null = typeof win.OMNIFILTER_API === 'string' ? win.OMNIFILTER_API : null;
+  if (override === null) {
     const meta = win.document.querySelector('meta[name="omnifilter-api"]');
     override = meta ? meta.getAttribute('content') : null;
   }
-  if (override !== undefined && override !== null) {
-    return String(override).trim().replace(/\/+$/, '');
+  if (override !== null) {
+    return override.trim().replace(/\/+$/, '');
   }
   return win.location.protocol + '//' + win.location.hostname + ':3000';
 }

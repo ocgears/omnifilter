@@ -44,6 +44,7 @@ describe('security', () => {
 
   beforeEach(() => {
     authRouter.rateLimiter.reset();
+    authRouter.wrongPasswordLimiter.reset();
     userRouter.passwordTries.reset();
     userRouter.addressTries.reset();
   });
@@ -357,6 +358,20 @@ describe('security', () => {
           return request.execute(baseUri).post('/signup').send({ email: 'new@tester.com', password: 'password9' });
         })
         .then((res) => expect(res).to.have.status(429));
+    });
+
+    it('limits wrong passwords for an account, from any address', async function() {
+      this.timeout(30000);
+      // Each from a different address, as far as the per-address limit knows.
+      const signIn = (email, password) => {
+        authRouter.rateLimiter.reset();
+        return request.execute(baseUri).get('/signin').auth(email, password);
+      };
+      for (let i = 0; i < 10; i++) expect(await signIn('alice@tester.com', 'wrong' + i)).to.have.status(401);
+      const refused = await signIn('alice@tester.com', 'password1');
+      expect(refused).to.have.status(429);
+      expect(refused.body.msg).to.match(/wrong passwords for this email/);
+      expect(await signIn('bob@tester.com', 'password2')).to.have.status(200);
     });
 
     it('limits guesses at the current password, for each account', function() {

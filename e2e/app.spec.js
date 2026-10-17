@@ -95,7 +95,7 @@ test('makes photos as a guest, then adds them to a new account', async ({ page }
   await expect(page).toHaveURL(/#\/home$/);
 
   const banner = page.locator('.banner.waiting');
-  await expect(banner).toContainText('1 photo you made before signing in');
+  await expect(banner).toContainText('1 photo made in this browser without signing in');
   await expect(photos(page)).toHaveCount(0);
   await banner.getByRole('button', { name: 'Add to my account' }).click();
   await expect(banner).toHaveCount(0);

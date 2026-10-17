@@ -19,8 +19,9 @@
       </div>
     } @else {
       <p>
-        {{ count }} photo{{ count > 1 ? 's' : '' }} you made before signing in
-        {{ count > 1 ? 'are' : 'is' }} still in this browser.
+        {{ count }} photo{{ count > 1 ? 's' : '' }} made in this browser without signing in
+        {{ count > 1 ? 'are' : 'is' }} still here. If {{ count > 1 ? 'they are' : 'it is' }} yours,
+        add {{ count > 1 ? 'them' : 'it' }} to your account.
       </p>
       <div class="banner-actions">
         <button type="button" class="primary" (click)="importPhotos()" [disabled]="importing()">

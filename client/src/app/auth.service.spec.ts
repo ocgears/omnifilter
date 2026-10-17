@@ -3,18 +3,22 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { API_BASE } from './api-base';
 import { AuthService, base64Utf8 } from './auth.service';
+import { DraftStore } from './editor/draft-store';
 
 describe('AuthService', () => {
   let auth: AuthService;
   let http: HttpTestingController;
+  let clearDraft: ReturnType<typeof vi.fn>;
 
   // Lets the service's awaited requests reach the testing backend.
   const tick = () => new Promise((resolve) => setTimeout(resolve));
 
   beforeEach(() => {
     localStorage.clear();
+    clearDraft = vi.fn(() => Promise.resolve());
     TestBed.configureTestingModule({
       providers: [
+        { provide: DraftStore, useValue: { clear: clearDraft } },
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: API_BASE, useValue: 'http://api' },
@@ -99,5 +103,24 @@ describe('AuthService', () => {
     expect(auth.token()).toBeNull();
     expect(auth.email()).toBeNull();
     expect(localStorage.getItem('token')).toBeNull();
+    expect(clearDraft).toHaveBeenCalled();
+  });
+
+  it('follows a sign-out in another tab', async () => {
+    auth.token.set('tok');
+    auth.email.set('a@b.co');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: null }));
+    await tick();
+    expect(auth.token()).toBeNull();
+    expect(auth.email()).toBeNull();
+  });
+
+  it('forgets the draft when the server stops taking the token too', async () => {
+    auth.token.set('tok');
+    const done = auth.verify();
+    http.expectOne('http://api/verify').flush({ msg: 'no' }, { status: 401, statusText: 'Unauthorized' });
+    await done;
+    expect(auth.token()).toBeNull();
+    expect(clearDraft).toHaveBeenCalled();
   });
 });
