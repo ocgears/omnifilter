@@ -1,0 +1,4 @@
+{
+  "about": "The SHA-256 of each prebuilt addon on the native-prebuilds release, by source key (node scripts/install-native.js --key) and platform. npm install uses a prebuilt binary only if it matches the checksum here, which is reviewed with the code, so a binary changed on the release isn't trusted. The prebuilds workflow's publish run prints the entries to add.",
+  "checksums": {}
+}

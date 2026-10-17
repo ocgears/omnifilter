@@ -65,7 +65,7 @@ Cheap, and it fixes real bugs. Everything else builds on it.
 
 **Status (October 2026): in progress.** Done so far:
 * The addon is loaded by `server/lib/native.js` (instead of the `bindings` package), and `npm install` runs `scripts/install-native.js`, which downloads a prebuilt binary matching a hash of the native source, checks its SHA-256 and that it loads, and otherwise compiles. A missing OpenCL runtime no longer stops the server starting.
-* `.github/workflows/prebuilds.yml` builds the addon for linux-x64 and linux-arm64 (on Debian 11, for older glibc), darwin-arm64 and darwin-x64 (cross-compiled), and win32-x64 and win32-arm64 (OpenCL headers from vcpkg), and checks each loads. Publishing them to the `native-prebuilds` release is a manual run of the workflow for now (not yet done); it could run automatically on every native change.
+* `.github/workflows/prebuilds.yml` builds the addon for linux-x64 and linux-arm64 (on Debian 11, for older glibc), darwin-arm64 and darwin-x64 (cross-compiled), and win32-x64 and win32-arm64 (OpenCL headers from vcpkg), and checks each loads. Publishing them to the `native-prebuilds` release is a manual run of the workflow for now (not yet done); the run prints each binary's SHA-256, and `npm install` only uses a binary once its checksum is committed to `native/prebuilds.json`.
 * CI also builds and loads the addon on Windows, and on macOS checks every filter if the runner has an OpenCL device.
 * `GET /device` and a line in the page show which device the filters run on.
 * CI found that Mesa's Rusticl (llvmpipe) crashes in `sin`, `cos` and `tan`. Kernels for Rusticl devices are compiled with a workaround that uses `sinpi`/`cospi` instead (see `common.cl`); the per-filter `npm run check-device` found it.

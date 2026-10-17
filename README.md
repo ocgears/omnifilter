@@ -25,7 +25,7 @@ Our application is still under development, thank you for your patience.
   * **Linux:** the ICD loader (`apt install ocl-icd-libopencl1`), plus a driver for your device: your GPU vendor's, Mesa's Rusticl (`mesa-opencl-icd`), or `pocl-opencl-icd` to run on the CPU.
   * **Windows:** comes with the NVIDIA, AMD and Intel GPU drivers.
 
-`npm install` installs the native GPU addon. When the [prebuilds workflow](.github/workflows/prebuilds.yml) has published a binary for your platform built from the same source (Linux, macOS and Windows, x64 and arm64), it downloads that, checks its SHA-256 and that it loads. Otherwise it compiles the addon, which needs:
+`npm install` installs the native GPU addon. When the [prebuilds workflow](.github/workflows/prebuilds.yml) has published a binary for your platform built from the same source (Linux, macOS and Windows, x64 and arm64), it downloads that, checks its SHA-256 against the one recorded in `native/prebuilds.json` (reviewed with the code, so a binary replaced on the release isn't used) and that it loads. Otherwise it compiles the addon, which needs:
 * A C++ compiler: on macOS `xcode-select --install`; on Linux `build-essential`; on Windows the "Desktop development with C++" workload of Visual Studio or its Build Tools.
 * The OpenCL headers and loader library: built into macOS; on Linux `apt install ocl-icd-opencl-dev`; on Windows, set `OPENCL_SDK` to a folder with `include/CL/cl.h` and `lib/OpenCL.lib`, such as the unzipped [Khronos OpenCL-SDK](https://github.com/KhronosGroup/OpenCL-SDK/releases) for x64, or vcpkg's `installed\<triplet>` folder after `vcpkg install opencl:x64-windows` (or `arm64-windows`).
 

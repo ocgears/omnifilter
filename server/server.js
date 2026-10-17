@@ -71,6 +71,9 @@ app.use(compression({
   filter: (req, res) => !PHOTO_ROUTES.test(req.path) && compression.filter(req, res)
 }));
 
+const gpuFilters = require(__dirname + '/lib/gpu_filters');
+const settings = require(__dirname + '/lib/settings');
+
 // For uptime checks and the deploy's smoke test: whether the database is
 // connected, and the caller's address as the server sees it (so a deploy
 // can check TRUST_PROXY: it should be the caller's own public address).
@@ -81,8 +84,12 @@ app.get('/health', async (req, res) => {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   const database = mongoose.connection.readyState === 1;
+  // On a server that filters, a GPU stuck on a filter (see gpu_filters.js)
+  // needs a restart, so it's unhealthy too.
+  const gpu = settings.serverDevice(settings.read()) ? gpuFilters.health() : undefined;
+  const ok = database && gpu !== 'stuck';
   res.set('Cache-Control', 'no-store');
-  res.status(database ? 200 : 503).json({ ok: database, database: database, ip: req.ip });
+  res.status(ok ? 200 : 503).json({ ok: ok, database: database, gpu: gpu, ip: req.ip });
 });
 
 // The routes read req.body, which the body parsers (body-parser 2) leave
@@ -125,8 +132,6 @@ app.use((err, req, res, next) => {
 // Sets up the device now (OpenCL compiles its kernels here; WebGPU in the
 // background), and says what the filters will run on. A server that doesn't
 // filter (cloud mode: visitors' own GPUs do) has nothing to set up.
-const gpuFilters = require(__dirname + '/lib/gpu_filters');
-const settings = require(__dirname + '/lib/settings');
 function setUpDevice() {
   if (!settings.serverDevice(settings.read())) {
     console.log('Filters run on visitors\' own devices (OMNIFILTER_MODE=cloud); none run here.');

@@ -134,17 +134,29 @@ function normalizeStack(raw) {
   });
 }
 
-// Lays `top` (a filter's output) over `base` (its input) on the GPU.
-function blend(top, base, width, height, mode, amount) {
+// The plan that lays a filter's output over `base` (its input).
+function blendPlan(base, width, height, mode, amount) {
   const plan = new Plan(width, height);
   const baseBuffer = plan.buffer(width * height * 4, { init: base });
   plan.step('blend_layers', buf(baseBuffer),
     int(BLEND_MODES.findIndex((m) => m[0] === mode)), float(amount / 100));
-  return gpuFilters.runPlan(top, width, height, plan);
+  return plan;
+}
+
+// Lays `top` (a filter's output) over `base` (its input) on the GPU.
+function blend(top, base, width, height, mode, amount) {
+  return gpuFilters.runPlan(top, width, height, blendPlan(base, width, height, mode, amount));
 }
 
 // Resolves with the RGBA pixels after every layer of a normalized stack.
+// Blends run at the photo's own size (filters can run smaller), so a photo
+// too big to blend on this device is turned away before any filtering.
 async function applyStack(layers, rgba, width, height) {
+  const blended = layers.find((l) => !(l.amount === 100 && l.blend === 'normal'));
+  if (blended) {
+    await gpuFilters.ready();
+    gpuFilters.checkPlan(width, height, blendPlan(rgba, width, height, blended.blend, blended.amount));
+  }
   var image = rgba;
   for (const layer of layers) {
     const filtered = await gpuFilters.apply(layer.tOption, image, width, height, layer.tParams);

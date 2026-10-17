@@ -133,3 +133,22 @@ jobs:
               --title "Native addon prebuilds" \
               --notes "Prebuilt native addons that npm install downloads (scripts/install-native.js). Each file is named by a hash of the addon's source; updated automatically by .github/workflows/prebuilds.yml."
           gh release upload native-prebuilds out/* --clobber
+      # npm install trusts a binary only by its checksum in native/prebuilds.json
+      # (scripts/install-native.js), so the release alone can't change what
+      # people run: these entries go into that file in a reviewed commit.
+      - name: The checksums to commit to native/prebuilds.json
+        run: |
+          cat > checksums.js <<'SCRIPT'
+          const fs = require('fs');
+          const entries = {};
+          for (const f of fs.readdirSync('out').filter((f) => f.endsWith('.node.sha256'))) {
+            const [, key, platform] = /^omnifilter-(\w+)-(.+)\.node\.sha256$/.exec(f);
+            (entries[key] = entries[key] || {})[platform] = fs.readFileSync('out/' + f, 'utf8').split(/\s+/)[0];
+          }
+          const json = JSON.stringify(entries, null, 2);
+          console.log(json);
+          const fence = '`'.repeat(3);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Add to native/prebuilds.json, under checksums\n\n' +
+            'Prebuilt binaries are only used once these are committed.\n\n' + fence + 'json\n' + json + '\n' + fence + '\n');
+          SCRIPT
+          node checksums.js

@@ -161,3 +161,78 @@ describe('the real device', function() {
     });
   });
 });
+
+describe('when the device fails', function() {
+  this.timeout(60000);
+  const native = require(__dirname + '/../lib/native');
+  const stack = require(__dirname + '/../lib/stack');
+  const pixels = Buffer.from([10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 100, 110, 120, 255]);
+  const saved = {};
+
+  before(function() {
+    // These replace the OpenCL addon's calls.
+    if (gpu.backend !== 'opencl') this.skip();
+    return gpu.ready();
+  });
+  beforeEach(() => Object.assign(saved, { filter: native.filter, init: native.init }));
+  afterEach(() => {
+    Object.assign(native, saved);
+    delete process.env.OMNIFILTER_GPU_TIMEOUT_S;
+  });
+
+  it('sets a device that was reset up again for the next filter', async () => {
+    var inits = 0;
+    native.init = function() {
+      inits++;
+      return saved.init.apply(this, arguments);
+    };
+    native.filter = () => Promise.reject(new Error('clFinish(invert) failed (OpenCL error -36)'));
+    const err = await gpu.apply('invert', pixels, 2, 2, {}).catch((e) => e);
+    expect(err.code).to.equal('NO_DEVICE');
+    expect(err.message).to.match(/stopped working/);
+    native.filter = saved.filter;
+    const out = await gpu.apply('invert', pixels, 2, 2, {});
+    expect(inits).to.equal(1);
+    expect(Array.from(out.slice(0, 4))).to.eql([245, 235, 225, 255]);
+  });
+
+  it('gives up on a filter that never finishes, says so, and carries on once it does', async () => {
+    process.env.OMNIFILTER_GPU_TIMEOUT_S = '0.05';
+    var finish;
+    native.filter = () => new Promise((resolve) => { finish = resolve; });
+    const err = await gpu.apply('invert', pixels, 2, 2, {}).catch((e) => e);
+    expect(err.message).to.match(/took too long/);
+    expect(gpu.health()).to.equal('stuck');
+    // Meanwhile the next one fails at once.
+    const next = await gpu.apply('invert', pixels, 2, 2, {}).catch((e) => e);
+    expect(next.message).to.match(/has not finished a filter it started/);
+    finish(Buffer.from(pixels));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(gpu.health()).to.not.equal('stuck');
+    native.filter = saved.filter;
+    delete process.env.OMNIFILTER_GPU_TIMEOUT_S;
+    expect(Array.from((await gpu.apply('invert', pixels, 2, 2, {})).slice(0, 4))).to.eql([245, 235, 225, 255]);
+  });
+
+  it('turns away a stack it couldn\'t blend before filtering anything', async () => {
+    const check = gpu.checkPlan;
+    const apply = gpu.apply;
+    var applied = 0;
+    gpu.checkPlan = () => {
+      throw Object.assign(new Error('too large to blend'), { code: 'UNSUPPORTED', status: 400 });
+    };
+    gpu.apply = function() {
+      applied++;
+      return apply.apply(this, arguments);
+    };
+    try {
+      const layers = stack.normalizeStack([{ tOption: 'invert' }, { tOption: 'sepia', blend: 'multiply' }]);
+      const err = await stack.applyStack(layers, pixels, 2, 2).catch((e) => e);
+      expect(err.message).to.equal('too large to blend');
+      expect(applied).to.equal(0);
+    } finally {
+      gpu.checkPlan = check;
+      gpu.apply = apply;
+    }
+  });
+});
