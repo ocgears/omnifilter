@@ -49,12 +49,15 @@ export class AuthService {
   readonly email = signal<string | null>(null);
   // Set when there's a token but the server couldn't be asked whose it is.
   readonly unverified = signal(false);
+  // Why the sign-in page is shown, when it's because the last one ended.
+  readonly notice = signal<string | null>(null);
 
   async signUp(user: { email: string; password: string; confirmation: string }): Promise<void> {
     const res = await firstValueFrom(
       this.http.post<{ token: string }>(this.apiBase + '/signup', user),
     );
     this.setToken(res.token);
+    this.notice.set(null);
     await this.verify();
   }
 
@@ -65,6 +68,7 @@ export class AuthService {
       }),
     );
     this.setToken(res.token);
+    this.notice.set(null);
     await this.verify();
   }
 
@@ -90,6 +94,12 @@ export class AuthService {
       if (status === 401 || status === 403) this.signOut();
       else this.unverified.set(true);
     }
+  }
+
+  // The server no longer takes the token (auth.interceptor.ts).
+  expired(): void {
+    this.signOut();
+    this.notice.set('Your sign-in has expired. Sign in again to carry on.');
   }
 
   signOut(): void {

@@ -105,6 +105,37 @@ test('runs the filters scaled down when the GPU\'s buffers are too small, then e
   await expect(card(page)).toHaveCount(0);
 });
 
+async function signUp(page, address) {
+  await page.goto('/#/signup');
+  await expect(page.getByRole('heading', { level: 1, name: 'Create an account' })).toBeVisible();
+  await page.locator('#email').fill(address);
+  await page.locator('#password').fill(password);
+  await page.locator('#confirmation').fill(password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/#\/home$/);
+}
+
+test('keeps a 2048-pixel copy of a bigger photo, with a thumbnail in the gallery', async ({ page }) => {
+  await signUp(page, 'big-' + email());
+  await choosePhoto(page, 2400, 1600);
+  test.skip(!(await hasWebGpu(page)), 'this browser has no WebGPU');
+  await page.locator('#filter-0').selectOption({ label: 'Invert' });
+  await page.locator('#transform').click();
+  await expect(card(page)).toContainText('keeps a copy 2048 pixels on its longer side; Save keeps the full size',
+    { timeout: 60000 });
+  await card(page).getByRole('button', { name: 'Keep in gallery (1 of 5)' }).click();
+  await expect(photos(page)).toHaveCount(1);
+  await page.reload();
+  const kept = photos(page).first();
+  await expect(kept.locator('img')).toHaveAttribute('src', /^data:image\/webp;base64,/);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    kept.getByRole('button', { name: 'Save' }).click()
+  ]);
+  const meta = await require('sharp')(await download.path()).metadata();
+  expect([meta.format, meta.width, meta.height]).toEqual(['jpeg', 2048, 1365]);
+});
+
 test('keeps at most 5 photos for an account', async ({ page }) => {
   await page.goto('/#/signup');
   await expect(page.getByRole('heading', { level: 1, name: 'Create an account' })).toBeVisible();

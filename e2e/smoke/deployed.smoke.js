@@ -56,6 +56,10 @@ test('runs in cloud mode, with no filtering device of its own', async ({ request
 test('serves the page, which calls the API at its own address, and its scripts compressed', async ({ request }) => {
   const res = await request.get('/');
   expect(res.status()).toBe(200);
+  // Its security headers (server/lib/security_headers.js); the guest test
+  // below fails on anything the policy blocks, which the browser logs.
+  expect(res.headers()['content-security-policy']).toContain("script-src 'self'");
+  expect(res.headers()).not.toHaveProperty('x-powered-by');
   const html = await res.text();
   expect(html).toContain('<meta name="omnifilter-api" content="/">');
   const script = /<script src="([^"]+\.js)"/.exec(html)?.[1];

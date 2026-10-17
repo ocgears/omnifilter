@@ -14,3 +14,4 @@ npm-debug.log
 .env
 lighthouse-report
 .lighthouseci
+gha-creds-*.json

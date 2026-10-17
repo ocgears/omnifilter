@@ -77,6 +77,7 @@ export class LiveCamera implements OnDestroy {
     try {
       const engine = this.engine ?? (await this.engines.get());
       if (!engine) throw new Error('Live camera filters need a browser with WebGPU.');
+      if (this.engine !== engine) this.watch(engine);
       this.engine = engine;
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -112,6 +113,27 @@ export class LiveCamera implements OnDestroy {
             : (err as Error).message || 'Could not open the camera.',
       );
     }
+  }
+
+  // A lost GPU device takes the renderer's images with it: carry on with a
+  // new engine, with the camera still open.
+  private watch(engine: GpuEngine): void {
+    engine.device.lost.then(async () => {
+      if (this.engine !== engine) return;
+      this.engine = null;
+      this.renderer = null;
+      this.frame = null;
+      const next = await this.engines.get();
+      if (this.engine || this.stopped) return;
+      if (!next) {
+        this.state.set('failed');
+        this.error.set('The GPU stopped working. Close the camera and try again.');
+        return;
+      }
+      this.watch(next);
+      this.engine = next;
+      this.renderer = new StackRenderer(next, this.blendModes(), FRAME_SIZE);
+    });
   }
 
   // One filtered frame per new camera frame (or display frame, where the
@@ -159,6 +181,11 @@ export class LiveCamera implements OnDestroy {
       }
       if ('image' in result) engine.present(result.image, this.canvas().nativeElement);
       await engine.done();
+      const refused = engine.takeError();
+      if (refused) {
+        console.error('Live camera:', refused.message);
+        this.stoppedAt.set("The GPU couldn't run these filters on the camera's frames.");
+      }
       const ms = performance.now() - start;
       this.avgMs = this.avgMs ? this.avgMs * 0.9 + ms * 0.1 : ms;
       this.frameMs.set(this.avgMs);
@@ -199,9 +226,11 @@ export class LiveCamera implements OnDestroy {
 
   ngOnDestroy(): void {
     this.stop();
-    // The renderer owns the frame image (it's the source).
+    // The renderer owns the frame image (it's the source), and the engine
+    // keeps a texture the size of the camera's frames.
     this.renderer?.destroy();
     this.renderer = null;
     this.frame = null;
+    this.engine?.releaseFrame();
   }
 }

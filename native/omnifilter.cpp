@@ -62,6 +62,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -666,10 +667,19 @@ class FilterWorker : public Napi::AsyncWorker {
   }
 
   void OnOK() override {
-    // Copying a large result can fail for lack of memory; reject rather than
-    // let the exception escape, since nothing up the stack here would catch it.
+    // The result's pixels become the Buffer's own memory, rather than a copy
+    // (a 50-megapixel photo is 200 MB a copy): the vector moves to the heap
+    // and is freed with the Buffer. Where external memory isn't allowed
+    // (some V8 builds), NewOrCopy copies instead. Copying can fail for lack
+    // of memory; reject rather than let the exception escape, since nothing
+    // up the stack here would catch it.
     try {
-      deferred_.Resolve(Napi::Buffer<uint8_t>::Copy(Env(), out_.data(), out_.size()));
+      auto pixels = std::make_unique<std::vector<uint8_t>>(std::move(out_));
+      Napi::Buffer<uint8_t> buffer = Napi::Buffer<uint8_t>::NewOrCopy(
+          Env(), pixels->data(), pixels->size(),
+          [](Napi::Env, uint8_t*, std::vector<uint8_t>* owned) { delete owned; }, pixels.get());
+      pixels.release();  // the Buffer's finalizer frees it now
+      deferred_.Resolve(buffer);
     } catch (const Napi::Error& e) {
       deferred_.Reject(e.Value());
     }

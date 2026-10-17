@@ -18,14 +18,14 @@ Our application is still under development, thank you for your patience.
 # Usage
 
 ### Requirements
-* Node.js 20.9 or newer for the API server, and 22.22 or newer (or 24.15+) to build the web client, which uses Angular 22
+* Node.js 22.13 or newer for the API server (Node 20 reached its end of life in April 2026), and 22.22 or newer (or 24.15+) to build the web client, which uses Angular 22
 * MongoDB (`brew install mongodb-community`, or any MongoDB 4.2+ server)
 * An OpenCL runtime:
   * **macOS:** built in, nothing to install. (Apple has deprecated OpenCL in favour of Metal, but it still works on current macOS, Intel and Apple Silicon.)
   * **Linux:** the ICD loader (`apt install ocl-icd-libopencl1`), plus a driver for your device: your GPU vendor's, Mesa's Rusticl (`mesa-opencl-icd`), or `pocl-opencl-icd` to run on the CPU.
   * **Windows:** comes with the NVIDIA, AMD and Intel GPU drivers.
 
-`npm install` installs the native GPU addon. When the [prebuilds workflow](.github/workflows/prebuilds.yml) has published a binary for your platform built from the same source (Linux, macOS and Windows, x64 and arm64), it downloads that, checks its SHA-256 and that it loads. Otherwise it compiles the addon, which needs:
+`npm install` installs the native GPU addon. When the [prebuilds workflow](.github/workflows/prebuilds.yml) has published a binary for your platform built from the same source (Linux, macOS and Windows, x64 and arm64), it downloads that, checks its SHA-256 against the one recorded in `native/prebuilds.json` (reviewed with the code, so a binary replaced on the release isn't used) and that it loads. Otherwise it compiles the addon, which needs:
 * A C++ compiler: on macOS `xcode-select --install`; on Linux `build-essential`; on Windows the "Desktop development with C++" workload of Visual Studio or its Build Tools.
 * The OpenCL headers and loader library: built into macOS; on Linux `apt install ocl-icd-opencl-dev`; on Windows, set `OPENCL_SDK` to a folder with `include/CL/cl.h` and `lib/OpenCL.lib`, such as the unzipped [Khronos OpenCL-SDK](https://github.com/KhronosGroup/OpenCL-SDK/releases) for x64, or vcpkg's `installed\<triplet>` folder after `vcpkg install opencl:x64-windows` (or `arm64-windows`).
 
@@ -62,10 +62,11 @@ Then open http://localhost:5000. On startup the API server logs which device the
 | `HOSTURL`, `CLIENTPORT` | Where the client is served (default `http://localhost:` and 5000); the API accepts browser requests from that address. |
 | `CORS_ORIGINS` | Comma-separated list of web addresses allowed to call the API from a browser, replacing the one above, e.g. `https://photos.example,http://localhost:5000`. Not needed when the API serves the built client itself (it does whenever `dist/` exists). |
 | `AUTH_RATE_PER_MINUTE`, `AUTH_RATE_BURST` | Sign-ins and sign-ups allowed per client IP address: a burst of 5, then 10 a minute by default. |
-| `OMNIFILTER_MODE` | `cloud` for the hosted demo: photos are filtered at full size on each visitor's own GPU, in the browser, and the server only keeps the results people choose to keep, 5 per account. It sets the three settings below to `device`, `device` and `5`; any of them can still be set on its own. Such a server sets up no filtering device. [docs/CLOUD_RUN.md](docs/CLOUD_RUN.md) hosts it on Google Cloud Run, from `docker/cloud-run.Dockerfile`. |
+| `OMNIFILTER_MODE` | `cloud` for the hosted demo: photos are filtered at full size on each visitor's own GPU, in the browser, and the server only keeps the results people choose to keep, 5 per account, at most 2048 pixels on a side. It sets the four settings below to `device`, `device`, `5` and `2048`; any of them can still be set on its own. Such a server sets up no filtering device. [docs/CLOUD_RUN.md](docs/CLOUD_RUN.md) hosts it on Google Cloud Run, from `docker/cloud-run.Dockerfile`. |
 | `OMNIFILTER_PROCESSING` | Where signed-in users' filters run: `server` (default), `device` (the visitor's GPU, through WebGPU in a Web Worker; the server then won't run filters at all), or `device-first` (the visitor's GPU when the browser has WebGPU, otherwise the server). |
 | `OMNIFILTER_GUESTS` | Guests (no account): `server` (default; the server filters their photos but doesn't keep them, the page keeps them in the browser and offers to add them to an account made later), `device` (they filter on their own GPU only), or `off` (only signed-in users can use the filters). |
 | `OMNIFILTER_MAX_STORED_PHOTOS` | How many photos each account may keep (default: any number). Guests' photos kept in the browser count against it too. |
+| `OMNIFILTER_KEEP_MAX_SIDE` | Photos longer than this many pixels on a side are kept scaled down to it, as a JPEG (WebP with transparency); the page says so before Keep, and Save on the result still gives the full size (default: kept as they are). |
 | `OMNIFILTER_GUEST_MAX_PIXELS` | Largest photo a guest may send, in pixels (default 16 million, which takes a 12-megapixel phone photo; the page scales bigger ones down first). Guests also get one transform at a time each, one at a time between them all, and a few a minute per IP address. |
 | `GUEST_RATE_PER_MINUTE`, `GUEST_RATE_BURST` | Guest transforms allowed per client IP address: a burst of 3, then 6 a minute by default. |
 | `TRUST_PROXY` | Behind a proxy or load balancer, which proxies to believe about the visitor's IP address (Express's `trust proxy` setting): a number of hops, e.g. `1` on Heroku, or addresses. Without it, the per-IP limits above see the proxy's address for every visitor. |
@@ -73,7 +74,9 @@ Then open http://localhost:5000. On startup the API server logs which device the
 
 Emails are unique (case-insensitive). Older databases may hold mixed-case emails: those accounts can still sign in, and `node scripts/migrate-emails.js` (`--dry-run` to only look) lowercases them all and lists any two accounts that share an email. MongoDB can't build the unique index until such duplicates are removed; the server logs a warning when that happens.
 
-To keep one client from swamping the server, a couple of photos are processed at once, at most 8 more wait (after that the API answers 503), and each user can have one photo in progress (429). Requests whose client goes away leave the queue. Deleting an account needs its current password. Filtered photos are stored as JPEG or PNG, or as a smaller JPEG/WebP when a PNG would be too big for the database.
+To keep one client from swamping the server, a couple of photos are taken in and processed at once, a few more wait unread (after that the API answers 503), and each user can send one photo at a time (429), which also keeps saves made at the same moment from slipping past the photo limit. Requests whose client goes away leave the queue. Deleting an account needs its current password, and guesses at it are rate-limited. Filtered photos are stored as JPEG or PNG, or as a smaller JPEG/WebP when a PNG would be too big for the database, in binary with a 640-pixel WebP thumbnail: `GET /getAll` lists the thumbnails, and `GET /content/:id` sends a photo itself (`?download` to save it as a file). Photos kept by older versions, as data URLs, move to that the first time their owner's gallery loads.
+
+Every reply carries security headers, among them a Content Security Policy that lets the page run only its own scripts (the sign-in token is kept in the browser's localStorage, so a script injected into the page could otherwise read it).
 
 ### Running with Docker
 ```
@@ -95,7 +98,7 @@ npm run test:e2e     # the whole app in browsers (Playwright), desktop, Android 
 
 The end-to-end tests run as a desktop browser, as an Android phone (Chromium at Pixel 7 size, with touch) and as an iPhone (WebKit, Safari's engine, at iPhone 15 size). `e2e/mobile.spec.js` adds, on the phones: real touch gestures (swiping the looks, dragging sliders, holding to compare), every common phone width from 320 px, upright and sideways, with no sideways scrolling and every button at least 44 px; no control hidden under the sticky photo or Transform bar when it has focus; axe's WCAG 2.2 checks; and a phone slowed to a quarter of the speed on slow 4G, whose timings go on the CI run's summary page. `e2e/gpu.spec.js` also runs every filter, preset and blend mode both with the server's OpenCL code and with the browser's WebGPU code and compares the results pixel by pixel (on Linux, Chromium uses SwiftShader, its software GPU). They build the client, start the API on port 3930 serving it, and use the `omnifilter_e2e` database, which they empty first. Install the browsers once with `npx playwright install chromium webkit`; on macOS 12, which Playwright's browsers don't support, they use the installed Google Chrome and skip the iPhone.
 
-CI also runs Lighthouse's mobile audit on the production build (`npx @lhci/cli autorun`, with the budgets in `lighthouserc.js`). Every night, smoke tests run in Chrome in the Android emulator (`e2e/android/`) and Mobile Safari in the iOS Simulator (`e2e/ios/safari.js`). [docs/MOBILE_TESTING.md](docs/MOBILE_TESTING.md) says what's tested where, and what's still open.
+CI also runs Lighthouse's mobile audit on the production build (Lighthouse CI, pinned with its own lockfile in `.github/lighthouse/`: `npm ci --prefix .github/lighthouse`, then `.github/lighthouse/node_modules/.bin/lhci autorun`, with the budgets in `lighthouserc.js`). Every night, smoke tests run in Chrome in the Android emulator (`e2e/android/`) and Mobile Safari in the iOS Simulator (`e2e/ios/safari.js`). [docs/MOBILE_TESTING.md](docs/MOBILE_TESTING.md) says what's tested where, and what's still open.
 The GPU tests compare every filter's output against a plain JavaScript implementation of the same convolution, pixel by pixel.
 
 # Filters

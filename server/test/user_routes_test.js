@@ -1,11 +1,10 @@
 require(__dirname + '/../server');
 const { clearCollections } = require(__dirname + '/setup');
 const chai = require('chai');
-const chaiHttp = require('chai-http');
+const { default: chaiHttp, request: http } = require('chai-http');
 chai.use(chaiHttp);
 const expect = chai.expect;
-const request = chai.request;
-const mongoose = require('mongoose');
+const request = http.execute;
 var PORT = process.env.PORT || process.env.$PORT || 3000;
 var baseUri = 'localhost:' + PORT;
 const User = require(__dirname + '/../models/user');

@@ -1,5 +1,5 @@
 <section class="result" aria-labelledby="result-title">
-  <h2 id="result-title">Made on this device</h2>
+  <h2 id="result-title" tabindex="-1">Made on this device</h2>
   <img [src]="result().url" [alt]="result().label" />
   <div class="about">
     <p class="label">{{ result().label }}</p>
@@ -10,6 +10,9 @@
         Filtered at {{ at.width }}×{{ at.height }} to fit this GPU, then enlarged to
         {{ result().width }}×{{ result().height }}.
       </p>
+    }
+    @if (keepNote(); as note) {
+      <p class="parts keep-note">{{ note }}</p>
     }
     @if (shareError(); as message) {
       <p class="share-error" role="alert">{{ message }}</p>

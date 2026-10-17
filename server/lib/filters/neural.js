@@ -24,7 +24,7 @@ const { STYLES, MODEL_DIR } = require('./neural_models');
 
 const GROUP = 'Neural style';
 
-let ort = null;
+let ort;
 try {
   ort = require('onnxruntime-node');
 } catch (e) {

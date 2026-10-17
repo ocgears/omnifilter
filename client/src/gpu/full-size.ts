@@ -9,7 +9,7 @@
 // again at the end, the same way the server fits filters to a small GPU
 // (server/lib/device_choice.js, which this uses with the GPU's own limits).
 import deviceChoice from '../../../server/lib/device_choice.js';
-import { GpuEngine, GpuImage, NativePlan } from './engine';
+import { GpuEngine, GpuError, GpuImage, NativePlan } from './engine';
 import { buildPlan, filterDef, normalizeParams, workingSize } from './filters';
 import { StackLayer, StackRenderer } from './stack';
 
@@ -52,12 +52,7 @@ export function deviceLimits(engine: GpuEngine, maxBytes?: number): DeviceLimits
 const pixels = (w: number, h: number) => w * h * 4;
 
 // What one layer needs at a photo size, as device_choice.js measures plans.
-function layerFits(
-  layer: StackLayer,
-  width: number,
-  height: number,
-  limits: DeviceLimits,
-): number {
+function layerFits(layer: StackLayer, width: number, height: number, limits: DeviceLimits): number {
   const def = filterDef(layer.tOption);
   if (!def) return 0;
   const params = normalizeParams(def, layer.params);
@@ -111,7 +106,13 @@ export interface FullSizeProgress {
 }
 
 export interface FullSizePixels {
+  // The filtered pixels: rgbaWidth x rgbaHeight, which is the photo's own
+  // size unless the result is too big for one of the GPU's buffers, when
+  // it's the size the filters ran at and encodePixels enlarges it.
   rgba: Uint8Array;
+  rgbaWidth: number;
+  rgbaHeight: number;
+  // The photo's size, which the file will be.
   width: number;
   height: number;
   // The size the filters ran at, if smaller than the photo.
@@ -121,8 +122,18 @@ export interface FullSizePixels {
 
 export class FullSizeError extends Error {}
 
+// How many times a run that runs out of GPU memory starts again smaller.
+const RETRIES = 2;
+
+const outOfMemory = (err: unknown) =>
+  (err as GpuError | null)?.name === 'GpuError' && (err as GpuError).outOfMemory;
+
 // Filters a decoded photo at full size. Each layer is waited for before the
-// next, and `cancelled` is asked between them.
+// next, and `cancelled` is asked between them. If the GPU runs out of memory
+// it starts again at about half the pixels, twice at most: a phone's GPU
+// shares its memory with everything else, so it can have less to spare than
+// its limits say. Any other work the GPU refuses is an error, rather than a
+// blank photo.
 export async function filterFullSize(
   engine: GpuEngine,
   bitmap: ImageBitmap,
@@ -134,23 +145,87 @@ export async function filterFullSize(
     cancelled?: () => boolean;
   } = {},
 ): Promise<FullSizePixels> {
+  const limits = deviceLimits(engine, options.maxBytes);
+  let size = runSize(layers, bitmap.width, bitmap.height, limits);
+  if (!size) throw new FullSizeError("These filters can't run on " + limits.name + '.');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await filterAt(engine, bitmap, layers, blendModes, size, limits, options);
+    } catch (err) {
+      if (outOfMemory(err) && attempt < RETRIES) {
+        console.warn(
+          'Out of GPU memory at ' + size.width + 'x' + size.height + '; trying smaller.',
+        );
+        size = {
+          width: Math.max(1, Math.floor(size.width * 0.7)),
+          height: Math.max(1, Math.floor(size.height * 0.7)),
+        };
+        continue;
+      }
+      if ((err as GpuError | null)?.name === 'GpuError') {
+        console.error('Full size:', err);
+        throw new FullSizeError(
+          outOfMemory(err)
+            ? limits.name + ' ran out of memory for a photo this size. Try a smaller photo.'
+            : limits.name + " couldn't run these filters on this photo.",
+        );
+      }
+      throw err;
+    }
+  }
+}
+
+async function filterAt(
+  engine: GpuEngine,
+  bitmap: ImageBitmap,
+  layers: readonly StackLayer[],
+  blendModes: readonly string[],
+  size: { width: number; height: number },
+  limits: DeviceLimits,
+  options: { onProgress?: (p: FullSizeProgress) => void; cancelled?: () => boolean },
+): Promise<FullSizePixels> {
   const width = bitmap.width;
   const height = bitmap.height;
-  const limits = deviceLimits(engine, options.maxBytes);
-  const size = runSize(layers, width, height, limits);
-  if (!size) throw new FullSizeError("These filters can't run on " + limits.name + '.');
   const scaled = size.width !== width || size.height !== height;
   const progress = options.onProgress ?? (() => undefined);
   const check = () => {
     if (options.cancelled?.()) throw new FullSizeError('Cancelled.');
   };
   const now = () => performance.now();
+  // Runs work on the GPU and waits for it; an image it made is released if
+  // the GPU refused some of the work.
+  const gpu = (work: () => GpuImage) =>
+    engine
+      .checked(async () => {
+        const made = work();
+        await engine.done();
+        return made;
+      })
+      .catch((err) => {
+        engine.release((err as GpuError).result as GpuImage | undefined);
+        throw err;
+      });
 
   let start = now();
   progress({ stage: 'upload', done: 0, total: layers.length });
-  let image: GpuImage = engine.imageFromFrame(bitmap, width, height, size.width, size.height);
-  engine.releaseFrame();
-  await engine.done();
+  // The photo goes onto the GPU as a texture, which can't be bigger than
+  // the GPU allows, so one that runs smaller is scaled down first, here.
+  const source = scaled
+    ? await createImageBitmap(bitmap, {
+        resizeWidth: size.width,
+        resizeHeight: size.height,
+        resizeQuality: 'high',
+      })
+    : bitmap;
+  let image: GpuImage | null = null;
+  try {
+    image = await gpu(() =>
+      engine.imageFromFrame(source, source.width, source.height, size.width, size.height),
+    );
+  } finally {
+    if (source !== bitmap) source.close();
+    engine.releaseFrame();
+  }
   const upload = now() - start;
 
   start = now();
@@ -159,25 +234,32 @@ export async function filterFullSize(
     for (let n = 0; n < layers.length; n++) {
       check();
       progress({ stage: 'filter', done: n, total: layers.length });
-      const next = renderer.apply(layers[n], image, size.width, size.height);
+      const input: GpuImage = image;
+      const next = await gpu(() => renderer.apply(layers[n], input, size.width, size.height));
       engine.release(image);
       image = next;
-      await engine.done();
     }
-    if (scaled) {
-      const full = renderer.resize(image, width, height);
+    // Back to the photo's size, on the GPU if the result fits in one of its
+    // buffers; if not, the browser enlarges it when encoding.
+    let rgbaSize = size;
+    if (scaled && pixels(width, height) <= limits.maxAllocBytes) {
+      const small: GpuImage = image;
+      const full = await gpu(() => renderer.resize(small, width, height));
       engine.release(image);
       image = full;
-      await engine.done();
+      rgbaSize = { width, height };
     }
     check();
     const filters = now() - start;
 
     start = now();
     progress({ stage: 'readback', done: layers.length, total: layers.length });
-    const rgba = await engine.readPixels(image);
+    const result: GpuImage = image;
+    const rgba = await engine.checked(() => engine.readPixels(result));
     return {
       rgba,
+      rgbaWidth: rgbaSize.width,
+      rgbaHeight: rgbaSize.height,
       width,
       height,
       ranAt: scaled ? size : null,
@@ -195,18 +277,34 @@ export function hasTransparency(rgba: Uint8Array): boolean {
   return false;
 }
 
-// The pixels as a file: a JPEG, or a PNG where there's transparency, as the
+// The pixels as a file of width x height (the browser enlarges them if
+// they're smaller): a JPEG, or a PNG where there's transparency, as the
 // server encodes its results (server/lib/image_codec.js).
-export async function encodePixels(rgba: Uint8Array, width: number, height: number): Promise<Blob> {
-  const canvas = new OffscreenCanvas(width, height);
-  const context = canvas.getContext('2d');
-  if (!context) throw new FullSizeError("This browser can't encode images here.");
+export async function encodePixels(
+  rgba: Uint8Array,
+  rgbaWidth: number,
+  rgbaHeight: number,
+  width = rgbaWidth,
+  height = rgbaHeight,
+): Promise<Blob> {
   const clamped = new Uint8ClampedArray(
     rgba.buffer as ArrayBuffer,
     rgba.byteOffset,
     rgba.byteLength,
   );
-  context.putImageData(new ImageData(clamped, width, height), 0, 0);
+  const pixelsCanvas = new OffscreenCanvas(rgbaWidth, rgbaHeight);
+  const pixelsContext = pixelsCanvas.getContext('2d');
+  if (!pixelsContext) throw new FullSizeError("This browser can't encode images here.");
+  pixelsContext.putImageData(new ImageData(clamped, rgbaWidth, rgbaHeight), 0, 0);
+  let canvas = pixelsCanvas;
+  if (width !== rgbaWidth || height !== rgbaHeight) {
+    canvas = new OffscreenCanvas(width, height);
+    const context = canvas.getContext('2d');
+    if (!context) throw new FullSizeError("This browser can't encode images here.");
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(pixelsCanvas, 0, 0, width, height);
+    pixelsCanvas.width = pixelsCanvas.height = 1;
+  }
   return hasTransparency(rgba)
     ? canvas.convertToBlob({ type: 'image/png' })
     : canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });

@@ -122,12 +122,17 @@ test('filters a photo on the device and shows the result', async ({ page }) => {
   await expect(photos(page)).toHaveCount(1);
   const result = photos(page).first();
   await expect(result).toContainText('Invert');
+  // The gallery shows a thumbnail; Save fetches the photo itself.
   const src = await result.locator('img').getAttribute('src');
-  expect(src).toMatch(/^data:image\/jpeg;base64,/);
-  await expect(result.getByRole('link', { name: 'Save' })).toHaveAttribute('download', /\.jpg$/);
+  expect(src).toMatch(/^data:image\/webp;base64,/);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    result.getByRole('button', { name: 'Save' }).click()
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^omnifilter-invert-\w{6}\.jpg$/);
 
   // The left edge of the gradient is dark, so inverted it's light.
-  const image = sharp(Buffer.from(src.split(',')[1], 'base64'));
+  const image = sharp(await download.path());
   const { data } = await image.extract({ left: 0, top: 0, width: 4, height: 4 }).raw()
     .toBuffer({ resolveWithObject: true });
   expect(data[0]).toBeGreaterThan(200);
@@ -161,8 +166,13 @@ test('previews filters live on this device\'s GPU, and compares with the origina
   await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
 
   // If the GPU device is lost (a driver reset, a phone reclaiming memory),
-  // the next change gets a new one.
+  // the preview gets a new one straight away, and carries on.
   await page.evaluate(() => window.omnifilterGpu.loseDevice());
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect.poll(() => leftEdgeRed(canvas)).toBeLessThan(60);
+  await page.mouse.up();
+  await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
   await page.locator('#filter-0').selectOption({ label: 'Threshold' });
   await expect(status).toContainText(/Live preview.* ms/);
   await expect.poll(() => leftEdgeRed(canvas)).toBeLessThan(60);
@@ -184,6 +194,14 @@ test('filters the live camera, and takes a photo with it', async ({ page }) => {
     return;
   }
   await page.getByRole('button', { name: 'Neon night' }).click();
+  await expect(camera.locator('.status')).toContainText(/Live · \d+ ms a frame/);
+  // A lost GPU device: the camera carries on with a new one. (Chrome's fake
+  // camera is a moving pattern, so frames still coming means it changes.)
+  await page.evaluate(() => window.omnifilterGpu.loseDevice());
+  const cameraCanvas = camera.locator('canvas');
+  const first = await cameraCanvas.screenshot();
+  await expect.poll(async () => Buffer.compare(first, await cameraCanvas.screenshot()) !== 0,
+    { timeout: 10000 }).toBe(true);
   await expect(camera.locator('.status')).toContainText(/Live · \d+ ms a frame/);
   await camera.getByRole('button', { name: 'Take photo' }).click();
   await expect(camera).toHaveCount(0);

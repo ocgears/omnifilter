@@ -1,4 +1,13 @@
-import { Component, computed, input, output, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  afterNextRender,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import type { DeviceResult } from '../editor/device-transform';
 
 // A photo just filtered on this device, before it's kept: how fast that
@@ -53,6 +62,8 @@ export class ResultCard {
   readonly result = input.required<MadeOnDevice>();
   // "Keep in gallery (2 of 5)" and the like, and whether there's room.
   readonly keepText = input('Keep in gallery');
+  // About the copy Keep keeps, if it differs from this one.
+  readonly keepNote = input<string | null>(null);
   readonly canKeep = input(true);
   readonly keeping = input(false);
   readonly keep = output<void>();
@@ -63,6 +74,18 @@ export class ResultCard {
   readonly shareError = signal<string | null>(null);
   readonly canShare =
     typeof navigator !== 'undefined' && 'share' in navigator && 'canShare' in navigator;
+
+  constructor() {
+    // The card appears below the photo and controls, off the screen on a
+    // phone: bring it into view, and move the focus to it, so a screen
+    // reader says what was made.
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    afterNextRender(() => {
+      const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      host.scrollIntoView?.({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+      host.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true });
+    });
+  }
 
   async share(): Promise<void> {
     this.shareError.set(null);

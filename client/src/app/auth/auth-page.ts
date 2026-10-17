@@ -14,7 +14,7 @@ const MIN_PASSWORD_LENGTH = 8;
   styleUrl: './auth-page.scss',
 })
 export class AuthPage {
-  private readonly auth = inject(AuthService);
+  protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
   // From the route's data (app.routes.ts).

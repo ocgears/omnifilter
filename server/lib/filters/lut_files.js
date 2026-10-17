@@ -17,7 +17,7 @@ function loadCube(path) {
 // files that can't be parsed are skipped, with a message either way, so a
 // stray file can't stop the server.
 function loadCubeDir(dir) {
-  let files = [];
+  let files;
   try {
     files = fs.readdirSync(dir).filter((f) => /\.cube$/i.test(f)).sort();
   } catch (e) {

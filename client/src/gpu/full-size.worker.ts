@@ -55,7 +55,7 @@ async function run(job: Job): Promise<void> {
     }
     t = performance.now();
     send({ progress: { stage: 'encode', done: job.layers.length, total: job.layers.length } });
-    const file = await encodePixels(out.rgba, out.width, out.height);
+    const file = await encodePixels(out.rgba, out.rgbaWidth, out.rgbaHeight, out.width, out.height);
     const encode = performance.now() - t;
     send({
       result: {

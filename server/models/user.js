@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const secret = require(__dirname + '/../lib/secret');
 
@@ -8,7 +8,10 @@ const TOKEN_LIFETIME = '7d';
 
 // bcrypt work factor. Each step doubles the time a hash takes (12 is about
 // 200ms). Hashes record their own cost, so older cost-8 hashes still verify,
-// and they are upgraded the next time their owner signs in.
+// and they are upgraded the next time their owner signs in. The native
+// bcrypt hashes on libuv's thread pool, so a sign-in doesn't hold up other
+// requests meanwhile (bcryptjs, which made the older hashes and whose hashes
+// it reads, ran on the main thread).
 const BCRYPT_COST = 12;
 
 // Compared against when there is no such user, so that an unknown email

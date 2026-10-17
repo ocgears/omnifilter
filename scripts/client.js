@@ -9,7 +9,7 @@
 // NODE_ENV=production) a minified one.
 //
 // The client is its own npm package, since Angular 22 needs Node 22.22 or
-// newer while the server still runs on Node 20.9; its packages are installed
+// newer while the server runs on Node 22.13; its packages are installed
 // here the first time.
 //
 // OMNIFILTER_API=<url> (or '/' for the same origin as the page) writes the

@@ -13,6 +13,21 @@ exports.clearCollections = () => Promise.all(
   ['User', 'Content'].filter((name) => mongoose.models[name])
     .map((name) => mongoose.models[name].deleteMany({})));
 
+// A kept photo itself (GET /content/:id), as a data URL.
+exports.keptPhoto = (baseUri, token, id) => {
+  const { request } = require('chai-http');
+  return request.execute(baseUri).get('/content/' + id).set({ token: token })
+    .buffer(true).parse((res, done) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => done(null, Buffer.concat(chunks)));
+    })
+    .then((res) => {
+      if (res.status !== 200) throw new Error('GET /content/' + id + ': ' + res.status);
+      return 'data:' + res.headers['content-type'].split(';')[0] + ';base64,' + res.body.toString('base64');
+    });
+};
+
 after(() => {
   if (mongoose.connection.db) return mongoose.connection.db.dropDatabase();
 });

@@ -1,13 +1,18 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
+import { signal } from '@angular/core';
 import { AuthService } from '../auth.service';
 import { AuthPage } from './auth-page';
 
 describe('AuthPage', () => {
   let fixture: ComponentFixture<AuthPage>;
   let el: HTMLElement;
-  let auth: { signIn: ReturnType<typeof vi.fn>; signUp: ReturnType<typeof vi.fn> };
+  let auth: {
+    signIn: ReturnType<typeof vi.fn>;
+    signUp: ReturnType<typeof vi.fn>;
+    notice: ReturnType<typeof signal<string | null>>;
+  };
   let navigate: ReturnType<typeof vi.spyOn>;
 
   async function create(signup: boolean): Promise<void> {
@@ -36,12 +41,19 @@ describe('AuthPage', () => {
     auth = {
       signIn: vi.fn().mockResolvedValue(undefined),
       signUp: vi.fn().mockResolvedValue(undefined),
+      notice: signal<string | null>(null),
     };
     TestBed.configureTestingModule({
       imports: [AuthPage],
       providers: [provideRouter([]), { provide: AuthService, useValue: auth }],
     });
     navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+  });
+
+  it('says why when a sign-in has expired', async () => {
+    auth.notice.set('Your sign-in has expired. Sign in again to carry on.');
+    await create(false);
+    expect(el.querySelector('of-alerts')?.textContent).toContain('Your sign-in has expired');
   });
 
   it('signs in and goes to the photos', async () => {

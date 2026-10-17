@@ -6,6 +6,9 @@
   <div class="card">
     <h1>{{ signup() ? 'Create an account' : 'Sign in' }}</h1>
 
+    @if (auth.notice(); as notice) {
+      <of-alerts [items]="[notice]" kind="info" (dismiss)="auth.notice.set(null)" />
+    }
     <of-alerts [items]="errors()" (dismiss)="dismissError($event)" />
 
     <form (submit)="submit($event)" novalidate>

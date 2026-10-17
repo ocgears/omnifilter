@@ -157,6 +157,15 @@ describe('filter fixes', function() {
     expect(P.roundWholeParams(def('dither').params, { levels: 2.6, pixel: 0.33 })).to.eql({ levels: 3, pixel: 0.33 });
   });
 
+  it('gives a tall, narrow photo no more CLAHE tiles than a GPU can dispatch', () => {
+    // 40 x 16000 at 16 tiles across would be 6,400 tiles down.
+    const plan = def('clahe').plan(40, 16000, gpu.normalizeParams('clahe', { tiles: 16 }));
+    const hist = plan.passes.find((p) => p.kernel === 'clahe_hist');
+    expect(hist.global[0] / 256).to.equal(16 * 64);
+    const apply = plan.passes.find((p) => p.kernel === 'clahe_apply');
+    expect(apply.args[6]).to.eql({ int: 64 });
+  });
+
   it('leaves a solid colour alone when equalizing', async () => {
     const src = new Uint8Array(W * H * 4);
     for (let p = 0; p < W * H; p++) src.set([120, 130, 140, 255], p * 4);

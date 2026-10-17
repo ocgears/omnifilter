@@ -51,12 +51,21 @@ export interface EngineOptions {
   bands?: boolean;
 }
 
+// What checked() throws when the GPU refused work.
+export interface GpuError extends Error {
+  name: 'GpuError';
+  outOfMemory: boolean;
+  // What fn returned (an image, say), for the caller to release.
+  result?: unknown;
+}
+
 export class GpuEngine {
   constructor(device: GPUDevice, adapterInfo: AdapterInfo, options?: EngineOptions);
   readonly device: GPUDevice;
   readonly adapterInfo: AdapterInfo;
   readonly bands: boolean;
   lost: boolean;
+  error: GPUError | null;
 
   static fromGpu<T extends typeof GpuEngine>(
     this: T,
@@ -75,6 +84,10 @@ export class GpuEngine {
   };
   static readonly PIXELS: number;
 
+  // Throws a GpuError (outOfMemory set for running out) if the GPU refused
+  // any of fn's work.
+  checked<T>(fn: () => T | Promise<T>): Promise<T>;
+  takeError(): GPUError | null;
   kernel(name: string): Kernel;
   prepare(names: string[]): Promise<void>;
   createImage(width: number, height: number, rgba?: ArrayBufferView): GpuImage;

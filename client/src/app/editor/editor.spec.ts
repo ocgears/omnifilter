@@ -19,17 +19,29 @@ describe('Editor', () => {
   let drafts: { [K in keyof DraftStore]: ReturnType<typeof vi.fn> };
   let guestPhotos: { [K in keyof GuestPhotos]: ReturnType<typeof vi.fn> };
   let token: ReturnType<typeof signal<string | null>>;
-  let device: { run: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn>; progress: unknown };
+  let device: {
+    run: ReturnType<typeof vi.fn>;
+    cancel: ReturnType<typeof vi.fn>;
+    progress: unknown;
+  };
 
   const SETTINGS = {
     mode: 'standard',
     processing: 'server',
     guests: 'server',
     maxStoredPhotos: null,
+    keepMaxSide: null,
     maxPixels: 50e6,
     guestMaxPixels: 16e6,
   };
-  const CLOUD = { ...SETTINGS, mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5 };
+  const CLOUD = {
+    ...SETTINGS,
+    mode: 'cloud',
+    processing: 'device',
+    guests: 'device',
+    maxStoredPhotos: 5,
+    keepMaxSide: 2048,
+  };
 
   const saved: Photo = { _id: 'p1', content: 'data:image/png;base64,AA==', tOption: 'invert' };
 
@@ -56,6 +68,9 @@ describe('Editor', () => {
       settings: vi.fn().mockResolvedValue(SETTINGS),
       preview: vi.fn(),
       import: vi.fn(),
+      file: vi.fn(),
+      fileIfReady: vi.fn().mockReturnValue(null),
+      remember: vi.fn(),
     };
     guestPhotos = {
       list: vi.fn().mockResolvedValue([]),
@@ -299,7 +314,7 @@ describe('Editor', () => {
       expect(menu.open).toBe(false);
     });
 
-    it("leaves Ctrl+Z to text boxes", async () => {
+    it('leaves Ctrl+Z to text boxes', async () => {
       await create();
       editor.addLayer();
       const box = document.createElement('input');
@@ -416,11 +431,13 @@ describe('Editor', () => {
       await create();
       expect(api.all).not.toHaveBeenCalled();
       expect(editor.photos().map((p) => p._id)).toEqual(['local-9']);
-      expect(el.querySelector('.banner.guest')?.textContent).toContain('trying OmniFilter as a guest');
+      expect(el.querySelector('.banner.guest')?.textContent).toContain(
+        'trying OmniFilter as a guest',
+      );
       expect(el.querySelector('.banner.guest a[href$="/signup"]')).not.toBeNull();
     });
 
-    it("filters on the server without saving, and keeps the result here", async () => {
+    it('filters on the server without saving, and keeps the result here', async () => {
       await create();
       api.preview.mockResolvedValue({ content: 'data:image/jpeg;base64,EE==', tOption: 'invert' });
       editor.source.set('data:image/png;base64,BB==');
@@ -537,7 +554,9 @@ describe('Editor', () => {
       api.import.mockImplementation(async (p: Omit<Photo, '_id'>) => ({ ...p, _id: 'kept' }));
       await create();
       // jsdom has no WebGPU, so the page says it's needed (the device is faked).
-      expect(el.querySelector('.device-info')?.textContent).toContain('needs a browser with WebGPU');
+      expect(el.querySelector('.device-info')?.textContent).toContain(
+        'needs a browser with WebGPU',
+      );
       editor.source.set('data:image/png;base64,BB==');
       editor.setFilter(0, 'invert');
       await editor.transform();
@@ -549,6 +568,7 @@ describe('Editor', () => {
       const card = el.querySelector('of-result-card')!;
       expect(card.textContent).toContain('12.0 MP, made on Test GPU in 1.9 s (6.3 MP/s)');
       expect(card.textContent).toContain('Keep in gallery (2 of 5)');
+      expect(card.textContent).toContain('keeps a copy 2048 pixels on its longer side');
       expect(el.querySelector('#gallery-title')?.textContent).toContain('1 of 5 kept');
 
       await editor.keepMade();
@@ -558,6 +578,8 @@ describe('Editor', () => {
         tOption: 'invert',
       });
       expect(editor.photos().map((p) => p._id)).toEqual(['kept', 'p1']);
+      // Ready for the gallery's Save and Share.
+      expect(api.remember).toHaveBeenCalledWith('kept', made.file);
       expect(editor.made()).toBeNull();
       expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:made');
     });
@@ -575,7 +597,7 @@ describe('Editor', () => {
       expect(editor.errors()[0]).toContain('already keep 5 photos');
     });
 
-    it('keeps a guest\'s result in this browser', async () => {
+    it("keeps a guest's result in this browser", async () => {
       token.set(null);
       device.run.mockResolvedValue(made);
       await create();

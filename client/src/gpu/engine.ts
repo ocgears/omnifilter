@@ -9,6 +9,7 @@ import {
 } from '../../../server/lib/webgpu/engine';
 
 export type {
+  GpuError,
   GpuImage,
   NativePlan,
   PlanArg,
@@ -56,6 +57,8 @@ export class GpuEngine extends CoreEngine {
   private presentPipeline: { pipeline: GPURenderPipeline; format: GPUTextureFormat } | null = null;
   private fromTexture: { pipeline: GPUComputePipeline; sampler: GPUSampler } | null = null;
   private frameTexture: GPUTexture | null = null;
+  // The canvases set up to show this engine's images, and in which format.
+  private configured = new WeakMap<HTMLCanvasElement | OffscreenCanvas, GPUTextureFormat>();
 
   // A WebGPU engine on this device's GPU, or null where WebGPU isn't
   // available. Works in a Web Worker too.
@@ -74,7 +77,11 @@ export class GpuEngine extends CoreEngine {
     const format = navigator.gpu.getPreferredCanvasFormat();
     if (canvas.width !== image.width) canvas.width = image.width;
     if (canvas.height !== image.height) canvas.height = image.height;
-    context.configure({ device: this.device, format, alphaMode: 'premultiplied' });
+    // Once per canvas (resizing it keeps the setup).
+    if (this.configured.get(canvas) !== format) {
+      context.configure({ device: this.device, format, alphaMode: 'premultiplied' });
+      this.configured.set(canvas, format);
+    }
     if (!this.presentPipeline || this.presentPipeline.format !== format) {
       const module = this.device.createShaderModule({ code: PRESENT, label: 'present' });
       this.presentPipeline = {

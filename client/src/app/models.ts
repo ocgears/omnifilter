@@ -74,6 +74,9 @@ export interface ServerSettings {
   guests: 'server' | 'device' | 'off';
   // How many photos an account may keep, or null for any number.
   maxStoredPhotos: number | null;
+  // Kept photos longer than this on a side are kept scaled down to it, or
+  // null if they're kept as they are.
+  keepMaxSide: number | null;
   // The largest photo the server takes, and takes from a guest, in pixels.
   maxPixels: number;
   guestMaxPixels: number;
@@ -87,10 +90,17 @@ export interface Layer {
   blend: string;
 }
 
-// A saved photo, from GET /getAll or POST /newcontent.
+// A saved photo, from GET /getAll or POST /newcontent: what it was made
+// with, its size and type, and a thumbnail; the photo itself comes from GET
+// /content/:id (PhotoApi.file). A photo kept in this browser (as a guest)
+// has the photo itself in `content`, as a data URL, instead.
 export interface Photo {
   _id: string;
-  content: string;
+  content?: string;
+  thumb?: string;
+  mime?: string;
+  width?: number;
+  height?: number;
   tOption?: string;
   tParams?: ParamValues;
   tStack?: { tOption: string; tParams?: ParamValues; amount?: number; blend?: string }[];

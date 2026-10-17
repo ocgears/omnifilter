@@ -71,7 +71,7 @@ function noDevice(message) {
 // markers make compile errors point at the right file and line.
 function kernelSource() {
   const files = fs.readdirSync(KERNEL_DIR).filter((f) => f.endsWith('.cl'))
-    .sort((a, b) => (a === 'common.cl' ? -1 : b === 'common.cl' ? 1 : a.localeCompare(b)));
+    .sort((a, b) => (b === 'common.cl') - (a === 'common.cl') || a.localeCompare(b));
   return files.map((f) => '#line 1 "' + f + '"\n' + fs.readFileSync(path.join(KERNEL_DIR, f), 'utf8'))
     .join('\n');
 }
@@ -153,17 +153,74 @@ function ready() {
   return starting;
 }
 
+// OpenCL errors after which the device's context can't be trusted: the
+// device was reset (the OS recovering from a GPU hang, a driver crash) or
+// went away. CL_DEVICE_NOT_AVAILABLE, CL_OUT_OF_RESOURCES (how NVIDIA
+// reports a kernel that crashed or was stopped), CL_INVALID_CONTEXT,
+// CL_INVALID_COMMAND_QUEUE, and NVIDIA's illegal memory access.
+const DEVICE_LOST = /OpenCL error (-2|-5|-34|-36|-9999)\)/;
+
+// How long one run on the device may take before it's given up on
+// (OMNIFILTER_GPU_TIMEOUT_S, default 5 minutes: far longer than any filter
+// takes, even on a CPU). Read each time, so tests can change it.
+const runTimeoutMs = () => (Number(process.env.OMNIFILTER_GPU_TIMEOUT_S) || 300) * 1000;
+
+// Set while a run has gone on longer than that: { since }. An OpenCL run
+// can't be stopped from here (the driver has it), so until it finishes no
+// other run starts, and requests fail straight away; /health says so, for a
+// supervisor to restart the server. WebGPU's process is simply restarted.
+var stuck = null;
+
 // Every native.filter() call goes through this queue, so at most one is in
 // flight. The addon runs one plan at a time anyway (behind a mutex, on a
 // libuv threadpool thread), so calling it more often would only park
 // threadpool threads that fs, zlib, crypto and sharp need.
 var gpuQueue = Promise.resolve();
 function runOnDevice(rgba, width, height, plan) {
-  const run = gpuQueue.then(() => (webgpu ?
-    webgpu.filter(rgba, width, height, plan, DEVICE_SETTING) :
-    native.filter(rgba, width, height, plan)));
+  const run = gpuQueue.then(() => {
+    if (stuck) {
+      throw noDevice('The GPU has not finished a filter it started ' +
+        Math.round((Date.now() - stuck.since) / 1000) + ' s ago');
+    }
+    if (!device) ensureInit();
+    return withTimeout(webgpu ?
+      webgpu.filter(rgba, width, height, plan, DEVICE_SETTING) :
+      native.filter(rgba, width, height, plan));
+  }).catch((e) => {
+    if (!webgpu && DEVICE_LOST.test(e.message)) {
+      // Set up again (a new context, kernels compiled again) for the next run.
+      console.log('WARNING: the OpenCL device stopped working (' + e.message + '); it will be set up again');
+      device = null;
+      throw noDevice('The GPU stopped working; try again');
+    }
+    throw e;
+  });
   gpuQueue = run.catch(() => {});  // a failed run mustn't block the ones after it
   return run;
+}
+
+function withTimeout(running) {
+  const limit = runTimeoutMs();
+  var timer;
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      console.log('WARNING: a filter has run on the GPU for ' + limit / 1000 + ' s; giving up on it');
+      if (webgpu) {
+        // Its process is started again for the next filter.
+        webgpu.stop();
+      } else {
+        stuck = { since: Date.now() - limit };
+        running.then(() => {}, () => {}).then(() => {
+          console.log('The GPU finished the filter it was stuck on; carrying on');
+          stuck = null;
+          device = null;
+        });
+      }
+      reject(noDevice('The GPU took too long; try again with a smaller photo'));
+    }, limit);
+    timer.unref();
+  });
+  return Promise.race([running, timeout]).finally(() => clearTimeout(timer));
 }
 
 // Fills in defaults and clamps values to each parameter's declared range.
@@ -325,6 +382,26 @@ exports.kernels = () => {
 // Resolves once the device is set up; rejects with code 'NO_DEVICE' if it
 // can't be.
 exports.ready = ready;
+
+// For /health: 'stuck' while a run has taken longer than it may (see
+// runTimeoutMs), else 'ok', or 'none' with no device set up.
+exports.health = () => {
+  if (stuck) return 'stuck';
+  return device ? 'ok' : 'none';
+};
+
+// Throws (as runPlan would reject) if a hand-built plan can't run on a
+// width x height image on this device: stack.js asks before filtering a
+// stack whose blends it couldn't then run.
+exports.checkPlan = (width, height, plan) => {
+  ensureInit();
+  const needs = deviceChoice.planNeeds(plan.native(), width, height);
+  const reason = deviceChoice.unsupportedReason(needs, device);
+  if (reason) throw unsupported('This filter ' + reason);
+  if (deviceChoice.fitScale(needs, device) < 1) {
+    throw unsupported('A ' + width + 'x' + height + ' image is too large to blend layers on ' + device.name);
+  }
+};
 
 // 'opencl' or 'webgpu', and its name for messages.
 exports.backend = BACKEND;

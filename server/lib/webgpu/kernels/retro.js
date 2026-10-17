@@ -71,7 +71,8 @@ var<private> BAYER8: array<f32, 64> = array<f32, 64>(
   },
 
   halftone: {
-    args: 'src:img dst:out width:i32 height:i32 cell:f32 mono:i32 original:in',
+    args: 'src:img dst:out width:i32 height:i32 cell:f32 mono:i32 original:in row0:i32',
+    guard: 'band',
     helpers: `
 fn rgb_to_cmyk(c: vec3f) -> vec4f {
   let k = 1.0 - max(c.x, max(c.y, c.z));

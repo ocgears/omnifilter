@@ -1,6 +1,6 @@
 # Hosting the demo on Google Cloud Run
 
-The hosted demo runs in cloud mode (`OMNIFILTER_MODE=cloud`): visitors' photos are filtered on their own GPU, in the browser, and the server only signs people in and keeps up to 5 photos each. That makes the server small enough for Cloud Run's free allowance. Cloud Run runs a Docker image, starts it when a request comes in, and stops it when there's nothing to do (so it costs nothing while idle). It can't keep a database on its own disk, so MongoDB lives on MongoDB Atlas's free cluster.
+The hosted demo runs in cloud mode (`OMNIFILTER_MODE=cloud`): visitors' photos are filtered on their own GPU, in the browser, and the server only signs people in and keeps up to 5 photos each, as copies at most 2048 pixels on a side (about 1 MB each, so the free database holds a few hundred; Save on the result gives the full size). That makes the server small enough for Cloud Run's free allowance. Cloud Run runs a Docker image, starts it when a request comes in, and stops it when there's nothing to do (so it costs nothing while idle). It can't keep a database on its own disk, so MongoDB lives on MongoDB Atlas's free cluster.
 
 ```
 visitor's browser ──HTTPS──▶ Cloud Run (the API, serving the built client)
@@ -160,12 +160,10 @@ The `run.app` address works as it is. For a domain such as `omnifilter.example.c
 - quick to start, since the first visitor after an idle spell waits for it: Node's compile cache is filled when the image is built, sharp loads only when a photo is read or written, and Cloud Run's startup CPU boost is on. `/health` gives a server that has just started a few seconds to connect to the database, and a server that can't reach the database keeps trying (every 5 s, doubling up to a minute) rather than giving up.
 - CI's `cloud-run` job builds it on every push, runs it beside a MongoDB, and runs the smoke test against it.
 
-**`.github/workflows/deploy.yml`**, after the test workflow passes on master, or on demand, in the `production` environment:
-1. signs in to Google Cloud through Workload Identity Federation (`google-github-actions/auth`),
-2. builds the image and pushes it to Artifact Registry, tagged with the commit,
-3. deploys it as a revision tagged `candidate`, with no visitors: one instance at most, none when idle, 1 CPU and 512 MiB, billed only while answering requests, with the two secrets and `TRUST_PROXY=1`,
-4. runs the smoke test and Lighthouse against the candidate's own address (`https://candidate---omnifilter-....run.app`),
-5. sends all visitors to it.
+**`.github/workflows/deploy.yml`**, after the test workflow passes on master, or on demand from master, in the `production` environment, in three jobs:
+1. **candidate**: stops if another commit has reached master since this one (that commit's deploy follows, so an older commit can't go live over a newer one); signs in to Google Cloud through Workload Identity Federation (`google-github-actions/auth`); builds the image and pushes it to Artifact Registry, tagged with the commit; deploys it as a revision tagged `candidate`, with no visitors: one instance at most, none when idle, 1 CPU and 512 MiB, billed only while answering requests, with the two secrets and `TRUST_PROXY=1`.
+2. **check**: runs the smoke test and Lighthouse against the candidate's own address (`https://candidate---omnifilter-....run.app`). This job can't sign in to Google Cloud, so the test tools it downloads never hold the deploy account's credentials.
+3. **promote**: if the checks passed and the commit is still master's newest, sends all visitors to it. Otherwise it removes the `candidate` address, so a failed revision isn't left reachable, and the revision serving before carries on.
 
 **The smoke test**, `e2e/smoke/deployed.smoke.js` (`SMOKE_URL=<address> npx playwright test -c e2e/smoke` runs it from anywhere):
 - `GET /health`: the database is connected, and the server sees the test at the runner's own public address, not at an address made up in an `X-Forwarded-For` header (that checks `TRUST_PROXY`, which the per-address limits on sign-ins rely on);
@@ -174,6 +172,6 @@ The `run.app` address works as it is. For a domain such as `omnifilter.example.c
 - as a guest, the sample photo is filtered at full size in the browser (CI's Chromium has WebGPU through SwiftShader) and the result card says 12.0 MP, with no errors on the page;
 - with `SMOKE_EMAIL` and `SMOKE_PASSWORD`, signing in works. Nothing is kept, so the database doesn't fill up.
 
-**Lighthouse** on the candidate (`LHCI_URL=<address> npx @lhci/cli autorun`), with the same budgets as CI's lighthouse job. The smoke test has woken the instance by then, so a cold start doesn't count against it. Against the image on a Mac: performance 80, accessibility, best practices and SEO 100.
+**Lighthouse** on the candidate (`LHCI_URL=<address> .github/lighthouse/node_modules/.bin/lhci autorun`, after `npm ci --prefix .github/lighthouse`), with the same budgets as CI's lighthouse job. The smoke test has woken the instance by then, so a cold start doesn't count against it. Against the image on a Mac: performance 80, accessibility, best practices and SEO 100.
 
 **Nightly**, `.github/workflows/smoke.yml` runs the smoke test against the live address, so a broken database connection or an expired setting shows up without waiting for a deploy.

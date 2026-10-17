@@ -1,7 +1,7 @@
 // Filter stacks: the GPU blend kernel against the W3C formulas, stack
 // validation, the presets, and the API.
 require(__dirname + '/../server.js');
-const { clearCollections } = require(__dirname + '/setup');
+const { clearCollections, keptPhoto } = require(__dirname + '/setup');
 const User = require(__dirname + '/../models/user');
 const gpu = require(__dirname + '/../lib/gpu_filters');
 const stack = require(__dirname + '/../lib/stack');
@@ -11,7 +11,7 @@ var PORT = process.env.PORT || process.env.$PORT || 3000;
 var baseUri = 'localhost:' + PORT;
 
 var chai = require('chai');
-var chaiHTTP = require('chai-http');
+var { default: chaiHTTP, request } = require('chai-http');
 chai.use(chaiHTTP);
 var expect = chai.expect;
 
@@ -150,7 +150,7 @@ describe('stacks through the API', () => {
   after(() => clearCollections());
 
   it('lists the presets and layer controls', () => {
-    return chai.request(baseUri).get('/presets').then((res) => {
+    return request.execute(baseUri).get('/presets').then((res) => {
       expect(res).to.have.status(200);
       expect(res.body.maxLayers).to.equal(stack.MAX_LAYERS);
       expect(res.body.layerParams.map((p) => p.name)).to.eql(['amount', 'blend']);
@@ -159,23 +159,23 @@ describe('stacks through the API', () => {
   });
 
   it('applies a stack and stores its layers', () => {
-    return chai.request(baseUri).post('/newcontent').set({ token: token })
+    return request.execute(baseUri).post('/newcontent').set({ token: token })
       .send({ content: content, stack: [
         { tOption: 'sepia' },
         { tOption: 'vignette', params: { strength: 80 }, blend: 'multiply', amount: 60 }
       ] })
-      .then((res) => {
+      .then(async (res) => {
         expect(res).to.have.status(200);
         expect(res.body.tOption).to.equal('');
         expect(res.body.tStack.map((l) => [l.tOption, l.amount, l.blend]))
           .to.eql([['sepia', 100, 'normal'], ['vignette', 60, 'multiply']]);
         expect(res.body.tStack[1].tParams.strength).to.equal(80);
-        expect(res.body.content).to.not.equal(content);
+        expect(await keptPhoto(baseUri, token, res.body._id)).to.not.equal(content);
       });
   });
 
   it('rejects a bad stack with a 400', () => {
-    return chai.request(baseUri).post('/newcontent').set({ token: token })
+    return request.execute(baseUri).post('/newcontent').set({ token: token })
       .send({ content: content, stack: [{ tOption: 'nope' }] })
       .then((res) => {
         expect(res).to.have.status(400);

@@ -56,6 +56,55 @@ class GpuEngine {
     device.lost.then(() => {
       this.lost = true;
     });
+    // The first error the GPU reported that no checked() call caught (work
+    // the GPU refused, so its results are missing), until takeError().
+    this.error = null;
+    if (typeof device.addEventListener === 'function') {
+      device.addEventListener('uncapturederror', (event) => {
+        if (!this.error) this.error = event.error;
+      });
+    }
+  }
+
+  // Runs fn (which may return a promise) and throws a GpuError if the GPU
+  // refused any of the work it asked for: out of memory, or a call outside
+  // WebGPU's rules or the device's limits. The GPU skips such work without
+  // a word otherwise, and the image comes out blank. err.outOfMemory says
+  // which. Only for work nothing else is giving the same device meanwhile.
+  async checked(fn) {
+    const device = this.device;
+    if (typeof device.pushErrorScope !== 'function') return fn();
+    device.pushErrorScope('out-of-memory');
+    device.pushErrorScope('validation');
+    device.pushErrorScope('internal');
+    var result;
+    var thrown = null;
+    try {
+      result = await fn();
+    } catch (e) {
+      thrown = e;
+    }
+    const internal = await device.popErrorScope();
+    const validation = await device.popErrorScope();
+    const memory = await device.popErrorScope();
+    if (thrown) throw thrown;
+    const error = memory || validation || internal;
+    if (error) {
+      const err = new Error((memory ? 'The GPU ran out of memory' : 'The GPU refused the work') +
+        ': ' + error.message);
+      err.name = 'GpuError';
+      err.outOfMemory = Boolean(memory);
+      err.result = result;
+      throw err;
+    }
+    return result;
+  }
+
+  // The error the GPU reported outside checked(), if any, and forgets it.
+  takeError() {
+    const error = this.error;
+    this.error = null;
+    return error;
   }
 
   // An engine on gpu's best adapter, or null if it has none. Asks for the
@@ -70,10 +119,13 @@ class GpuEngine {
       forceFallbackAdapter: Boolean(opts.forceFallbackAdapter)
     });
     if (!adapter) return null;
+    // The largest textures too: photos go onto the GPU as one, and phone
+    // panoramas are wider than the default limit (8192).
     const device = await adapter.requestDevice({
       requiredLimits: {
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-        maxBufferSize: adapter.limits.maxBufferSize
+        maxBufferSize: adapter.limits.maxBufferSize,
+        maxTextureDimension2D: adapter.limits.maxTextureDimension2D
       }
     });
     const info = adapter.info || {};

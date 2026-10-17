@@ -1,3 +1,6 @@
+// On Cloud Run, log lines go out as JSON, one entry each (lib/cloud_logging.js).
+if (process.env.K_SERVICE) require(__dirname + '/lib/cloud_logging').install();
+
 var PORT = process.env.PORT || process.env.$PORT || 3000;
 var clientPort = process.env.CLIENTPORT || 5000;
 var hostURL = process.env.HOSTURL || 'http://localhost:';
@@ -26,6 +29,15 @@ connectDatabase(5000);
 const corsOrigins = (process.env.CORS_ORIGINS || hostURL + clientPort)
   .split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
 
+// The built client (`npm run build` puts it in dist/), when there is one, is
+// served from here too; see below.
+const path = require('path');
+const clientDir = path.join(__dirname, '..', 'dist');
+
+// Security headers, with a Content Security Policy for the built client
+// (lib/security_headers.js).
+app.use(require(__dirname + '/lib/security_headers')(path.join(clientDir, 'index.html')));
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   res.vary('Origin');
@@ -51,12 +63,16 @@ if (process.env.TRUST_PROXY) {
 
 // Replies are compressed (the page's scripts and styles shrink to a third,
 // which matters on a phone's connection), except those carrying photos,
-// which hardly shrink and would cost the server time.
-const PHOTO_ROUTES = /^\/(getAll|newcontent|transform|import)\b/;
+// which hardly shrink and would cost the server time. (The gallery's list
+// carries only small thumbnails, so it's compressed with the rest.)
+const PHOTO_ROUTES = /^\/(newcontent|transform|import|content)\b/;
 const compression = require('compression');
 app.use(compression({
   filter: (req, res) => !PHOTO_ROUTES.test(req.path) && compression.filter(req, res)
 }));
+
+const gpuFilters = require(__dirname + '/lib/gpu_filters');
+const settings = require(__dirname + '/lib/settings');
 
 // For uptime checks and the deploy's smoke test: whether the database is
 // connected, and the caller's address as the server sees it (so a deploy
@@ -68,8 +84,19 @@ app.get('/health', async (req, res) => {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   const database = mongoose.connection.readyState === 1;
+  // On a server that filters, a GPU stuck on a filter (see gpu_filters.js)
+  // needs a restart, so it's unhealthy too.
+  const gpu = settings.serverDevice(settings.read()) ? gpuFilters.health() : undefined;
+  const ok = database && gpu !== 'stuck';
   res.set('Cache-Control', 'no-store');
-  res.status(database ? 200 : 503).json({ ok: database, database: database, ip: req.ip });
+  res.status(ok ? 200 : 503).json({ ok: ok, database: database, gpu: gpu, ip: req.ip });
+});
+
+// The routes read req.body, which the body parsers (body-parser 2) leave
+// unset for a request without one.
+app.use((req, res, next) => {
+  if (req.body === undefined) req.body = {};
+  next();
 });
 
 const contentRouter = require(__dirname + '/routes/content_routes');
@@ -80,11 +107,9 @@ app.use('/', contentRouter);
 app.use('/', authRouter);
 app.use('/', userRouter);
 
-// The built client (`npm run build` puts it in dist/), when there is one, so
-// the API and the pages can be served from one place. Files whose names
-// carry a hash of their contents (main-4NR54UZ5.js) never change, so
-// browsers may keep them.
-const clientDir = require('path').join(__dirname, '..', 'dist');
+// The built client, when there is one, so the API and the pages can be
+// served from one place. Files whose names carry a hash of their contents
+// (main-4NR54UZ5.js) never change, so browsers may keep them.
 if (require('fs').existsSync(clientDir)) {
   app.use(express.static(clientDir, {
     setHeaders: (res, file) => {
@@ -107,8 +132,6 @@ app.use((err, req, res, next) => {
 // Sets up the device now (OpenCL compiles its kernels here; WebGPU in the
 // background), and says what the filters will run on. A server that doesn't
 // filter (cloud mode: visitors' own GPUs do) has nothing to set up.
-const gpuFilters = require(__dirname + '/lib/gpu_filters');
-const settings = require(__dirname + '/lib/settings');
 function setUpDevice() {
   if (!settings.serverDevice(settings.read())) {
     console.log('Filters run on visitors\' own devices (OMNIFILTER_MODE=cloud); none run here.');
@@ -135,4 +158,22 @@ function reportDevice() {
 }
 setUpDevice();
 
-app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));
+const server = app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));
+
+// Cloud Run (and docker stop, and Heroku) sends SIGTERM before stopping the
+// server, and waits 10 seconds: stop taking new connections, let the
+// requests under way finish, then close the database connection and go.
+// A request still running after 8 seconds is cut off.
+function shutDown(signal) {
+  console.log('Got ' + signal + '; finishing the requests under way, then stopping.');
+  setTimeout(() => {
+    console.log('Requests still running after 8 s; stopping anyway.');
+    process.exit(1);
+  }, 8000).unref();
+  server.close(() => {
+    mongoose.disconnect().finally(() => process.exit(0));
+  });
+  server.closeIdleConnections();
+}
+process.once('SIGTERM', shutDown);
+process.once('SIGINT', shutDown);

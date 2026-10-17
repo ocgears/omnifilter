@@ -128,9 +128,10 @@ __kernel void halftone(read_only image2d_t src,
                        const int height,
                        const float cell,
                        const int mono,
-                       __global const uchar4 *original)
+                       __global const uchar4 *original,
+                       const int row0)
 {
-  GUARD;
+  GUARD_BAND;
   const float2 p = (float2)(x + 0.5f, y + 0.5f);
   float3 o = (float3)(1.0f);
   if (mono) {

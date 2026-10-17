@@ -7,8 +7,10 @@
 // publishes the binaries on the repository's "native-prebuilds" release
 // (.github/workflows/prebuilds.yml), named by a hash of the source. This
 // script downloads the binary that matches this checkout's source, checks
-// its SHA-256 and that it loads, and otherwise compiles the addon with
-// node-gyp, which needs a C++ compiler and the OpenCL headers.
+// its SHA-256 against native/prebuilds.json (in the repository, reviewed
+// with the code, so a binary swapped on the release isn't trusted) and that
+// it loads, and otherwise compiles the addon with node-gyp, which needs a
+// C++ compiler and the OpenCL headers.
 //
 //   OMNIFILTER_BUILD_FROM_SOURCE=1   always compile (also true or yes)
 //   OMNIFILTER_PREBUILD_URL=...      where to download from (see DEFAULT_URL)
@@ -35,6 +37,18 @@ function sourceKey() {
 }
 
 const assetName = (key, platform) => 'omnifilter-' + key + '-' + platform + '.node';
+
+// The reviewed SHA-256 of the prebuilt binary for a source key and platform,
+// from native/prebuilds.json, or null if there isn't one.
+function expectedChecksum(key, platform, file) {
+  try {
+    const known = JSON.parse(fs.readFileSync(file || path.join(ROOT, 'native', 'prebuilds.json'), 'utf8'));
+    const sum = known.checksums && known.checksums[key] && known.checksums[key][platform];
+    return /^[0-9a-f]{64}$/.test(sum) ? sum : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 async function download(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
@@ -87,17 +101,23 @@ const wantsSourceBuild = (value) => /^(1|true|yes)$/i.test(String(value || '').t
 
 async function tryPrebuilt() {
   const base = (process.env.OMNIFILTER_PREBUILD_URL || DEFAULT_URL).replace(/\/$/, '');
-  const name = assetName(sourceKey(), PLATFORM);
+  const key = sourceKey();
+  const name = assetName(key, PLATFORM);
+  const expected = expectedChecksum(key, PLATFORM);
+  if (!expected) {
+    console.log('omnifilter: no prebuilt addon for ' + PLATFORM + ' of this source (' + key + ') is listed ' +
+      'in native/prebuilds.json');
+    return false;
+  }
   let binary;
-  let expected;
   try {
-    [binary, expected] = await Promise.all([download(base + '/' + name), download(base + '/' + name + '.sha256')]);
+    binary = await download(base + '/' + name);
   } catch (e) {
     console.log('omnifilter: no prebuilt addon for ' + PLATFORM + ' (' + e.message + ')');
     return false;
   }
   const actual = crypto.createHash('sha256').update(binary).digest('hex');
-  if (expected.toString().trim().split(/\s+/)[0] !== actual) {
+  if (expected !== actual) {
     console.log('omnifilter: the prebuilt addon failed its checksum; compiling instead');
     return false;
   }
@@ -142,6 +162,7 @@ async function main() {
 module.exports = {
   sourceKey: sourceKey,
   assetName: assetName,
+  expectedChecksum: expectedChecksum,
   missingOpenCL: missingOpenCL,
   wantsSourceBuild: wantsSourceBuild
 };

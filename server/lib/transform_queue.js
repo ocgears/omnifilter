@@ -19,6 +19,8 @@ exports.create = function(options) {
   const maxRunning = options.maxRunning;
   const maxWaiting = options.maxWaiting;
   const maxPerKey = options.maxPerKey;
+  const perKeyMessage = options.perKeyMessage ||
+    'You already have a photo being processed; wait for it to finish';
 
   var running = 0;
   const waiting = [];      // entries { key, start, cancel }
@@ -41,8 +43,7 @@ exports.create = function(options) {
   // Resolves or rejects as fn() does, once a slot is free.
   function run(key, fn, signal) {
     if ((perKey.get(key) || 0) >= maxPerKey) {
-      return Promise.reject(queueError(429, 'You already have a photo being processed; ' +
-        'wait for it to finish', { retryAfter: 2 }));
+      return Promise.reject(queueError(429, perKeyMessage, { retryAfter: 2 }));
     }
     if (running >= maxRunning && waiting.length >= maxWaiting) {
       return Promise.reject(queueError(503, 'The server is busy; please try again shortly',

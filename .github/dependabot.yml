@@ -1,0 +1,58 @@
+# Dependabot opens pull requests for updates, which go through CI like any
+# other change. Each new version waits 14 days first (a broken or
+# compromised release is usually caught and pulled by then), and patch and
+# minor updates come grouped, one pull request a week per ecosystem.
+version: 2
+updates:
+  # The server, the e2e tests and the build scripts.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  # The Angular client.
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      angular:
+        patterns: ['@angular/*', '@angular-devkit/*']
+      minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  # Lighthouse CI (.github/lighthouse).
+  - package-ecosystem: npm
+    directory: /.github/lighthouse
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
+
+  # The actions the workflows use, pinned to commits.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ['*']
+
+  # The Docker images' base images.
+  - package-ecosystem: docker
+    directories: [/, /docker]
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14

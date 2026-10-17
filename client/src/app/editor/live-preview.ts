@@ -119,6 +119,7 @@ export class LivePreview implements OnDestroy {
         this.mode.set('static');
         return;
       }
+      if (this.engine !== engine) this.watch(engine);
       this.engine = engine;
       this.software.set(engine.adapterInfo.fallback);
       this.failed.set(false);
@@ -140,6 +141,18 @@ export class LivePreview implements OnDestroy {
     }
   }
 
+  // A lost GPU device (a driver reset, or a phone reclaiming memory from a
+  // background tab) takes the renderer's images with it: start again with a
+  // new engine, as soon as it's lost rather than at the next change.
+  private watch(engine: GpuEngine): void {
+    engine.device.lost.then(() => {
+      if (this.engine !== engine || this.destroyed) return;
+      this.engine = null;
+      this.renderer = null;
+      this.load(this.source());
+    });
+  }
+
   // Draws at most once per frame; changes made while a frame is on the GPU
   // are drawn in the next one.
   private schedule(): void {
@@ -148,14 +161,6 @@ export class LivePreview implements OnDestroy {
   }
 
   private async frame(): Promise<void> {
-    // A lost GPU device (a driver reset, or a phone reclaiming memory from a
-    // background tab) gets a new engine.
-    if (this.engine?.lost) {
-      this.engine = null;
-      this.renderer = null;
-      this.load(this.source());
-      return;
-    }
     const renderer = this.renderer;
     const engine = this.engine;
     if (!this.dirty || this.running || !renderer || !engine || this.destroyed) return;
@@ -177,6 +182,10 @@ export class LivePreview implements OnDestroy {
       const image = this.comparing() || !('image' in result) ? renderer.original : result.image;
       if (image) engine.present(image, this.canvas().nativeElement);
       await engine.done();
+      // Work the GPU refused (out of memory, say) leaves the canvas blank or
+      // stale rather than throwing.
+      const refused = engine.takeError();
+      if (refused) throw new Error(refused.message);
       if (!this.comparing()) this.renderMs.set(performance.now() - start);
       this.failed.set(false);
     } catch (err) {
