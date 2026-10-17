@@ -67,9 +67,11 @@ module.exports = [
       range('amount', 'Amount (%)', 0, 100, 100)
     ],
     plan(w, h, p) {
-      // Whole tiles: the buffers and the kernels' indexing must agree.
+      // Whole tiles: the buffers and the kernels' indexing must agree. Square
+      // tiles, but no more than 64 down: a very tall, narrow photo would
+      // otherwise get thousands, more workgroups than a GPU dispatches at once.
       const tilesX = Math.max(1, Math.min(Math.round(p.tiles), w));
-      const tilesY = Math.max(1, Math.min(h, Math.round(p.tiles * h / w)));
+      const tilesY = Math.max(1, Math.min(h, 64, Math.round(p.tiles * h / w)));
       const tiles = tilesX * tilesY;
       const plan = new Plan(w, h);
       const hists = plan.buffer(tiles * 256 * 4);

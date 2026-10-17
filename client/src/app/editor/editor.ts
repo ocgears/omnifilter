@@ -217,12 +217,19 @@ export class Editor {
       const engine = await this.previewEngine.get();
       if (!engine || run !== this.thumbnailRun) return;
       const photo = await decodePhoto(source, THUMB_SIZE);
+      if (run !== this.thumbnailRun) return;
       const stacks = [{ key: '', layers: [] as ReturnType<typeof stackLayers> }].concat(
         presets
           .filter((p) => !this.missing(p).length)
           .map((p) => ({ key: p.name, layers: stackLayers(layersFromPreset(this.filters(), p)) })),
       );
-      const images = await renderThumbnails(engine, photo, stacks, modes);
+      const images = await renderThumbnails(
+        engine,
+        photo,
+        stacks,
+        modes,
+        () => run !== this.thumbnailRun,
+      );
       if (run === this.thumbnailRun) this.thumbnails.set(images);
     } catch (err) {
       console.error('Thumbnails:', err);

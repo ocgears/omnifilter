@@ -1,4 +1,5 @@
-import { DeviceLimits, hasTransparency, runSize } from './full-size';
+import type { GpuEngine } from './engine';
+import { DeviceLimits, FullSizeError, filterFullSize, hasTransparency, runSize } from './full-size';
 
 // A GPU whose largest buffer is `mb` megabytes.
 const gpu = (mb: number, side = 8192): DeviceLimits => ({
@@ -37,5 +38,101 @@ describe('fitting a full-size photo to the GPU', () => {
   it('notices transparency', () => {
     expect(hasTransparency(new Uint8Array([1, 2, 3, 255, 4, 5, 6, 255]))).toBe(false);
     expect(hasTransparency(new Uint8Array([1, 2, 3, 255, 4, 5, 6, 254]))).toBe(true);
+  });
+});
+
+// A pretend GPU engine: images are plain objects, and checked() fails the
+// way it's told to.
+function fakeEngine(opts: { failures?: ('oom' | 'validation')[]; maxBytes?: number } = {}) {
+  const failures = [...(opts.failures ?? [])];
+  const live = new Set<object>();
+  const image = (width: number, height: number) => {
+    const made = { buffer: { size: width * height * 4 }, width, height };
+    live.add(made);
+    return made;
+  };
+  const maxBytes = opts.maxBytes ?? 1e9;
+  const engine = {
+    device: {
+      limits: {
+        maxStorageBufferBindingSize: maxBytes,
+        maxBufferSize: maxBytes,
+        maxComputeWorkgroupsPerDimension: 65535,
+        maxTextureDimension2D: 16384,
+      },
+    },
+    adapterInfo: { vendor: 'test', architecture: '', description: 'Test GPU', fallback: false },
+    sizes: [] as string[],
+    async checked<T>(fn: () => T | Promise<T>): Promise<T> {
+      const result = await fn();
+      const failure = failures.shift();
+      if (!failure) return result;
+      throw Object.assign(new Error('refused'), {
+        name: 'GpuError',
+        outOfMemory: failure === 'oom',
+        result,
+      });
+    },
+    imageFromFrame(_s: unknown, _sw: number, _sh: number, w: number, h: number) {
+      engine.sizes.push(w + 'x' + h);
+      return image(w, h);
+    },
+    run(_plan: unknown, src: { width: number; height: number }, _x?: unknown, out?: { width: number; height: number }) {
+      return image(out?.width ?? src.width, out?.height ?? src.height);
+    },
+    releaseFrame: () => undefined,
+    done: async () => undefined,
+    release: (img: object | null | undefined) => img && live.delete(img),
+    readPixels: async (img: { width: number; height: number }) => new Uint8Array(img.width * img.height * 4),
+    live,
+  };
+  return engine;
+}
+
+const bitmap = (width: number, height: number) => ({ width, height, close: () => undefined }) as ImageBitmap;
+
+describe('filtering at full size', () => {
+  beforeEach(() => {
+    // jsdom has no createImageBitmap; the scaled-down copy only needs a size.
+    (globalThis as { createImageBitmap?: unknown }).createImageBitmap = async (
+      _b: unknown,
+      o: { resizeWidth: number; resizeHeight: number },
+    ) => bitmap(o.resizeWidth, o.resizeHeight);
+  });
+
+  it('starts again smaller when the GPU runs out of memory', async () => {
+    const engine = fakeEngine({ failures: ['oom'] });
+    const out = await filterFullSize(engine as unknown as GpuEngine, bitmap(1000, 800), [invert], []);
+    expect(engine.sizes).toEqual(['1000x800', '700x560']);
+    expect(out.ranAt).toEqual({ width: 700, height: 560 });
+    expect([out.width, out.height]).toEqual([1000, 800]);
+    // Enlarged on the GPU: it fits one of its buffers.
+    expect([out.rgbaWidth, out.rgbaHeight]).toEqual([1000, 800]);
+    expect(engine.live.size).toBe(0);
+  });
+
+  it('says so, rather than handing back a blank photo, when the GPU refuses the work', async () => {
+    const engine = fakeEngine({ failures: ['validation'] });
+    await expect(
+      filterFullSize(engine as unknown as GpuEngine, bitmap(100, 80), [invert], []),
+    ).rejects.toThrow(FullSizeError);
+    expect(engine.live.size).toBe(0);
+  });
+
+  it('gives up after running out of memory three times', async () => {
+    const engine = fakeEngine({ failures: ['oom', 'oom', 'oom'] });
+    await expect(
+      filterFullSize(engine as unknown as GpuEngine, bitmap(100, 80), [invert], []),
+    ).rejects.toThrow(/ran out of memory/);
+  });
+
+  it('leaves enlarging to the browser when the full-size result is too big for a GPU buffer', async () => {
+    // 4 MB buffers: 2400 x 1600 runs at about a million pixels.
+    const engine = fakeEngine({ maxBytes: 4e6 });
+    const out = await filterFullSize(engine as unknown as GpuEngine, bitmap(2400, 1600), [invert], []);
+    expect(out.ranAt).not.toBeNull();
+    expect([out.rgbaWidth, out.rgbaHeight]).toEqual([out.ranAt!.width, out.ranAt!.height]);
+    expect([out.width, out.height]).toEqual([2400, 1600]);
+    expect(out.rgba.length).toBe(out.rgbaWidth * out.rgbaHeight * 4);
   });
 });
