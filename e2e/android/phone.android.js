@@ -52,31 +52,6 @@ test('opens as a guest, and says what this Chrome can do', async ({ phone }) => 
   expect(scrollWidth).toBeLessThanOrEqual(width);
 });
 
-// Not a check yet (see docs/MOBILE_TESTING.md): whether taps on the
-// emulator's screen reach the page at all, by two of adb's ways in. The
-// middle of the screen is the page's whatever its toolbars, so where exactly
-// the tap lands doesn't matter here. Reported, not judged.
-test('taps on the screen reach the page (experiment)', async ({ phone, device }) => {
-  await phone.evaluate(() => {
-    window.taps = [];
-    for (const type of ['touchstart', 'pointerdown', 'click']) {
-      document.addEventListener(type, () => window.taps.push(type), true);
-    }
-  });
-  const size = /(\d+)x(\d+)/.exec((await device.shell('wm size')).toString());
-  const x = Math.round(Number(size[1]) / 2);
-  const y = Math.round(Number(size[2]) / 2);
-  const results = [];
-  for (const command of ['input tap ' + x + ' ' + y, 'input touchscreen swipe ' + x + ' ' + y + ' ' + x + ' ' + y + ' 80']) {
-    await phone.evaluate(() => { window.taps.length = 0; });
-    await device.shell(command);
-    await phone.waitForTimeout(1000);
-    results.push(command.split(' ').slice(0, 2).join(' ') + ': ' +
-      ((await phone.evaluate(() => window.taps.join(','))) || 'nothing'));
-  }
-  notice('notice', 'Android taps (experiment)', results.join('; '));
-});
-
 test('makes a photo, and keeps the work after a reload', async ({ phone }) => {
   await choosePhoto(phone);
   await phone.getByRole('button', { name: 'Toy camera' }).click();
