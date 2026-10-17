@@ -1,12 +1,21 @@
 # Deploys the hosted demo to Google Cloud Run (docs/CLOUD_RUN.md): after the
-# test workflow passes on master, or on demand. Each deploy is a new revision
-# that gets no visitors until the smoke test and Lighthouse pass against it
-# at its own address; if they fail, the revision serving now keeps serving.
+# test workflow passes on master, or on demand from master. Each deploy is a
+# new revision that gets no visitors until the smoke test and Lighthouse pass
+# against it at its own address; if they fail, the revision serving now keeps
+# serving.
 #
-# Signs in to Google Cloud with Workload Identity Federation (no stored key),
-# using the production environment's variables: GCP_PROJECT, GCP_REGION,
+# Three jobs: one builds the image and deploys the revision, one checks it,
+# and one sends visitors to it. Only the first and last sign in to Google
+# Cloud (with Workload Identity Federation: no stored key); the checks run
+# Playwright and Lighthouse, a lot of other people's code, with no way to.
+# They use the production environment's variables GCP_PROJECT, GCP_REGION,
 # GCP_WIF_PROVIDER and GCP_DEPLOY_SA. Optional environment secrets
 # SMOKE_EMAIL and SMOKE_PASSWORD let the smoke test sign in.
+#
+# Only master's newest commit goes live: if another commit has reached master
+# since this one, this deploy stops, and that commit's own deploy (which
+# waits for this one) carries on. So a slow test run can't put an older
+# commit back live over a newer one.
 name: deploy
 
 on:
@@ -16,7 +25,7 @@ on:
     branches: [master]
   workflow_dispatch:
 
-# One deploy at a time, in order.
+# One deploy at a time.
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -24,25 +33,28 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  PROJECT: ${{ vars.GCP_PROJECT }}
+  REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  SERVICE: omnifilter
+
 jobs:
-  deploy:
-    # After a push to master whose tests passed (not a pull request's run).
+  candidate:
+    # After a push to master whose tests passed (not a pull request's run),
+    # or run by hand on master.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master') ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment:
-      name: production
-      url: ${{ steps.promote.outputs.url }}
+    timeout-minutes: 20
+    environment: production
     permissions:
       contents: read
       id-token: write
-    env:
-      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-      PROJECT: ${{ vars.GCP_PROJECT }}
-      REGION: ${{ vars.GCP_REGION || 'us-central1' }}
-      SERVICE: omnifilter
+    outputs:
+      url: ${{ steps.candidate.outputs.url }}
+      first: ${{ steps.candidate.outputs.first }}
     steps:
       - name: Check the environment is set up
         env:
@@ -56,15 +68,32 @@ jobs:
             fi
           done
           echo "IMAGE=$REGION-docker.pkg.dev/$PROJECT/omnifilter/omnifilter:$SHA" >> "$GITHUB_ENV"
+      - name: Check this is master's newest commit
+        id: newest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          head=$(curl -fsS --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$REPO/commits/master")
+          if [ "$head" = "$SHA" ]; then
+            echo "newest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Superseded::master is now at ${head:0:7}, so ${SHA:0:7} won't go live; ${head:0:7}'s own deploy will."
+            echo "newest=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        if: steps.newest.outputs.newest == 'true'
         with:
           ref: ${{ env.SHA }}
           persist-credentials: false
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: steps.newest.outputs.newest == 'true'
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
       - name: Build the image and push it to Artifact Registry
+        if: steps.newest.outputs.newest == 'true'
         run: |
           gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
           docker build --progress=plain -f docker/cloud-run.Dockerfile \
@@ -75,6 +104,7 @@ jobs:
       # straight away; later ones wait, tagged "candidate", for the checks.
       - name: Deploy a revision, with no visitors yet
         id: candidate
+        if: steps.newest.outputs.newest == 'true'
         run: |
           flags=(--image="$IMAGE" --region="$REGION" --project="$PROJECT"
             --service-account="omnifilter-run@$PROJECT.iam.gserviceaccount.com"
@@ -82,17 +112,38 @@ jobs:
             --set-env-vars=OMNIFILTER_MODE=cloud,TRUST_PROXY=1
             --cpu=1 --memory=512Mi --concurrency=40 --min-instances=0 --max-instances=1
             --cpu-throttling --cpu-boost --allow-unauthenticated --tag=candidate --quiet)
-          if gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" > /dev/null 2>&1; then
+          # Lists nothing for a service that doesn't exist yet, and fails (so
+          # the deploy stops) if Cloud Run can't be asked.
+          existing=$(gcloud run services list --region="$REGION" --project="$PROJECT" \
+            --filter="metadata.name=$SERVICE" --format='value(metadata.name)')
+          if [ -n "$existing" ]; then
             gcloud run deploy "$SERVICE" "${flags[@]}" --no-traffic
+            echo "first=false" >> "$GITHUB_OUTPUT"
           else
             echo "::notice title=First deploy::The service is new, so this revision serves visitors straight away."
             gcloud run deploy "$SERVICE" "${flags[@]}"
+            echo "first=true" >> "$GITHUB_OUTPUT"
           fi
           url=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" \
             --format=json | jq -r '.status.traffic[] | select(.tag == "candidate") | .url')
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "::notice title=Candidate::$url"
 
+  # The checks, against the revision's own address. No Google Cloud sign-in.
+  check:
+    needs: candidate
+    if: needs.candidate.outputs.url != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # For the SMOKE_ secrets.
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.SHA }}
+          persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
@@ -102,7 +153,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Smoke test the revision
         env:
-          SMOKE_URL: ${{ steps.candidate.outputs.url }}
+          SMOKE_URL: ${{ needs.candidate.outputs.url }}
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
         run: |
@@ -111,22 +162,11 @@ jobs:
           npx playwright test -c e2e/smoke
       - name: Lighthouse on the revision
         env:
-          LHCI_URL: ${{ steps.candidate.outputs.url }}/
+          LHCI_URL: ${{ needs.candidate.outputs.url }}/
         run: bash .github/run-and-annotate.sh npx --yes @lhci/cli@0.15.1 autorun
       - name: Scores
         if: ${{ !cancelled() }}
         run: node .github/lighthouse-summary.js
-
-      - name: Send visitors to it
-        id: promote
-        run: |
-          gcloud run services update-traffic "$SERVICE" --to-tags=candidate=100 \
-            --region="$REGION" --project="$PROJECT" --quiet
-          url=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" \
-            --format='value(status.url)')
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "::notice title=Live::$url is serving ${SHA:0:7}"
-          echo "Live at $url, serving ${SHA:0:7}." >> "$GITHUB_STEP_SUMMARY"
       - name: Keep the reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -137,3 +177,55 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Sends visitors to the revision if the checks passed and nothing newer has
+  # reached master meanwhile; otherwise takes its address away, so a failed
+  # revision isn't left reachable.
+  promote:
+    needs: [candidate, check]
+    if: always() && needs.candidate.outputs.url != '' && needs.candidate.outputs.first != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: ${{ steps.promote.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check this is still master's newest commit
+        id: newest
+        if: needs.check.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          head=$(curl -fsS --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$REPO/commits/master")
+          if [ "$head" = "$SHA" ]; then
+            echo "newest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Superseded::master is now at ${head:0:7}, so ${SHA:0:7} won't go live; ${head:0:7}'s own deploy will."
+            echo "newest=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - name: Send visitors to it
+        id: promote
+        if: steps.newest.outputs.newest == 'true'
+        run: |
+          gcloud run services update-traffic "$SERVICE" --to-tags=candidate=100 \
+            --region="$REGION" --project="$PROJECT" --quiet
+          url=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$PROJECT" \
+            --format='value(status.url)')
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Live::$url is serving ${SHA:0:7}"
+          echo "Live at $url, serving ${SHA:0:7}." >> "$GITHUB_STEP_SUMMARY"
+      - name: Take the failed revision's address away
+        if: steps.newest.outputs.newest != 'true'
+        run: |
+          gcloud run services update-traffic "$SERVICE" --remove-tags=candidate \
+            --region="$REGION" --project="$PROJECT" --quiet
+          echo "::warning title=Not live::${SHA:0:7} was not put live; the revision serving before still is."

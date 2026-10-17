@@ -16,6 +16,34 @@ const photoParser = bodyParser.json({ limit: 16000000 });
 
 var contentRouter = module.exports = exports = express.Router();
 
+// Reading, checking and saving a 16 MB photo holds several copies of it at
+// once (about 80 MB all told), so only a couple of photos are taken in at a
+// time and a few more wait, unread, for their turn; past that the server is
+// busy. Each account sends one at a time, which also stops saves made at the
+// same moment from all slipping under the photo limit.
+const uploads = contentRouter.uploads = transformQueue.create({
+  maxRunning: 2,
+  maxWaiting: 6,
+  maxPerKey: 1,
+  perKeyMessage: 'You are already saving a photo; wait for it to finish'
+});
+
+// Middleware: the rest of the request runs in one of the upload slots, which
+// is given back once the reply has gone (or the client has).
+function oneUploadAtATime(req, res, next) {
+  const cancel = new AbortController();
+  const done = new Promise((resolve) => res.once('close', resolve));
+  res.once('close', () => cancel.abort());
+  uploads.run(String(req.user._id), () => {
+    next();
+    return done;
+  }, cancel.signal).catch((e) => {
+    if (e.aborted || res.headersSent) return;
+    if (e.retryAfter) res.set('Retry-After', String(e.retryAfter));
+    res.status(e.status || 500).json({ msg: e.message });
+  });
+}
+
 // Express 4 doesn't catch errors from async handlers, and an unhandled
 // rejection stops Node, so pass them on to the error handler in server.js.
 const asyncRoute = (handler) => (req, res, next) => handler(req, res, next).catch(next);
@@ -211,20 +239,22 @@ function serverMayFilter(res, guest) {
   return false;
 }
 
-// Replies 409 and resolves false when the user already keeps as many photos
-// as this server allows (OMNIFILTER_MAX_STORED_PHOTOS). Two saves at the same
-// moment can both pass; that's one photo over, which is fine.
-async function roomForAnother(req, res) {
+// Middleware: replies 409 when the user already keeps as many photos as this
+// server allows (OMNIFILTER_MAX_STORED_PHOTOS), before the photo is read.
+// After oneUploadAtATime, so no other save of theirs is under way.
+const roomForAnother = asyncRoute(async (req, res, next) => {
   const limit = settings.read().maxStoredPhotos;
-  if (!limit) return true;
+  if (!limit) return next();
   const kept = await Content.countDocuments({ user_id: req.user._id });
-  if (kept < limit) return true;
+  if (kept < limit) return next();
   res.status(409).json({
     msg: 'You already keep ' + kept + ' photos, as many as this server allows; delete one to keep this',
     limit: limit
   });
-  return false;
-}
+});
+
+// What comes before a photo to keep is read: who it's for, its turn, and room.
+const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, photoParser];
 
 function checkContent(req, res) {
   const content = req.body.content;
@@ -238,12 +268,11 @@ function checkContent(req, res) {
 // Saves a photo, after applying either one filter ({ tOption, params }) or a
 // stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }). With
 // neither, the photo is saved as it is.
-contentRouter.post('/newcontent', jwtAuth, photoParser, asyncRoute(async (req, res) => {
+contentRouter.post('/newcontent', keepingPhoto, asyncRoute(async (req, res) => {
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
   if (recipe.layers && !serverMayFilter(res, false)) return;
-  if (!(await roomForAnother(req, res))) return;
 
   const content = await transformPhoto(req, res, recipe, {
     queue: transforms,
@@ -308,7 +337,7 @@ contentRouter.post('/transform', (req, res, next) => {
 
   const content = await transformPhoto(req, res, recipe, {
     queue: guestTransforms,
-    key: 'guest:' + req.ip,
+    key: 'guest:' + rateLimit.clientKey(req.ip),
     maxPixels: GUEST_MAX_PIXELS,
     guest: true
   });
@@ -327,11 +356,10 @@ contentRouter.post('/transform', (req, res, next) => {
 // the browser filtered on the visitor's own GPU. The photo is checked as one
 // saved without a filter is; the filters are only a description, so they're
 // checked to be real but not applied.
-contentRouter.post('/import', jwtAuth, photoParser, asyncRoute(async (req, res) => {
+contentRouter.post('/import', keepingPhoto, asyncRoute(async (req, res) => {
   if (!checkContent(req, res)) return;
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
-  if (!(await roomForAnother(req, res))) return;
 
   var content;
   try {

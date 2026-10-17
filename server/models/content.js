@@ -16,4 +16,8 @@ var contentSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Each user's photos, newest first: the gallery's query, and the count
+// against the photo limit.
+contentSchema.index({ user_id: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Content', contentSchema);

@@ -26,6 +26,15 @@ connectDatabase(5000);
 const corsOrigins = (process.env.CORS_ORIGINS || hostURL + clientPort)
   .split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
 
+// The built client (`npm run build` puts it in dist/), when there is one, is
+// served from here too; see below.
+const path = require('path');
+const clientDir = path.join(__dirname, '..', 'dist');
+
+// Security headers, with a Content Security Policy for the built client
+// (lib/security_headers.js).
+app.use(require(__dirname + '/lib/security_headers')(path.join(clientDir, 'index.html')));
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   res.vary('Origin');
@@ -80,11 +89,9 @@ app.use('/', contentRouter);
 app.use('/', authRouter);
 app.use('/', userRouter);
 
-// The built client (`npm run build` puts it in dist/), when there is one, so
-// the API and the pages can be served from one place. Files whose names
-// carry a hash of their contents (main-4NR54UZ5.js) never change, so
-// browsers may keep them.
-const clientDir = require('path').join(__dirname, '..', 'dist');
+// The built client, when there is one, so the API and the pages can be
+// served from one place. Files whose names carry a hash of their contents
+// (main-4NR54UZ5.js) never change, so browsers may keep them.
 if (require('fs').existsSync(clientDir)) {
   app.use(express.static(clientDir, {
     setHeaders: (res, file) => {
@@ -135,4 +142,22 @@ function reportDevice() {
 }
 setUpDevice();
 
-app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));
+const server = app.listen(PORT, () => console.log('Omnifilter backend server up on port: ' + PORT));
+
+// Cloud Run (and docker stop, and Heroku) sends SIGTERM before stopping the
+// server, and waits 10 seconds: stop taking new connections, let the
+// requests under way finish, then close the database connection and go.
+// A request still running after 8 seconds is cut off.
+function shutDown(signal) {
+  console.log('Got ' + signal + '; finishing the requests under way, then stopping.');
+  setTimeout(() => {
+    console.log('Requests still running after 8 s; stopping anyway.');
+    process.exit(1);
+  }, 8000).unref();
+  server.close(() => {
+    mongoose.disconnect().finally(() => process.exit(0));
+  });
+  server.closeIdleConnections();
+}
+process.once('SIGTERM', shutDown);
+process.once('SIGINT', shutDown);

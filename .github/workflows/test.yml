@@ -15,6 +15,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch (or pull request) replaces a run still
+# going. On master that's fine too: only the newest commit deploys.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # ONNX Runtime's installer would otherwise fetch a 500 MB CUDA provider.
   ONNXRUNTIME_NODE_INSTALL_CUDA: skip
@@ -25,6 +31,7 @@ jobs:
   server:
     name: server (${{ matrix.opencl }}, Node ${{ matrix.node }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -78,6 +85,7 @@ jobs:
   webgpu:
     name: server (WebGPU on lavapipe)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       mongo:
         image: mongo:7
@@ -126,6 +134,7 @@ jobs:
   # every filter is checked on it.
   macos:
     runs-on: macos-15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -148,6 +157,7 @@ jobs:
   # OpenCL device, so this checks that the addon builds, installs and loads.
   windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -176,6 +186,7 @@ jobs:
   # too) and the unit tests (Vitest, jsdom).
   client:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -207,6 +218,7 @@ jobs:
   # See e2e/.
   e2e:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       mongo:
         image: mongo:7
@@ -252,6 +264,7 @@ jobs:
   # budgets in lighthouserc.js. The scores go on the run's summary page.
   lighthouse:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     env:
       OMNIFILTER_DEVICE: pocl
       APP_SECRET: lighthouse-only-secret-not-for-production
@@ -294,6 +307,7 @@ jobs:
   # Built and checked here, not published.
   ci-image:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -321,6 +335,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -338,6 +353,7 @@ jobs:
   # runs it, beside a MongoDB, with the deploy's smoke test against it.
   cloud-run:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     services:
       mongo:
         image: mongo:8.0

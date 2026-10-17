@@ -131,6 +131,26 @@ describe('cloud mode on the server', () => {
     await Content.deleteMany({});
   });
 
+  it('keeps to the limit when many photos are sent at once', async () => {
+    const results = await Promise.all(Array.from({ length: 12 }, () =>
+      chai.request(baseUri).post('/import').set({ token: token }).send({ content: photo, tOption: 'invert' })));
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 200).length).to.be.at.most(5);
+    expect(statuses.every((s) => [200, 409, 429, 503].includes(s))).to.eql(true);
+    expect(await Content.countDocuments({})).to.be.at.most(5);
+    await Content.deleteMany({});
+  });
+
+  it('turns a full account away before reading the photo', async () => {
+    const user = await User.findOne({ email: 'cloud-mode@tester.com' });
+    await Content.insertMany(Array.from({ length: 5 }, () => ({ user_id: String(user._id), content: photo })));
+    // Not even JSON: a 400 if it were read.
+    const res = await chai.request(baseUri).post('/import').set({ token: token })
+      .set('Content-Type', 'application/json').send('{"content": "data:image/jpeg;base64,');
+    expect(res).to.have.status(409);
+    await Content.deleteMany({});
+  });
+
   it('can still filter on the server for signed-in users with device-first', () => {
     process.env.OMNIFILTER_PROCESSING = 'device-first';
     return chai.request(baseUri).post('/newcontent').set({ token: token })

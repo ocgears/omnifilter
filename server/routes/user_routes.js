@@ -3,6 +3,7 @@ const jsonParser = require('body-parser').json({ limit: '10kb' });
 const jwtAuth = require(__dirname + '/../lib/jwt_auth');
 const handleDBError = require(__dirname + '/../lib/handle_db_error');
 const validate = require(__dirname + '/../lib/validate');
+const rateLimit = require(__dirname + '/../lib/rate_limit');
 
 const User = require(__dirname + '/../models/user');
 const Content = require(__dirname + '/../models/content');
@@ -25,10 +26,25 @@ const ownAccountOnly = (req, res, next) => {
   next();
 };
 
+// Tries at the current password, per account (a stolen token would otherwise
+// make a fine way to guess it) and per address. Each try is a slow hash on
+// the server, too.
+const passwordTries = userRouter.passwordTries = rateLimit({
+  perMinute: Number(process.env.AUTH_RATE_PER_MINUTE) || 10,
+  burst: Number(process.env.AUTH_RATE_BURST) || 5,
+  key: (req) => 'user:' + req.user._id,
+  message: 'Too many attempts, please wait a minute and try again'
+});
+const addressTries = userRouter.addressTries = rateLimit({
+  perMinute: Number(process.env.AUTH_RATE_PER_MINUTE) || 10,
+  burst: Number(process.env.AUTH_RATE_BURST) || 5,
+  message: 'Too many attempts, please wait a minute and try again'
+});
+
 // Loads the account with its password hash and checks req.body.currentPassword
 // against it, so a stolen token alone can't change or delete the account.
 // Leaves the user in req.account.
-const currentPasswordRequired = (req, res, next) => {
+const checkCurrentPassword = (req, res, next) => {
   User.findOne({ _id: req.user._id }).then((user) => {
     // Deleted since jwtAuth looked it up.
     if (!user) return res.status(401).json({ msg: 'could not authenticate user' });
@@ -39,6 +55,7 @@ const currentPasswordRequired = (req, res, next) => {
     });
   }).catch((err) => handleDBError(err, res));
 };
+const currentPasswordRequired = [addressTries, passwordTries, checkCurrentPassword];
 
 userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
   res.status(200).json({

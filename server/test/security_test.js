@@ -5,6 +5,7 @@ const Content = require(__dirname + '/../models/content');
 const secret = require(__dirname + '/../lib/secret');
 const imageCodec = require(__dirname + '/../lib/image_codec');
 const authRouter = require(__dirname + '/../routes/auth_routes');
+const userRouter = require(__dirname + '/../routes/user_routes');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
 const migrateEmails = require(__dirname + '/../../scripts/migrate-emails');
 const bcrypt = require('bcryptjs');
@@ -41,7 +42,11 @@ describe('security', () => {
   var bob;
   var bobToken;
 
-  beforeEach(() => authRouter.rateLimiter.reset());
+  beforeEach(() => {
+    authRouter.rateLimiter.reset();
+    userRouter.passwordTries.reset();
+    userRouter.addressTries.reset();
+  });
 
   beforeEach(() => clearCollections()
     .then(() => User.syncIndexes())
@@ -353,6 +358,44 @@ describe('security', () => {
         .then((res) => expect(res).to.have.status(429));
     });
 
+    it('limits guesses at the current password, for each account', function() {
+      this.timeout(20000);
+      const guess = (i) => chai.request(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
+        .send({ email: 'alice2@tester.com', currentPassword: 'wrong' + i });
+      return [0, 1, 2, 3, 4, 5].reduce((p, i) => p.then((list) => guess(i).then((res) => list.concat([res]))),
+        Promise.resolve([]))
+        .then((results) => {
+          expect(results.slice(0, 5).map((r) => r.status)).to.eql([403, 403, 403, 403, 403]);
+          expect(results[5]).to.have.status(429);
+          // From another address too: the account's allowance is used up.
+          userRouter.addressTries.reset();
+          return chai.request(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })
+            .send({ currentPassword: 'password1' });
+        })
+        .then((res) => {
+          expect(res).to.have.status(429);
+          return User.countDocuments({ _id: alice._id });
+        })
+        .then((count) => expect(count).to.eql(1));
+    });
+
+    it('counts an IPv6 address by its /64 network', () => {
+      expect(rateLimit.clientKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).to.eql('2001:db8:1:2::/64');
+      expect(rateLimit.clientKey('2001:0db8:0001:0002::1')).to.eql('2001:db8:1:2::/64');
+      expect(rateLimit.clientKey('2001:db8::1')).to.eql('2001:db8:0:0::/64');
+      expect(rateLimit.clientKey('::ffff:203.0.113.7')).to.eql('203.0.113.7');
+      expect(rateLimit.clientKey('203.0.113.7')).to.eql('203.0.113.7');
+      const limiter = rateLimit({ perMinute: 1, burst: 1, now: () => 0 });
+      const statuses = [];
+      for (const ip of ['2001:db8:1:2::1', '2001:db8:1:2::2', '2001:db8:1:3::1']) {
+        var status = 200;
+        const res = { set: () => res, status: (s) => { status = s; return res; }, json: () => res };
+        limiter({ ip: ip }, res, () => {});
+        statuses.push(status);
+      }
+      expect(statuses).to.eql([200, 429, 200]);
+    });
+
     it('refills over time and forgets idle clients', () => {
       var clock = 0;
       const limiter = rateLimit({ perMinute: 60, burst: 2, now: () => clock });
@@ -372,6 +415,37 @@ describe('security', () => {
       clock += 120000;
       hit('c');
       expect(limiter.size()).to.eql(1);
+    });
+  });
+
+  describe('headers', () => {
+    it('sends a Content Security Policy, and no X-Powered-By', () => {
+      return chai.request(baseUri).get('/settings').then((res) => {
+        expect(res).to.have.status(200);
+        expect(res.headers).to.not.have.property('x-powered-by');
+        const csp = res.headers['content-security-policy'];
+        expect(csp).to.match(/script-src 'self'/);
+        expect(csp).to.match(/frame-ancestors 'none'/);
+        expect(csp).to.match(/object-src 'none'/);
+        expect(csp).to.not.match(/unsafe-eval/);
+        expect(res.headers['x-content-type-options']).to.eql('nosniff');
+        expect(res.headers['permissions-policy']).to.match(/camera=\(self\)/);
+      });
+    });
+
+    it('allows the built page\'s own inline scripts by hash, and where its API is', () => {
+      const fs = require('fs');
+      const os = require('os');
+      const path = require('path');
+      const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'csp-')), 'index.html');
+      fs.writeFileSync(file, '<meta name="omnifilter-api" content="https://api.example.com/v1">' +
+        '<script src="main.js" type="module"></script><script>go()</script>');
+      const page = require(__dirname + '/../lib/security_headers').readPage(file);
+      expect(page.hashes).to.eql(['\'sha256-' + require('crypto').createHash('sha256').update('go()')
+        .digest('base64') + '\'']);
+      expect(page.api).to.eql(['https://api.example.com']);
+      fs.writeFileSync(file, '<meta name="omnifilter-api" content="/">');
+      expect(require(__dirname + '/../lib/security_headers').readPage(file).api).to.eql([]);
     });
   });
 
