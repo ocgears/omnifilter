@@ -1,5 +1,6 @@
 // Lighthouse's mobile audit of the built app (CI's lighthouse job):
-//   OMNIFILTER_API=/ npm run build:prod && npx @lhci/cli autorun
+//   npm ci --prefix .github/lighthouse   (Lighthouse CI, pinned)
+//   OMNIFILTER_API=/ npm run build:prod && .github/lighthouse/node_modules/.bin/lhci autorun
 // Lighthouse's default settings stand in for a mid-range phone on a slow 4G
 // connection. The photo page (the start page) is audited 3 times and the
 // middle run is judged. (The sign-in page is the same URL to Lighthouse, as

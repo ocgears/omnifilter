@@ -172,6 +172,6 @@ The `run.app` address works as it is. For a domain such as `omnifilter.example.c
 - as a guest, the sample photo is filtered at full size in the browser (CI's Chromium has WebGPU through SwiftShader) and the result card says 12.0 MP, with no errors on the page;
 - with `SMOKE_EMAIL` and `SMOKE_PASSWORD`, signing in works. Nothing is kept, so the database doesn't fill up.
 
-**Lighthouse** on the candidate (`LHCI_URL=<address> npx @lhci/cli autorun`), with the same budgets as CI's lighthouse job. The smoke test has woken the instance by then, so a cold start doesn't count against it. Against the image on a Mac: performance 80, accessibility, best practices and SEO 100.
+**Lighthouse** on the candidate (`LHCI_URL=<address> .github/lighthouse/node_modules/.bin/lhci autorun`, after `npm ci --prefix .github/lighthouse`), with the same budgets as CI's lighthouse job. The smoke test has woken the instance by then, so a cold start doesn't count against it. Against the image on a Mac: performance 80, accessibility, best practices and SEO 100.
 
 **Nightly**, `.github/workflows/smoke.yml` runs the smoke test against the live address, so a broken database connection or an expired setting shows up without waiting for a deploy.

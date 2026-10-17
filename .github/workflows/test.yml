@@ -252,7 +252,7 @@ jobs:
         run: bash .github/run-and-annotate.sh npx playwright test
       - name: Keep the report and traces of failed tests
         if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: |
@@ -284,20 +284,24 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             client/package-lock.json
+            .github/lighthouse/package-lock.json
       - run: npm ci
       - run: npm ci
         working-directory: client
       - run: node scripts/client.js build --production
         env:
           OMNIFILTER_API: /
+      # Lighthouse CI from its own lockfile (.github/lighthouse); it finds the
+      # runner's Chrome, so nothing needs downloading.
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefix .github/lighthouse
       - name: Lighthouse
-        run: bash .github/run-and-annotate.sh npx --yes @lhci/cli@0.15.1 autorun
+        run: bash .github/run-and-annotate.sh .github/lighthouse/node_modules/.bin/lhci autorun
       - name: Scores
         if: ${{ !cancelled() }}
         run: node .github/lighthouse-summary.js
       - name: Keep the reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lighthouse-report
           path: lighthouse-report/

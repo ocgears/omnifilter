@@ -1,0 +1,9 @@
+{
+  "name": "omnifilter-lighthouse",
+  "private": true,
+  "description": "Lighthouse CI for the lighthouse job (test.yml) and the deploy's checks (deploy.yml), with its own lockfile, so CI runs the same reviewed versions every time rather than whatever npx finds. Install with npm ci --prefix .github/lighthouse.",
+  "license": "MIT",
+  "dependencies": {
+    "@lhci/cli": "0.15.1"
+  }
+}

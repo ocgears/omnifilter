@@ -1,3 +1,6 @@
+// On Cloud Run, log lines go out as JSON, one entry each (lib/cloud_logging.js).
+if (process.env.K_SERVICE) require(__dirname + '/lib/cloud_logging').install();
+
 var PORT = process.env.PORT || process.env.$PORT || 3000;
 var clientPort = process.env.CLIENTPORT || 5000;
 var hostURL = process.env.HOSTURL || 'http://localhost:';
