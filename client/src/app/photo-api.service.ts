@@ -59,9 +59,7 @@ export class PhotoApi {
   // Runs the filters on the server without saving anything (guest mode).
   // Resolves with the photo, without an _id.
   preview(body: TransformRequest): Promise<Omit<Photo, '_id'>> {
-    return firstValueFrom(
-      this.http.post<Omit<Photo, '_id'>>(this.apiBase + '/transform', body),
-    );
+    return firstValueFrom(this.http.post<Omit<Photo, '_id'>>(this.apiBase + '/transform', body));
   }
 
   // Saves a photo made elsewhere (as a guest, or on this device's GPU) to the

@@ -62,10 +62,14 @@ export class Gallery {
   readonly canShare =
     typeof navigator !== 'undefined' && 'share' in navigator && 'canShare' in navigator;
 
+  // The photo last scrolled to, so other changes (a delete) don't scroll.
+  private scrolledTo: string | null = null;
+
   constructor() {
     effect(() => {
       const id = this.highlight();
-      if (!id || !this.photos().some((p) => p._id === id)) return;
+      if (!id || id === this.scrolledTo || !this.photos().some((p) => p._id === id)) return;
+      this.scrolledTo = id;
       // After the new card is in the page.
       requestAnimationFrame(() => {
         const card = (this.host.nativeElement as HTMLElement).querySelector(

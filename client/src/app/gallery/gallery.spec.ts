@@ -40,7 +40,7 @@ describe('Gallery', () => {
     );
   });
 
-  it('shows each photo\'s thumbnail with what was applied, and saves the photo itself', async () => {
+  it("shows each photo's thumbnail with what was applied, and saves the photo itself", async () => {
     const card = el.querySelector('.photo-card')!;
     expect(card.querySelector('.label')?.textContent).toBe('Sepia + Gaussian blur');
     const img = card.querySelector('img')!;
@@ -49,11 +49,11 @@ describe('Gallery', () => {
     URL.createObjectURL = vi.fn(() => 'blob:photo');
     URL.revokeObjectURL = vi.fn();
     const clicked: HTMLAnchorElement[] = [];
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        clicked.push(this);
-      });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked.push(this);
+    });
     const save = Array.from(card.querySelectorAll('button')).find(
       (b) => b.textContent?.trim() === 'Save',
     )!;
@@ -67,14 +67,20 @@ describe('Gallery', () => {
   });
 
   it('shows a photo kept in this browser from its data URL when it has no thumbnail', async () => {
-    const local: Photo = { _id: 'local-1', content: 'data:image/png;base64,AA==', tOption: 'invert' };
+    const local: Photo = {
+      _id: 'local-1',
+      content: 'data:image/png;base64,AA==',
+      tOption: 'invert',
+    };
     fixture.componentRef.setInput('photos', [local]);
     await fixture.whenStable();
     expect(el.querySelector('img')?.getAttribute('src')).toBe(local.content);
   });
 
   it('asks for a second tap to share a photo that had to be fetched first', async () => {
-    const share = vi.fn().mockRejectedValue(Object.assign(new Error('no'), { name: 'NotAllowedError' }));
+    const share = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('no'), { name: 'NotAllowedError' }));
     Object.assign(navigator, { share, canShare: () => true });
     await fixture.componentInstance.share(photo);
     expect(api.file).toHaveBeenCalled();
@@ -85,7 +91,9 @@ describe('Gallery', () => {
     api.file.mockClear();
     await fixture.componentInstance.share(photo);
     expect(api.file).not.toHaveBeenCalled();
-    expect(share).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Sepia + Gaussian blur' }));
+    expect(share).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: 'Sepia + Gaussian blur' }),
+    );
     expect(fixture.componentInstance.shareError()).toBeNull();
   });
 

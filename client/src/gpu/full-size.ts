@@ -52,12 +52,7 @@ export function deviceLimits(engine: GpuEngine, maxBytes?: number): DeviceLimits
 const pixels = (w: number, h: number) => w * h * 4;
 
 // What one layer needs at a photo size, as device_choice.js measures plans.
-function layerFits(
-  layer: StackLayer,
-  width: number,
-  height: number,
-  limits: DeviceLimits,
-): number {
+function layerFits(layer: StackLayer, width: number, height: number, limits: DeviceLimits): number {
   const def = filterDef(layer.tOption);
   if (!def) return 0;
   const params = normalizeParams(def, layer.params);
@@ -130,8 +125,8 @@ export class FullSizeError extends Error {}
 // How many times a run that runs out of GPU memory starts again smaller.
 const RETRIES = 2;
 
-const outOfMemory = (err: unknown) => (err as GpuError | null)?.name === 'GpuError' &&
-  (err as GpuError).outOfMemory;
+const outOfMemory = (err: unknown) =>
+  (err as GpuError | null)?.name === 'GpuError' && (err as GpuError).outOfMemory;
 
 // Filters a decoded photo at full size. Each layer is waited for before the
 // next, and `cancelled` is asked between them. If the GPU runs out of memory
@@ -158,7 +153,9 @@ export async function filterFullSize(
       return await filterAt(engine, bitmap, layers, blendModes, size, limits, options);
     } catch (err) {
       if (outOfMemory(err) && attempt < RETRIES) {
-        console.warn('Out of GPU memory at ' + size.width + 'x' + size.height + '; trying smaller.');
+        console.warn(
+          'Out of GPU memory at ' + size.width + 'x' + size.height + '; trying smaller.',
+        );
         size = {
           width: Math.max(1, Math.floor(size.width * 0.7)),
           height: Math.max(1, Math.floor(size.height * 0.7)),

@@ -42,16 +42,16 @@
                 type="button"
                 (click)="save(photo)"
                 [disabled]="fetching() === photo._id"
-                [title]="photo.width ? 'Save the photo, ' + photo.width + '×' + photo.height : 'Save the photo'"
+                [title]="
+                  photo.width
+                    ? 'Save the photo, ' + photo.width + '×' + photo.height
+                    : 'Save the photo'
+                "
               >
                 Save
               </button>
               @if (canShare) {
-                <button
-                  type="button"
-                  (click)="share(photo)"
-                  [disabled]="fetching() === photo._id"
-                >
+                <button type="button" (click)="share(photo)" [disabled]="fetching() === photo._id">
                   Share
                 </button>
               }

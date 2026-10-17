@@ -12,9 +12,10 @@ import {
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { Alerts } from '../alerts/alerts';
-import { AuthService, errorMessage } from '../auth.service';
+import { AuthService, errorMessage as serverMessage } from '../auth.service';
+import { BrowserStorageError } from '../browser-db';
 import { Gallery, downloadName } from '../gallery/gallery';
-import { GuestPhotos, isLocal } from '../guest-photos';
+import { GuestPhotos, LOCAL_ID, isLocal } from '../guest-photos';
 import {
   Device,
   Filter,
@@ -51,6 +52,10 @@ import { ImageDataCanvas, renderThumbnails } from './thumbnails';
 
 // How long after an edit the draft is saved.
 const DRAFT_SAVE_MS = 300;
+
+// The longest photo (as a data URL) the server takes to keep: POST /import
+// takes bodies up to 16 MB, with room for the settings.
+const MAX_KEPT_DATA_URL = 15_900_000;
 
 // The sample photo: the Apollo 17 crew's view of Earth (NASA's
 // AS17-148-22727, from images.nasa.gov, credited to NASA as its media
@@ -128,7 +133,8 @@ export class Editor {
   readonly keepNote = computed(() => {
     const side = this.settings()?.keepMaxSide;
     const made = this.made();
-    if (!side || !made || !this.signedIn() || Math.max(made.width, made.height) <= side) return null;
+    if (!side || !made || !this.signedIn() || Math.max(made.width, made.height) <= side)
+      return null;
     return (
       'The gallery keeps a copy ' + side + ' pixels on its longer side; Save keeps the full size.'
     );
@@ -194,9 +200,14 @@ export class Editor {
 
   constructor() {
     this.loadSettings();
+    const wasSignedIn = this.signedIn();
     this.destroyRef.onDestroy(() => {
       this.deviceTransform.cancel();
       this.discardMade();
+      // An edit not saved yet is saved on the way to another page, unless
+      // that's because of signing out, which forgets the draft.
+      if (wasSignedIn && !this.signedIn()) clearTimeout(this.draftTimer);
+      else this.flushDraft();
     });
     this.loadFilters();
     this.loadPhotos();
@@ -744,7 +755,17 @@ export class Editor {
         // Guests' photos go to the server only up to a smaller size.
         const max = this.settings()?.guestMaxPixels;
         if (max) body.content = await fitPhoto(body.content, max);
-        photo = await this.guestStore.add(await this.api.preview(body));
+        const made = await this.api.preview(body);
+        try {
+          photo = await this.guestStore.add(made);
+        } catch (err) {
+          if (!(err instanceof BrowserStorageError)) throw err;
+          // Shown anyway, to save, until the page is left.
+          photo = { ...made, _id: LOCAL_ID + Date.now().toString(36) };
+          this.addError(
+            err.message + ' The photo stays here until you leave the page: Save it to keep it.',
+          );
+        }
       }
       this.photos.update((photos) => [photo, ...photos]);
       this.latestId.set(photo._id);
@@ -829,7 +850,12 @@ export class Editor {
       const file = signedIn
         ? await fitForKeeping(made.file, this.settings()?.keepMaxSide ?? null)
         : made.file;
-      const photo = madePhoto(transformRequest('', this.madeLayers), await blobToDataUrl(file));
+      const content = await blobToDataUrl(file);
+      if (signedIn && content.length > MAX_KEPT_DATA_URL) {
+        this.addError('This photo is too large to keep on the server. Save it instead.');
+        return;
+      }
+      const photo = madePhoto(transformRequest('', this.madeLayers), content);
       const kept = signedIn ? await this.api.import(photo) : await this.guestStore.add(photo);
       // The gallery's Save and Share need not fetch it again.
       if (signedIn) this.api.remember(kept._id, file);
@@ -873,6 +899,12 @@ export class Editor {
       this.addError(errorMessage(err, 'Could not delete that photo.'));
     }
   }
+}
+
+// What went wrong, for the page: the server's message, or the browser's
+// when it couldn't keep a photo, or the fallback.
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof BrowserStorageError ? err.message : serverMessage(err, fallback);
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

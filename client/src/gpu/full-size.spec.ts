@@ -15,7 +15,7 @@ const gpu = (mb: number, side = 8192): DeviceLimits => ({
 const invert = { tOption: 'invert', params: {}, amount: 100, blend: 'normal' };
 
 describe('fitting a full-size photo to the GPU', () => {
-  it('runs at the photo\'s own size when it fits', () => {
+  it("runs at the photo's own size when it fits", () => {
     expect(runSize([invert], 4000, 3000, gpu(256))).toEqual({ width: 4000, height: 3000 });
   });
 
@@ -26,12 +26,12 @@ describe('fitting a full-size photo to the GPU', () => {
     expect(size.width / size.height).toBeCloseTo(4 / 3, 1);
   });
 
-  it('runs smaller than the GPU\'s largest texture', () => {
+  it("runs smaller than the GPU's largest texture", () => {
     const size = runSize([invert], 8000, 6000, gpu(1024, 4096))!;
     expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(4096);
   });
 
-  it('can\'t run a filter the browser doesn\'t have', () => {
+  it("can't run a filter the browser doesn't have", () => {
     expect(runSize([{ ...invert, tOption: 'style_mosaic' }], 100, 100, gpu(256))).toBeNull();
   });
 
@@ -77,19 +77,26 @@ function fakeEngine(opts: { failures?: ('oom' | 'validation')[]; maxBytes?: numb
       engine.sizes.push(w + 'x' + h);
       return image(w, h);
     },
-    run(_plan: unknown, src: { width: number; height: number }, _x?: unknown, out?: { width: number; height: number }) {
+    run(
+      _plan: unknown,
+      src: { width: number; height: number },
+      _x?: unknown,
+      out?: { width: number; height: number },
+    ) {
       return image(out?.width ?? src.width, out?.height ?? src.height);
     },
     releaseFrame: () => undefined,
     done: async () => undefined,
     release: (img: object | null | undefined) => img && live.delete(img),
-    readPixels: async (img: { width: number; height: number }) => new Uint8Array(img.width * img.height * 4),
+    readPixels: async (img: { width: number; height: number }) =>
+      new Uint8Array(img.width * img.height * 4),
     live,
   };
   return engine;
 }
 
-const bitmap = (width: number, height: number) => ({ width, height, close: () => undefined }) as ImageBitmap;
+const bitmap = (width: number, height: number) =>
+  ({ width, height, close: () => undefined }) as ImageBitmap;
 
 describe('filtering at full size', () => {
   beforeEach(() => {
@@ -102,7 +109,12 @@ describe('filtering at full size', () => {
 
   it('starts again smaller when the GPU runs out of memory', async () => {
     const engine = fakeEngine({ failures: ['oom'] });
-    const out = await filterFullSize(engine as unknown as GpuEngine, bitmap(1000, 800), [invert], []);
+    const out = await filterFullSize(
+      engine as unknown as GpuEngine,
+      bitmap(1000, 800),
+      [invert],
+      [],
+    );
     expect(engine.sizes).toEqual(['1000x800', '700x560']);
     expect(out.ranAt).toEqual({ width: 700, height: 560 });
     expect([out.width, out.height]).toEqual([1000, 800]);
@@ -129,7 +141,12 @@ describe('filtering at full size', () => {
   it('leaves enlarging to the browser when the full-size result is too big for a GPU buffer', async () => {
     // 4 MB buffers: 2400 x 1600 runs at about a million pixels.
     const engine = fakeEngine({ maxBytes: 4e6 });
-    const out = await filterFullSize(engine as unknown as GpuEngine, bitmap(2400, 1600), [invert], []);
+    const out = await filterFullSize(
+      engine as unknown as GpuEngine,
+      bitmap(2400, 1600),
+      [invert],
+      [],
+    );
     expect(out.ranAt).not.toBeNull();
     expect([out.rgbaWidth, out.rgbaHeight]).toEqual([out.ranAt!.width, out.ranAt!.height]);
     expect([out.width, out.height]).toEqual([2400, 1600]);

@@ -19,7 +19,11 @@ describe('Editor', () => {
   let drafts: { [K in keyof DraftStore]: ReturnType<typeof vi.fn> };
   let guestPhotos: { [K in keyof GuestPhotos]: ReturnType<typeof vi.fn> };
   let token: ReturnType<typeof signal<string | null>>;
-  let device: { run: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn>; progress: unknown };
+  let device: {
+    run: ReturnType<typeof vi.fn>;
+    cancel: ReturnType<typeof vi.fn>;
+    progress: unknown;
+  };
 
   const SETTINGS = {
     mode: 'standard',
@@ -310,7 +314,7 @@ describe('Editor', () => {
       expect(menu.open).toBe(false);
     });
 
-    it("leaves Ctrl+Z to text boxes", async () => {
+    it('leaves Ctrl+Z to text boxes', async () => {
       await create();
       editor.addLayer();
       const box = document.createElement('input');
@@ -427,11 +431,13 @@ describe('Editor', () => {
       await create();
       expect(api.all).not.toHaveBeenCalled();
       expect(editor.photos().map((p) => p._id)).toEqual(['local-9']);
-      expect(el.querySelector('.banner.guest')?.textContent).toContain('trying OmniFilter as a guest');
+      expect(el.querySelector('.banner.guest')?.textContent).toContain(
+        'trying OmniFilter as a guest',
+      );
       expect(el.querySelector('.banner.guest a[href$="/signup"]')).not.toBeNull();
     });
 
-    it("filters on the server without saving, and keeps the result here", async () => {
+    it('filters on the server without saving, and keeps the result here', async () => {
       await create();
       api.preview.mockResolvedValue({ content: 'data:image/jpeg;base64,EE==', tOption: 'invert' });
       editor.source.set('data:image/png;base64,BB==');
@@ -548,7 +554,9 @@ describe('Editor', () => {
       api.import.mockImplementation(async (p: Omit<Photo, '_id'>) => ({ ...p, _id: 'kept' }));
       await create();
       // jsdom has no WebGPU, so the page says it's needed (the device is faked).
-      expect(el.querySelector('.device-info')?.textContent).toContain('needs a browser with WebGPU');
+      expect(el.querySelector('.device-info')?.textContent).toContain(
+        'needs a browser with WebGPU',
+      );
       editor.source.set('data:image/png;base64,BB==');
       editor.setFilter(0, 'invert');
       await editor.transform();
@@ -589,7 +597,7 @@ describe('Editor', () => {
       expect(editor.errors()[0]).toContain('already keep 5 photos');
     });
 
-    it('keeps a guest\'s result in this browser', async () => {
+    it("keeps a guest's result in this browser", async () => {
       token.set(null);
       device.run.mockResolvedValue(made);
       await create();
