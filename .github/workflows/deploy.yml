@@ -5,12 +5,14 @@
 # serving.
 #
 # Three jobs: one builds the image and deploys the revision, one checks it,
-# and one sends visitors to it. Only the first and last sign in to Google
+# and one sends visitors to it, which is the one step that waits for
+# approval (the production environment's reviewer): so a deploy asks once,
+# after its checks have passed. Only the first and last sign in to Google
 # Cloud (with Workload Identity Federation: no stored key); the checks run
 # Playwright and Lighthouse, a lot of other people's code, with no way to.
-# They use the production environment's variables GCP_PROJECT, GCP_REGION,
-# GCP_WIF_PROVIDER and GCP_DEPLOY_SA. Optional environment secrets
-# SMOKE_EMAIL and SMOKE_PASSWORD let the smoke test sign in.
+# They use the repository's variables GCP_PROJECT, GCP_REGION,
+# GCP_WIF_PROVIDER and GCP_DEPLOY_SA. Optional secrets SMOKE_EMAIL and
+# SMOKE_PASSWORD, in the smoke environment, let the smoke test sign in.
 #
 # Only master's newest commit goes live: if another commit has reached master
 # since this one, this deploy stops, and that commit's own deploy (which
@@ -48,7 +50,6 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    environment: production
     permissions:
       contents: read
       id-token: write
@@ -63,7 +64,7 @@ jobs:
         run: |
           for v in PROJECT PROVIDER DEPLOY_SA; do
             if [ -z "${!v}" ]; then
-              echo "::error title=Not set up::The production environment needs GCP_PROJECT, GCP_WIF_PROVIDER and GCP_DEPLOY_SA (docs/CLOUD_RUN.md, Part 1 step 6)."
+              echo "::error title=Not set up::The repository needs the variables GCP_PROJECT, GCP_WIF_PROVIDER and GCP_DEPLOY_SA (Settings, Secrets and variables, Actions, Variables; docs/CLOUD_RUN.md, Part 1 step 6)."
               exit 1
             fi
           done
@@ -135,8 +136,8 @@ jobs:
     if: needs.candidate.outputs.url != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # For the SMOKE_ secrets.
-    environment: production
+    # For the SMOKE_ secrets. No reviewer: approval is for going live.
+    environment: smoke
     permissions:
       contents: read
     steps:
@@ -184,12 +185,12 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Sends visitors to the revision if the checks passed and nothing newer has
-  # reached master meanwhile; otherwise takes its address away, so a failed
-  # revision isn't left reachable.
+  # Sends visitors to the revision, once its reviewer approves, if nothing
+  # newer has reached master meanwhile (if something has, takes its address
+  # away instead).
   promote:
     needs: [candidate, check]
-    if: always() && needs.candidate.outputs.url != '' && needs.candidate.outputs.first != 'true'
+    if: needs.check.result == 'success' && needs.candidate.outputs.first != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
@@ -201,7 +202,6 @@ jobs:
     steps:
       - name: Check this is still master's newest commit
         id: newest
-        if: needs.check.result == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -229,9 +229,31 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "::notice title=Live::$url is serving ${SHA:0:7}"
           echo "Live at $url, serving ${SHA:0:7}." >> "$GITHUB_STEP_SUMMARY"
-      - name: Take the failed revision's address away
+      - name: Take the superseded revision's address away
         if: steps.newest.outputs.newest != 'true'
         run: |
           gcloud run services update-traffic "$SERVICE" --remove-tags=candidate \
             --region="$REGION" --project="$PROJECT" --quiet
-          echo "::warning title=Not live::${SHA:0:7} was not put live; the revision serving before still is."
+
+  # A revision that failed its checks: takes its address away, so it isn't
+  # left reachable, without waiting for anyone. The one serving carries on.
+  withdraw:
+    needs: [candidate, check]
+    if: >-
+      always() && needs.candidate.outputs.url != '' && needs.candidate.outputs.first != 'true' &&
+      needs.check.result != 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - name: Take the failed revision's address away
+        run: |
+          gcloud run services update-traffic "$SERVICE" --remove-tags=candidate \
+            --region="$REGION" --project="$PROJECT" --quiet
+          echo "::warning title=Not live::${SHA:0:7} failed its checks; the revision serving before still is."
