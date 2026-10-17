@@ -1,11 +1,14 @@
-// On Cloud Run, log lines go out as JSON, one entry each (lib/cloud_logging.js).
-if (process.env.K_SERVICE) require(__dirname + '/lib/cloud_logging').install();
+// On Cloud Run, log lines go out as JSON, one entry each, under the request
+// they were logged for (lib/cloud_logging.js).
+const cloudLogging = process.env.K_SERVICE ? require(__dirname + '/lib/cloud_logging') : null;
+if (cloudLogging) cloudLogging.install();
 
 var PORT = process.env.PORT || process.env.$PORT || 3000;
 var clientPort = process.env.CLIENTPORT || 5000;
 var hostURL = process.env.HOSTURL || 'http://localhost:';
 const express = require('express');
 const app = module.exports = exports = express();
+if (cloudLogging) app.use(cloudLogging.middleware(process.env.GOOGLE_CLOUD_PROJECT));
 const mongoose = require('mongoose');
 // Treat query values as plain values, never as operators like $ne, even if a
 // route forgets to check what it was sent.

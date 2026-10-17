@@ -160,6 +160,7 @@ The `run.app` address works as it is. For a domain such as `omnifilter.example.c
 - no OpenCL, no native addon and no neural style models: in cloud mode the server doesn't filter, and doesn't try to set up a device (`/device` answers `null`).
 - `OMNIFILTER_MODE=cloud`, `NODE_ENV=production`, and port 8080, which Cloud Run expects.
 - quick to start, since the first visitor after an idle spell waits for it: no ONNX Runtime (the neural style filters' 180 MB, which cloud mode doesn't run), Node's compile cache filled when the image is built (as the user the server runs as: Node keeps one per user), sharp loads only when a photo is read or written, and Cloud Run's startup CPU boost is on. `/health` gives a server that has just started a few seconds to connect to the database, and a server that can't reach the database keeps trying (every 5 s, doubling up to a minute) rather than giving up.
+- logs that read well in Cloud Logging: every line is a JSON entry with a severity (a stack trace is one entry, errors show as errors), and what's logged while a request is handled carries the request's trace, so it shows under Cloud Run's own line for that request (`GOOGLE_CLOUD_PROJECT`, set by the deploy, names the project for that).
 - CI's `cloud-run` job builds it on every push, runs it beside a MongoDB, and runs the smoke test against it.
 
 **`.github/workflows/deploy.yml`**, after the test workflow passes on master, or on demand from master, in three jobs:

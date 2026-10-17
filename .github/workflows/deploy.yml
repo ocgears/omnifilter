@@ -110,7 +110,7 @@ jobs:
           flags=(--image="$IMAGE" --region="$REGION" --project="$PROJECT"
             --service-account="omnifilter-run@$PROJECT.iam.gserviceaccount.com"
             --set-secrets=MONGOLAB_URI=mongodb-uri:latest,APP_SECRET=app-secret:latest
-            --set-env-vars=OMNIFILTER_MODE=cloud,TRUST_PROXY=1
+            --set-env-vars=OMNIFILTER_MODE=cloud,TRUST_PROXY=1,GOOGLE_CLOUD_PROJECT=$PROJECT
             --cpu=1 --memory=512Mi --concurrency=40 --min-instances=0 --max-instances=1
             --cpu-throttling --cpu-boost --allow-unauthenticated --tag=candidate --quiet)
           # Lists nothing for a service that doesn't exist yet, and fails (so
