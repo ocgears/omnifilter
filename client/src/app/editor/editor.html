@@ -172,7 +172,7 @@
           id="undo"
           (click)="undo()"
           [disabled]="!history.canUndo()"
-          [attr.aria-label]="history.canUndo() ? 'Undo ' + history.current()?.label : 'Undo'"
+          [attr.aria-label]="history.canUndo() ? 'Undo ' + history.current().label : 'Undo'"
           title="Undo (Ctrl+Z)"
         >
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
