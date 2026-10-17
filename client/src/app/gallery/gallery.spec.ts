@@ -2,7 +2,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FILTERS } from '../../testing/fixtures';
 import { Photo } from '../models';
 import { PhotoApi } from '../photo-api.service';
-import { Gallery, downloadName } from './gallery';
+import { downloadName } from '../photo-names';
+import { Gallery } from './gallery';
 
 describe('Gallery', () => {
   const photo: Photo = {

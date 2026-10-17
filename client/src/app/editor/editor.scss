@@ -425,3 +425,22 @@ summary {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+// Until the live preview's code has loaded: the photo, as the preview shows it.
+.preview .placeholder {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+
+@media (max-width: 859px) {
+  .preview .placeholder {
+    max-height: 34vh;
+  }
+}
+
+.loading {
+  color: var(--muted);
+}

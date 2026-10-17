@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { GpuEngine, StackLayer, gpuEngine } from '../../gpu';
+import type { GpuEngine, StackLayer } from '../../gpu';
 import { Layer } from '../models';
 
 // A photo decoded for previewing: straight-alpha RGBA at a reduced size,
@@ -47,10 +47,12 @@ export async function decodePhoto(dataUrl: string, maxSide: number): Promise<Pre
 }
 
 // The page's WebGPU engine, shared by the live preview and the thumbnails.
+// The GPU code is a chunk of its own, loaded the first time it's asked for.
 @Injectable({ providedIn: 'root' })
 export class PreviewEngine {
   // null where WebGPU isn't available. A lost device gets replaced.
-  get(): Promise<GpuEngine | null> {
+  async get(): Promise<GpuEngine | null> {
+    const { gpuEngine } = await import('../../gpu');
     return gpuEngine();
   }
 }

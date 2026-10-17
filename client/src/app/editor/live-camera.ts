@@ -16,12 +16,6 @@ import { PreviewEngine, stackLayers } from './preview-engine';
 // The longer side frames are filtered at.
 const FRAME_SIZE = 960;
 
-// Whether this browser can open a camera at all (it needs a secure page:
-// HTTPS, or localhost).
-export function cameraSupported(): boolean {
-  return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
-}
-
 // The camera, with the filter stack applied to every frame on this device's
 // GPU. The shutter takes the frame as it comes from the camera, so the
 // server can then filter it at full size.

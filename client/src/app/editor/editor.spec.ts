@@ -564,7 +564,11 @@ describe('Editor', () => {
       expect(device.run.mock.calls[0][1]).toEqual([
         { tOption: 'invert', params: {}, amount: 100, blend: 'normal' },
       ]);
-      fixture.detectChanges();
+      // The card's code loads when it's first shown.
+      for (let n = 0; n < 5 && !el.querySelector('of-result-card'); n++) {
+        await new Promise((resolve) => setTimeout(resolve));
+        await fixture.whenStable();
+      }
       const card = el.querySelector('of-result-card')!;
       expect(card.textContent).toContain('12.0 MP, made on Test GPU in 1.9 s (6.3 MP/s)');
       expect(card.textContent).toContain('Keep in gallery (2 of 5)');

@@ -14,7 +14,8 @@ import { Router, RouterLink } from '@angular/router';
 import { Alerts } from '../alerts/alerts';
 import { AuthService, errorMessage as serverMessage } from '../auth.service';
 import { BrowserStorageError } from '../browser-db';
-import { Gallery, downloadName } from '../gallery/gallery';
+import { Gallery } from '../gallery/gallery';
+import { downloadName } from '../photo-names';
 import { GuestPhotos, LOCAL_ID, isLocal } from '../guest-photos';
 import {
   Device,
@@ -26,9 +27,11 @@ import {
   Preset,
   ServerSettings,
 } from '../models';
-import { MadeOnDevice, ResultCard } from '../result-card/result-card';
+import type { MadeOnDevice } from '../result-card/result-card';
+import { ResultCard } from '../result-card/result-card';
 import { PhotoApi } from '../photo-api.service';
-import { LiveCamera, cameraSupported } from './live-camera';
+import { cameraSupported } from './camera-support';
+import { LiveCamera } from './live-camera';
 import { LivePreview } from './live-preview';
 import { PhotoFileError, fitForKeeping, fitPhoto, imageFrom, readPhoto } from './photo-file';
 import { DeviceTransform, DeviceTransformError } from './device-transform';

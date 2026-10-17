@@ -60,21 +60,32 @@
       class="visually-hidden"
       (change)="onFilePicked($event)"
     />
+    <!-- The camera, preview, result card and gallery, with the GPU code they
+    use, load in chunks of their own when they're first wanted, so the page
+    opens sooner. -->
     @if (cameraOn()) {
-      <of-live-camera
-        [layers]="layers()"
-        [blendModes]="blendModeNames()"
-        (captured)="useCapture($event)"
-        (closed)="cameraOn.set(false)"
-      />
-    } @else if (source(); as src) {
-      <figure class="preview">
-        <of-live-preview
-          [source]="src"
+      @defer (on immediate) {
+        <of-live-camera
           [layers]="layers()"
           [blendModes]="blendModeNames()"
-          [paused]="transforming() && onDevice()"
+          (captured)="useCapture($event)"
+          (closed)="cameraOn.set(false)"
         />
+      } @placeholder {
+        <p class="loading" role="status">Opening the camera…</p>
+      }
+    } @else if (source(); as src) {
+      <figure class="preview">
+        @defer (on immediate) {
+          <of-live-preview
+            [source]="src"
+            [layers]="layers()"
+            [blendModes]="blendModeNames()"
+            [paused]="transforming() && onDevice()"
+          />
+        } @placeholder {
+          <img class="placeholder" [src]="src" alt="Your photo" />
+        }
         <figcaption>
           <span class="file-name">{{ sourceName() }}</span>
           <label for="file" class="button">Change</label>
@@ -384,22 +395,26 @@
 </div>
 
 @if (made(); as result) {
-  <of-result-card
-    [result]="result"
-    [keepText]="keepText()"
-    [keepNote]="keepNote()"
-    [canKeep]="roomToKeep()"
-    [keeping]="keeping()"
-    (keep)="keepMade()"
-    (discard)="discardMade()"
-  />
+  @defer (on immediate) {
+    <of-result-card
+      [result]="result"
+      [keepText]="keepText()"
+      [keepNote]="keepNote()"
+      [canKeep]="roomToKeep()"
+      [keeping]="keeping()"
+      (keep)="keepMade()"
+      (discard)="discardMade()"
+    />
+  }
 }
 
-<of-gallery
-  [photos]="photos()"
-  [limit]="storageLimit()"
-  [filters]="filters()"
-  [highlight]="latestId()"
-  (remove)="deletePhoto($event)"
-  (reuse)="useSettings($event)"
-/>
+@defer (on idle; when photos().length > 0) {
+  <of-gallery
+    [photos]="photos()"
+    [limit]="storageLimit()"
+    [filters]="filters()"
+    [highlight]="latestId()"
+    (remove)="deletePhoto($event)"
+    (reuse)="useSettings($event)"
+  />
+}
