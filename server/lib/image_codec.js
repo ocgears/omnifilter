@@ -12,6 +12,8 @@
 const sharp = require('./sharp');
 
 const JPEG_QUALITY = 90;
+// For a kept photo that's too big at JPEG_QUALITY (see stored()).
+const LOWER_QUALITY = 70;
 
 // A small compressed file can expand to gigabytes of pixels (a "decompression
 // bomb"), so images are limited by pixel count and by side length. sharp
@@ -220,9 +222,12 @@ exports.THUMB_SIDE = THUMB_SIDE;
 // transparency. Being drawn again leaves behind its metadata (where it was
 // taken, and the camera) and anything else the file carried, so a small
 // photo padded out to megabytes is kept at the size of its pixels. Without
-// it, the photo is kept as it came.
+// it, the photo is kept as it came. With options.maxBytes too, one that
+// takes more than that (noise, say) is tried again at a lower quality, and
+// if it's still too big, rejected with a 413.
 exports.stored = function(photo, options) {
   const maxSide = options && options.maxSide;
+  const maxBytes = options && options.maxBytes;
   const original = photo.bytes;
   const read = (bytes) => sharp(bytes, { limitInputPixels: MAX_PIXELS });
   return read(original).metadata().then((meta) => {
@@ -231,16 +236,24 @@ exports.stored = function(photo, options) {
     const width = sideways ? meta.height : meta.width;
     const height = sideways ? meta.width : meta.height;
     if (!maxSide) return { image: original, mime: photo.mime, width: width, height: height };
-    const drawn = read(original).rotate()
-      .resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true });
-    const encoded = meta.hasAlpha ?
-      drawn.webp({ quality: 90, alphaQuality: 100 }) : drawn.jpeg({ quality: JPEG_QUALITY });
-    return encoded.toBuffer({ resolveWithObject: true }).then((out) => ({
-      image: out.data,
-      mime: meta.hasAlpha ? 'image/webp' : 'image/jpeg',
-      width: out.info.width,
-      height: out.info.height
-    }));
+    const drawn = (quality) => {
+      const resized = read(original).rotate()
+        .resize({ width: maxSide, height: maxSide, fit: 'inside', withoutEnlargement: true });
+      return (meta.hasAlpha ? resized.webp({ quality: quality, alphaQuality: Math.max(quality, 90) }) :
+        resized.jpeg({ quality: quality })).toBuffer({ resolveWithObject: true });
+    };
+    const fits = (out) => !maxBytes || out.data.length <= maxBytes;
+    return drawn(JPEG_QUALITY)
+      .then((out) => (fits(out) ? out : drawn(LOWER_QUALITY)))
+      .then((out) => {
+        if (!fits(out)) throw codecError(413, 'This photo has too much detail to keep here; save it instead');
+        return {
+          image: out.data,
+          mime: meta.hasAlpha ? 'image/webp' : 'image/jpeg',
+          width: out.info.width,
+          height: out.info.height
+        };
+      });
   }).then((kept) => read(kept.image).rotate()
     .resize({ width: THUMB_SIDE, height: THUMB_SIDE, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 75 })

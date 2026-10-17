@@ -386,6 +386,8 @@ describe('security', () => {
       expect(rateLimit.clientKey('2001:db8::1')).to.eql('2001:db8:0:0::/64');
       expect(rateLimit.clientKey('::ffff:203.0.113.7')).to.eql('203.0.113.7');
       expect(rateLimit.clientKey('203.0.113.7')).to.eql('203.0.113.7');
+      expect(rateLimit.clientKey('2001:db8:1:2:aaaa::1', 48)).to.eql('2001:db8:1::/48');
+      expect(rateLimit.clientKey('203.0.113.7', 48)).to.eql('203.0.113.7');
       const limiter = rateLimit({ perMinute: 1, burst: 1, now: () => 0 });
       const statuses = [];
       for (const ip of ['2001:db8:1:2::1', '2001:db8:1:2::2', '2001:db8:1:3::1']) {

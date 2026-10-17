@@ -32,9 +32,21 @@
 //                                    first, so this only turns away ones
 //                                    sent some other way, which would take a
 //                                    lot of this server's memory to read
+//   OMNIFILTER_KEEP_MAX_BYTES        the most bytes a kept photo, as drawn
+//                                    again, may take (default: no limit;
+//                                    cloud: 3 MB, ten times a typical photo
+//                                    at 2048 px). One over it is tried again
+//                                    at a lower quality, then turned away
+//   OMNIFILTER_SIGNUPS_PER_DAY       accounts made per day from one address
+//                                    (an IPv6 /48) (default: no limit;
+//                                    cloud: 10)
+//   OMNIFILTER_MAX_DATA_MB           photos aren't kept once the database
+//                                    holds this many megabytes (default: no
+//                                    limit; cloud: 400, under the free
+//                                    MongoDB Atlas cluster's 512)
 
 const CLOUD = { processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048,
-  keepMaxPixels: 16e6 };
+  keepMaxPixels: 16e6, keepMaxBytes: 3e6, signupsPerDay: 10, maxDataMB: 400 };
 const PROCESSING = ['server', 'device', 'device-first'];
 
 function read(env) {
@@ -52,20 +64,23 @@ function read(env) {
   else if (/^(server|on|true|1|yes)$/.test(g)) guests = 'server';
   else guests = fallback('guests') || 'server';
 
-  const max = parseInt(e.OMNIFILTER_MAX_STORED_PHOTOS, 10);
-  const maxStoredPhotos = max > 0 ? max : fallback('maxStoredPhotos') || null;
-  const side = parseInt(e.OMNIFILTER_KEEP_MAX_SIDE, 10);
-  const keepMaxSide = side > 0 ? side : fallback('keepMaxSide') || null;
-  const pixels = Number(e.OMNIFILTER_KEEP_MAX_PIXELS);
-  const keepMaxPixels = pixels > 0 ? pixels : fallback('keepMaxPixels') || null;
+  // A positive number from the environment, or the cloud value, or null.
+  const limit = (name, key, parse) => {
+    const n = parse(e[name]);
+    return n > 0 ? n : fallback(key) || null;
+  };
+  const whole = (v) => parseInt(v, 10);
 
   return {
     mode: cloud ? 'cloud' : 'standard',
     processing: processing,
     guests: guests,
-    maxStoredPhotos: maxStoredPhotos,
-    keepMaxSide: keepMaxSide,
-    keepMaxPixels: keepMaxPixels
+    maxStoredPhotos: limit('OMNIFILTER_MAX_STORED_PHOTOS', 'maxStoredPhotos', whole),
+    keepMaxSide: limit('OMNIFILTER_KEEP_MAX_SIDE', 'keepMaxSide', whole),
+    keepMaxPixels: limit('OMNIFILTER_KEEP_MAX_PIXELS', 'keepMaxPixels', Number),
+    keepMaxBytes: limit('OMNIFILTER_KEEP_MAX_BYTES', 'keepMaxBytes', Number),
+    signupsPerDay: limit('OMNIFILTER_SIGNUPS_PER_DAY', 'signupsPerDay', whole),
+    maxDataMB: limit('OMNIFILTER_MAX_DATA_MB', 'maxDataMB', Number)
   };
 }
 

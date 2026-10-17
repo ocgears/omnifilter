@@ -14,6 +14,8 @@ function serverEnv(own) {
     MONGOLAB_URI: process.env.E2E_MONGO_URI || 'mongodb://localhost/omnifilter_e2e',
     APP_SECRET: 'e2e-only-secret-not-for-production',
     AUTH_RATE_BURST: '100',
+    // Every project's accounts come from the same address too.
+    OMNIFILTER_SIGNUPS_PER_DAY: '1000',
     // Every project's guest tests come from the same address.
     GUEST_RATE_BURST: '100'
   }, own);

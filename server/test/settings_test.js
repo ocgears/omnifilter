@@ -3,7 +3,9 @@ const { clearCollections, keptPhoto } = require(__dirname + '/setup');
 const User = require(__dirname + '/../models/user');
 const Content = require(__dirname + '/../models/content');
 const contentRouter = require(__dirname + '/../routes/content_routes');
+const authRouter = require(__dirname + '/../routes/auth_routes');
 const settings = require(__dirname + '/../lib/settings');
+const storageGuard = require(__dirname + '/../lib/storage_guard');
 const sharp = require('sharp');
 const http = require('http');
 const zlib = require('zlib');
@@ -45,30 +47,32 @@ function sendAndLeave(token, bytes) {
 }
 
 const KEYS = ['OMNIFILTER_MODE', 'OMNIFILTER_PROCESSING', 'OMNIFILTER_GUESTS', 'OMNIFILTER_MAX_STORED_PHOTOS',
-  'OMNIFILTER_KEEP_MAX_SIDE', 'OMNIFILTER_KEEP_MAX_PIXELS'];
+  'OMNIFILTER_KEEP_MAX_SIDE', 'OMNIFILTER_KEEP_MAX_PIXELS', 'OMNIFILTER_KEEP_MAX_BYTES', 'OMNIFILTER_SIGNUPS_PER_DAY',
+  'OMNIFILTER_MAX_DATA_MB'];
 
 describe('the server settings (lib/settings.js)', () => {
   it('filters on the server for everyone by default, and keeps any number of photos', () => {
     expect(settings.read({})).to.eql({
       mode: 'standard', processing: 'server', guests: 'server', maxStoredPhotos: null, keepMaxSide: null,
-      keepMaxPixels: null
+      keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: null
     });
   });
 
   it('in cloud mode, filters on the visitor\'s device and keeps 5 photos each', () => {
     expect(settings.read({ OMNIFILTER_MODE: 'cloud' })).to.eql({
       mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048,
-      keepMaxPixels: 16e6
+      keepMaxPixels: 16e6, keepMaxBytes: 3e6, signupsPerDay: 10, maxDataMB: 400
     });
   });
 
   it('lets each cloud setting be changed on its own', () => {
     expect(settings.read({
       OMNIFILTER_MODE: 'Cloud', OMNIFILTER_PROCESSING: 'device-first', OMNIFILTER_GUESTS: 'off',
-      OMNIFILTER_MAX_STORED_PHOTOS: '12', OMNIFILTER_KEEP_MAX_SIDE: '4096', OMNIFILTER_KEEP_MAX_PIXELS: '30e6'
+      OMNIFILTER_MAX_STORED_PHOTOS: '12', OMNIFILTER_KEEP_MAX_SIDE: '4096', OMNIFILTER_KEEP_MAX_PIXELS: '30e6',
+      OMNIFILTER_KEEP_MAX_BYTES: '5e6', OMNIFILTER_SIGNUPS_PER_DAY: '3', OMNIFILTER_MAX_DATA_MB: '900'
     })).to.eql({
       mode: 'cloud', processing: 'device-first', guests: 'off', maxStoredPhotos: 12, keepMaxSide: 4096,
-      keepMaxPixels: 30e6
+      keepMaxPixels: 30e6, keepMaxBytes: 5e6, signupsPerDay: 3, maxDataMB: 900
     });
   });
 
@@ -242,6 +246,58 @@ describe('cloud mode on the server', () => {
     }
     expect(kept).to.be.above(0);
     expect(kept).to.be.at.most(5);
+    await Content.deleteMany({});
+  });
+
+  it('keeps a photo with a lot of detail at a lower quality, or not at all', async () => {
+    const noise = await sharp(crypto.randomBytes(800 * 800 * 3), { raw: { width: 800, height: 800, channels: 3 } })
+      .png().toBuffer();
+    const keep = () => request.execute(baseUri).post('/import').set({ token: token })
+      .set('Content-Type', 'image/png').send(noise);
+    // About 530 kB at quality 90, and 370 kB at 70.
+    process.env.OMNIFILTER_KEEP_MAX_BYTES = '450000';
+    const lower = await keep();
+    expect(lower).to.have.status(200);
+    const kept = Buffer.from((await keptPhoto(baseUri, token, lower.body._id)).split(',')[1], 'base64');
+    expect(kept.length).to.be.at.most(450000);
+    process.env.OMNIFILTER_KEEP_MAX_BYTES = '200000';
+    const refused = await keep();
+    expect(refused).to.have.status(413);
+    expect(refused.body.msg).to.match(/too much detail/);
+    delete process.env.OMNIFILTER_KEEP_MAX_BYTES;
+    await Content.deleteMany({});
+  });
+
+  it('makes only so many accounts a day from one address', async () => {
+    process.env.OMNIFILTER_SIGNUPS_PER_DAY = '2';
+    authRouter.resetSignupsPerDay();
+    authRouter.rateLimiter.reset();
+    const signUp = (email) => request.execute(baseUri).post('/signup')
+      .send({ email: email, password: 'password5', confirmation: 'password5' });
+    expect(await signUp('daily-1@tester.com')).to.have.status(200);
+    // One that makes no account doesn't count.
+    expect(await signUp('daily-1@tester.com')).to.have.status(409);
+    expect(await signUp('daily-2@tester.com')).to.have.status(200);
+    const third = await signUp('daily-3@tester.com');
+    expect(third).to.have.status(429);
+    expect(third.body.msg).to.match(/today/);
+    expect(Number(third.headers['retry-after'])).to.be.above(3600);
+    delete process.env.OMNIFILTER_SIGNUPS_PER_DAY;
+    authRouter.resetSignupsPerDay();
+    authRouter.rateLimiter.reset();
+    await User.deleteMany({ email: /^daily-/ });
+  });
+
+  it('keeps no photos once the database is as big as it may be', async () => {
+    const keep = () => request.execute(baseUri).post('/import').set({ token: token })
+      .send({ content: photo, tOption: 'invert' });
+    process.env.OMNIFILTER_MAX_DATA_MB = '0.001';
+    storageGuard.reset();
+    const refused = await keep();
+    expect(refused).to.have.status(507);
+    expect(refused.body.msg).to.match(/no room/);
+    delete process.env.OMNIFILTER_MAX_DATA_MB;
+    expect(await keep()).to.have.status(200);
     await Content.deleteMany({});
   });
 

@@ -5,6 +5,7 @@ const handleDBError = require(__dirname + '/../lib/handle_db_error');
 const basicHTTP = require(__dirname + '/../lib/basic_http');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
 const validate = require(__dirname + '/../lib/validate');
+const settings = require(__dirname + '/../lib/settings');
 
 const authRouter = module.exports = exports = express.Router();
 
@@ -18,6 +19,29 @@ const limiter = authRouter.rateLimiter = rateLimit({
   message: 'Too many attempts, please wait a minute and try again'
 });
 
+// Accounts made per day from one address (OMNIFILTER_SIGNUPS_PER_DAY; an
+// IPv6 address counts by its /48), so that one client can't make enough of
+// them to fill the database with each one's photos. Only sign-ups that
+// make an account count.
+var dailySignups = null;
+function signupsPerDay(req, res, next) {
+  const perDay = settings.read().signupsPerDay;
+  if (!perDay) return next();
+  if (!dailySignups || dailySignups.perDay !== perDay) {
+    dailySignups = Object.assign(rateLimit({
+      perMinute: perDay / (24 * 60),
+      burst: perDay,
+      prefix: 48,
+      counts: (res) => res.statusCode === 200,
+      message: 'Too many accounts have been made from here today; please try again tomorrow'
+    }), { perDay: perDay });
+  }
+  dailySignups(req, res, next);
+}
+authRouter.resetSignupsPerDay = () => {
+  dailySignups = null;
+};
+
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Emails are saved lowercase, but accounts made before that may not be (until
@@ -27,7 +51,7 @@ function findByEmail(email) {
     User.findOne({ email: new RegExp('^' + escapeRegExp(email) + '$', 'i') }));
 }
 
-authRouter.post('/signup', limiter, jsonParser, (req, res) => {
+authRouter.post('/signup', limiter, signupsPerDay, jsonParser, (req, res) => {
   const email = validate.normalizeEmail(req.body.email);
   const password = req.body.password;
 

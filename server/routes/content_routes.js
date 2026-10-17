@@ -11,6 +11,7 @@ const filterStack = require(__dirname + '/../lib/stack');
 const transformQueue = require(__dirname + '/../lib/transform_queue');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
 const settings = require(__dirname + '/../lib/settings');
+const storageGuard = require(__dirname + '/../lib/storage_guard');
 
 // Photos arrive as data URLs, so /newcontent takes big bodies.
 const photoParser = bodyParser.json({ limit: 16000000 });
@@ -372,9 +373,10 @@ function readUpload(req, res, next) {
   next();
 }
 
-// What comes before a photo to keep is used: who it's for, its turn, room,
-// and the photo itself.
-const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, photoParser, photoFile, readUpload];
+// What comes before a photo to keep is used: who it's for, its turn, room
+// in their account and in the database, and the photo itself.
+const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, storageGuard.roomInDatabase, photoParser, photoFile,
+  readUpload];
 
 // The handler for a photo to keep, after keepingPhoto: holds the upload slot
 // until it has finished. If the client went away before it started, there's
@@ -389,7 +391,8 @@ const keeping = (handler) => (req, res) => {
 // A checked photo ({ bytes, mime }) as it's kept, scaled down to the
 // server's OMNIFILTER_KEEP_MAX_SIDE if there is one.
 function keptPhoto(photo) {
-  return imageCodec.stored(photo, { maxSide: settings.read().keepMaxSide });
+  const s = settings.read();
+  return imageCodec.stored(photo, { maxSide: s.keepMaxSide, maxBytes: s.keepMaxBytes });
 }
 
 // Checks a photo to keep as it was sent, as validatePhoto does, and within
@@ -409,7 +412,9 @@ async function photoToKeep(req, res) {
 // it. If their account was deleted meanwhile (user_routes.js deletes the
 // account, then its photos), this one goes too.
 async function keepFor(req, photo, fields) {
-  const data = await Content.create(Object.assign({ user_id: req.user._id }, fields, await keptPhoto(photo)));
+  const kept = await keptPhoto(photo);
+  const data = await Content.create(Object.assign({ user_id: req.user._id }, fields, kept));
+  storageGuard.added(kept.image.length + kept.thumb.length);
   if (!(await User.exists({ _id: req.user._id }))) {
     await Content.deleteOne({ _id: data._id });
     return null;
