@@ -111,10 +111,28 @@ contentRouter.get('/presets', (req, res) => {
 
 // The user's photos, newest first: what each was made with, its size and
 // type, and its thumbnail; not the photos themselves (GET /content/:id).
+// ?limit=n gives at most n (up to 100), and ?before=<id> the ones after that
+// photo, for paging through a big gallery; without them, every photo. The
+// Omnifilter-Total header says how many there are in all.
 contentRouter.get('/getAll', jwtAuth, async (req, res) => {
   await upgradeOldPhotos(req.user._id);
-  const data = await Content.find({ user_id: req.user._id }).select('-image -content')
-    .sort({ createdAt: -1 });
+  const filter = { user_id: req.user._id };
+  if (req.query.before !== undefined) {
+    const before = mongoose.isObjectIdOrHexString(req.query.before) &&
+      await Content.findOne({ _id: req.query.before, user_id: req.user._id }).select('createdAt');
+    if (!before) return res.status(400).json({ msg: 'before must be the id of one of your photos' });
+    // Older, or as old with a smaller id: the order below, carried on.
+    // (Marked trusted: sanitizeFilter would otherwise turn $lt into a value.)
+    filter.$or = [
+      { createdAt: mongoose.trusted({ $lt: before.createdAt }) },
+      { createdAt: before.createdAt, _id: mongoose.trusted({ $lt: before._id }) }
+    ];
+  }
+  const limit = parseInt(req.query.limit, 10);
+  var query = Content.find(filter).select('-image -content').sort({ createdAt: -1, _id: -1 });
+  if (limit > 0) query = query.limit(Math.min(limit, 100));
+  const [data, total] = await Promise.all([query, Content.countDocuments({ user_id: req.user._id })]);
+  res.set('Omnifilter-Total', String(total));
   res.status(200).json(data);
 });
 

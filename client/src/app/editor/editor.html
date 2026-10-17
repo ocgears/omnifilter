@@ -414,7 +414,10 @@
     [limit]="storageLimit()"
     [filters]="filters()"
     [highlight]="latestId()"
+    [total]="photoCount()"
+    [loadingMore]="loadingMore()"
     (remove)="deletePhoto($event)"
     (reuse)="useSettings($event)"
+    (more)="loadMorePhotos()"
   />
 }

@@ -3,9 +3,9 @@
     <h2 id="gallery-title">
       Your photos
       @if (limit(); as max) {
-        <span class="count">{{ photos().length }} of {{ max }} kept</span>
+        <span class="count">{{ total() ?? photos().length }} of {{ max }} kept</span>
       } @else {
-        <span class="count">{{ photos().length }}</span>
+        <span class="count">{{ total() ?? photos().length }}</span>
       }
     </h2>
     @if (shareError(); as message) {
@@ -70,5 +70,16 @@
         </li>
       }
     </ul>
+    @if ((total() ?? 0) > photos().length) {
+      <div class="more">
+        <button type="button" (click)="more.emit()" [disabled]="loadingMore()">
+          {{
+            loadingMore()
+              ? 'Loading…'
+              : 'Show more (' + ((total() ?? 0) - photos().length) + ' more)'
+          }}
+        </button>
+      </div>
+    }
   </section>
 }

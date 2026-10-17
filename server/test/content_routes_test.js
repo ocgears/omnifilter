@@ -129,6 +129,29 @@ describe('content API', () => {
     expect(await keptPhoto(baseUri, userToken, old.insertedId)).to.eql(content);
   });
 
+  it('pages through the photos, newest first, and says how many there are', async () => {
+    const pager = new User();
+    pager.email = 'pager@tester.com';
+    pager.hashPassword('password5');
+    const saved = await pager.save();
+    const token = saved.generateToken();
+    const made = new Date('2026-10-10T00:00:00Z');
+    // Five photos, two made at the same moment.
+    await Content.insertMany([0, 1, 2, 2, 3].map((n) => ({ user_id: String(saved._id),
+      image: Buffer.from('x'), mime: 'image/png', createdAt: new Date(made.getTime() + n * 1000) })));
+    const page = (query) => request.execute(baseUri).get('/getAll' + query).set({ token: token });
+    const first = await page('?limit=2');
+    expect(first).to.have.header('omnifilter-total', '5');
+    expect(first.body).to.have.length(2);
+    const second = await page('?limit=2&before=' + first.body[1]._id);
+    const third = await page('?limit=2&before=' + second.body[1]._id);
+    const ids = first.body.concat(second.body, third.body).map((p) => p._id);
+    expect(new Set(ids).size).to.equal(5);
+    const all = (await page('')).body.map((p) => p._id);
+    expect(ids).to.eql(all);
+    expect(await page('?before=nope')).to.have.status(400);
+  });
+
   it('sends a photo as a file to save, and only to its owner', async () => {
     const made = await request.execute(baseUri).post('/newcontent').set({ token: userToken })
       .send({ content: await pngDataUrl() });

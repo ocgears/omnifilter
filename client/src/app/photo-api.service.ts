@@ -36,11 +36,19 @@ export class PhotoApi {
     return firstValueFrom(this.http.get<Device>(this.apiBase + '/device'));
   }
 
-  // The user's saved photos, newest first.
-  all(): Promise<Photo[]> {
-    return firstValueFrom(
-      this.http.get<Photo[]>(this.apiBase + '/getAll', { headers: this.authHeaders() }),
+  // A page of the user's saved photos, newest first: at most `limit`, the
+  // ones after `before`; and how many there are in all.
+  async all(limit: number, before?: Photo): Promise<{ photos: Photo[]; total: number }> {
+    const res = await firstValueFrom(
+      this.http.get<Photo[]>(this.apiBase + '/getAll', {
+        headers: this.authHeaders(),
+        params: before ? { limit, before: before._id } : { limit },
+        observe: 'response',
+      }),
     );
+    const photos = res.body ?? [];
+    const total = Number(res.headers.get('Omnifilter-Total'));
+    return { photos, total: Number.isFinite(total) && total > 0 ? total : photos.length };
   }
 
   // Runs the filters on the server and saves the result. The photo goes as

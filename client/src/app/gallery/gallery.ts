@@ -33,6 +33,11 @@ export class Gallery {
   readonly highlight = input<string | null>(null);
   // How many photos may be kept, when there's a limit (the hosted demo).
   readonly limit = input<number | null>(null);
+  // How many there are in all, when more than are shown (they're loaded a
+  // page at a time), and whether the next page is on its way.
+  readonly total = input<number | null>(null);
+  readonly loadingMore = input(false);
+  readonly more = output<void>();
   readonly remove = output<Photo>();
   // Use the stack a photo was made with again.
   readonly reuse = output<Photo>();

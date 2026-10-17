@@ -94,3 +94,9 @@ time {
     transition: none;
   }
 }
+
+.more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--gap);
+}

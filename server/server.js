@@ -46,6 +46,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, token, Omnifilter-Recipe');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
     res.header('Access-Control-Max-Age', '600');
+    res.header('Access-Control-Expose-Headers', 'Omnifilter-Total');
   }
   // Answer preflight requests here; the browser makes the real request next.
   if (req.method === 'OPTIONS') return res.sendStatus(204);
