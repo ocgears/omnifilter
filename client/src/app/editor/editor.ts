@@ -44,7 +44,7 @@ import {
 import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { EditHistory, StackState } from './history';
-import { PreviewEngine, decodePhoto, stackLayers } from './preview-engine';
+import { PreviewEngine, previewPhoto, smallerPhoto, stackLayers } from './preview-engine';
 import {
   filterLabel,
   findFilter,
@@ -242,7 +242,8 @@ export class Editor {
     try {
       const engine = await this.previewEngine.get();
       if (!engine || run !== this.thumbnailRun) return;
-      const photo = await decodePhoto(source, THUMB_SIZE);
+      // From the copy the live preview decodes, not the photo again.
+      const photo = await smallerPhoto(await previewPhoto(source), THUMB_SIZE);
       if (run !== this.thumbnailRun) return;
       const stacks = [{ key: '', layers: [] as ReturnType<typeof stackLayers> }].concat(
         presets

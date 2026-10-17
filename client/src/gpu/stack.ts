@@ -74,6 +74,26 @@ export class StackRenderer {
     return this.source;
   }
 
+  // The kernels a stack runs on the current photo, for
+  // GpuEngine.preparePipelines to compile ahead of rendering it.
+  kernelsFor(layers: readonly StackLayer[]): string[] {
+    const names = new Set<string>(['resize']);
+    const width = this.source?.width ?? 16;
+    const height = this.source?.height ?? 16;
+    for (const layer of layers) {
+      const def = filterDef(layer.tOption);
+      if (!def || StackRenderer.unsupported(layer)) continue;
+      const params = normalizeParams(def, layer.params);
+      const size = def.workingSize
+        ? workingSize(def, params, this.fullWidth || width, this.fullHeight || height)
+        : { width, height };
+      const built = buildPlan(layer.tOption, size.width, size.height, layer.params);
+      if ('plan' in built) for (const pass of built.plan.passes) names.add(pass.kernel);
+      if (!(layer.amount >= 100 && layer.blend === 'normal')) names.add('blend_layers');
+    }
+    return [...names];
+  }
+
   // Why the browser can't preview a layer, or null if it can.
   static unsupported(layer: StackLayer): string | null {
     const result = buildPlan(layer.tOption, 16, 16, layer.params);

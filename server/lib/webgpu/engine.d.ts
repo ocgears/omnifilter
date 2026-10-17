@@ -89,6 +89,9 @@ export class GpuEngine {
   checked<T>(fn: () => T | Promise<T>): Promise<T>;
   takeError(): GPUError | null;
   kernel(name: string): Kernel;
+  // Compiles kernels' pipelines in the background; run() then finds them.
+  preparePipelines(names: string[]): Promise<void>;
+  hasPipelines(names: string[]): boolean;
   prepare(names: string[]): Promise<void>;
   createImage(width: number, height: number, rgba?: ArrayBufferView): GpuImage;
   release(image: GpuImage | null | undefined): void;

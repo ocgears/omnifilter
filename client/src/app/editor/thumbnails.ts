@@ -22,6 +22,8 @@ export async function renderThumbnails(
   const renderer = new StackRenderer(engine, blendModes, MAX_WORKING_SIDE);
   try {
     renderer.setSource(photo.rgba, photo.width, photo.height, photo.fullWidth, photo.fullHeight);
+    // Every look's kernels, compiled in the background first.
+    await engine.preparePipelines(stacks.flatMap((stack) => renderer.kernelsFor(stack.layers)));
     for (const { key, layers } of stacks) {
       if (stale()) break;
       const result = renderer.render(layers);

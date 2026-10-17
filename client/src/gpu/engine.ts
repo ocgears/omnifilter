@@ -38,6 +38,23 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 }
 `;
 
+// The same from a video frame the GPU reads in place (importExternalTexture),
+// with no copy into a texture first.
+const FROM_EXTERNAL = /* wgsl */ `
+@group(0) @binding(0) var tex: texture_external;
+@group(0) @binding(1) var smp: sampler;
+@group(0) @binding(2) var<storage, read_write> dst: array<u32>;
+@group(0) @binding(3) var<uniform> size: vec2u;
+@compute @workgroup_size(8, 8)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  if (gid.x >= size.x || gid.y >= size.y) { return; }
+  let uv = (vec2f(gid.xy) + 0.5) / vec2f(size);
+  let c = textureSampleBaseClampToEdge(tex, smp, uv);
+  let v = vec4u(round(clamp(c * 255.0, vec4f(0.0), vec4f(255.0))));
+  dst[gid.y * size.x + gid.x] = v.x | (v.y << 8u) | (v.z << 16u) | (v.w << 24u);
+}
+`;
+
 const PRESENT = /* wgsl */ `
 @group(0) @binding(0) var<storage, read> img: array<u32>;
 @group(0) @binding(1) var<uniform> size: vec2u;
@@ -56,6 +73,9 @@ const PRESENT = /* wgsl */ `
 export class GpuEngine extends CoreEngine {
   private presentPipeline: { pipeline: GPURenderPipeline; format: GPUTextureFormat } | null = null;
   private fromTexture: { pipeline: GPUComputePipeline; sampler: GPUSampler } | null = null;
+  private fromExternal: { pipeline: GPUComputePipeline; sampler: GPUSampler } | null = null;
+  // Set if reading video frames in place failed once: copy them instead.
+  private noExternal = false;
   private frameTexture: GPUTexture | null = null;
   // The canvases set up to show this engine's images, and in which format.
   private configured = new WeakMap<HTMLCanvasElement | OffscreenCanvas, GPUTextureFormat>();
@@ -145,6 +165,32 @@ export class GpuEngine extends CoreEngine {
     height: number,
     into?: GpuImage | null,
   ): GpuImage {
+    const video =
+      (typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement) ||
+      (typeof VideoFrame !== 'undefined' && source instanceof VideoFrame);
+    if (video && !this.noExternal) {
+      // The first time, WebGPU's verdict comes back later, in an error
+      // scope; if it refused, later frames are copied.
+      const first = !this.fromExternal && typeof this.device.pushErrorScope === 'function';
+      if (first) this.device.pushErrorScope('validation');
+      try {
+        return this.imageFromVideo(source as HTMLVideoElement | VideoFrame, width, height, into);
+      } catch (err) {
+        console.warn('Reading video frames in place failed; copying them instead:', err);
+        this.noExternal = true;
+      } finally {
+        if (first) {
+          this.device.popErrorScope().then((error) => {
+            if (!error) return;
+            console.warn(
+              'Reading video frames in place failed; copying them instead:',
+              error.message,
+            );
+            this.noExternal = true;
+          });
+        }
+      }
+    }
     const { device } = this;
     let texture = this.frameTexture;
     if (!texture || texture.width !== sourceWidth || texture.height !== sourceHeight) {
@@ -189,6 +235,58 @@ export class GpuEngine extends CoreEngine {
         layout: pipeline.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: texture.createView() },
+          { binding: 1, resource: sampler },
+          { binding: 2, resource: { buffer: image.buffer } },
+          { binding: 3, resource: { buffer: size } },
+        ],
+      }),
+    );
+    pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    size.destroy();
+    return image;
+  }
+
+  // imageFromFrame for a camera's frame, read where it is: the browser hands
+  // the GPU the frame itself (an external texture, valid for this task), so
+  // there's no copy of a full-size frame into a texture of our own.
+  private imageFromVideo(
+    source: HTMLVideoElement | VideoFrame,
+    width: number,
+    height: number,
+    into?: GpuImage | null,
+  ): GpuImage {
+    const { device } = this;
+    const external = device.importExternalTexture({ source });
+    if (!this.fromExternal) {
+      const module = device.createShaderModule({ code: FROM_EXTERNAL, label: 'from video' });
+      this.fromExternal = {
+        pipeline: device.createComputePipeline({
+          label: 'from video',
+          layout: 'auto',
+          compute: { module, entryPoint: 'main' },
+        }),
+        sampler: device.createSampler({ magFilter: 'linear', minFilter: 'linear' }),
+      };
+    }
+    const image =
+      into && into.width === width && into.height === height
+        ? into
+        : this.createImage(width, height);
+    if (image !== into) this.release(into);
+    const size = device.createBuffer({ size: 8, usage: USAGE.UNIFORM | USAGE.COPY_DST });
+    device.queue.writeBuffer(size, 0, new Uint32Array([width, height]));
+    const { pipeline, sampler } = this.fromExternal;
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(
+      0,
+      device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: external },
           { binding: 1, resource: sampler },
           { binding: 2, resource: { buffer: image.buffer } },
           { binding: 3, resource: { buffer: size } },

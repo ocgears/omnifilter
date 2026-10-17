@@ -164,6 +164,9 @@ export class LiveCamera implements OnDestroy {
       renderer.setBlendModes(this.blendModes());
       renderer.setSourceImage(this.frame);
       const layers = stackLayers(this.layers());
+      // A filter used for the first time is compiled in the background.
+      const kernels = renderer.kernelsFor(layers);
+      if (!engine.hasPipelines(kernels)) await engine.preparePipelines(kernels);
       let result = renderer.render(layers);
       if ('unsupported' in result) {
         this.stoppedAt.set(
