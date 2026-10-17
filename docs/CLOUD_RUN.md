@@ -155,11 +155,11 @@ The `run.app` address works as it is. For a domain such as `omnifilter.example.c
 
 ## How a deploy works
 
-**The image**, `docker/cloud-run.Dockerfile` (177 MB compressed):
+**The image**, `docker/cloud-run.Dockerfile` (about 100 MB compressed):
 - the client is built with `OMNIFILTER_API=/`, so the page calls the API at its own address. (The root `Dockerfile`'s client calls port 3000 of the page's host, which is right for `docker compose` but not on Cloud Run, where everything is on one HTTPS address.)
 - no OpenCL, no native addon and no neural style models: in cloud mode the server doesn't filter, and doesn't try to set up a device (`/device` answers `null`).
 - `OMNIFILTER_MODE=cloud`, `NODE_ENV=production`, and port 8080, which Cloud Run expects.
-- quick to start, since the first visitor after an idle spell waits for it: Node's compile cache is filled when the image is built, sharp loads only when a photo is read or written, and Cloud Run's startup CPU boost is on. `/health` gives a server that has just started a few seconds to connect to the database, and a server that can't reach the database keeps trying (every 5 s, doubling up to a minute) rather than giving up.
+- quick to start, since the first visitor after an idle spell waits for it: no ONNX Runtime (the neural style filters' 180 MB, which cloud mode doesn't run), Node's compile cache filled when the image is built (as the user the server runs as: Node keeps one per user), sharp loads only when a photo is read or written, and Cloud Run's startup CPU boost is on. `/health` gives a server that has just started a few seconds to connect to the database, and a server that can't reach the database keeps trying (every 5 s, doubling up to a minute) rather than giving up.
 - CI's `cloud-run` job builds it on every push, runs it beside a MongoDB, and runs the smoke test against it.
 
 **`.github/workflows/deploy.yml`**, after the test workflow passes on master, or on demand from master, in three jobs:
@@ -170,7 +170,7 @@ The `run.app` address works as it is. For a domain such as `omnifilter.example.c
 If the checks fail, **withdraw** removes the `candidate` address without waiting for anyone, so a failed revision isn't left reachable, and the revision serving before carries on.
 
 **The smoke test**, `e2e/smoke/deployed.smoke.js` (`SMOKE_URL=<address> npx playwright test -c e2e/smoke` runs it from anywhere):
-- `GET /health`: the database is connected, and the server sees the test at the runner's own public address, not at an address made up in an `X-Forwarded-For` header (that checks `TRUST_PROXY`, which the per-address limits on sign-ins rely on);
+- `GET /health` (the first request to a new revision, so its time, noted on the run, is a cold start's): the database is connected, and the server sees the test at the runner's own public address, not at an address made up in an `X-Forwarded-For` header (that checks `TRUST_PROXY`, which the per-address limits on sign-ins rely on);
 - `GET /settings` says cloud mode with 5 photos each, and `/device` is `null`;
 - the page has the API address meta tag, and its scripts come compressed and cacheable for a year;
 - as a guest, the sample photo is filtered at full size in the browser (CI's Chromium has WebGPU through SwiftShader) and the result card says 12.0 MP, with no errors on the page;

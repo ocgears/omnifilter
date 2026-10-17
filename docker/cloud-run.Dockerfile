@@ -27,9 +27,14 @@ WORKDIR /usr/src/app
 # --ignore-scripts skips building the native OpenCL addon (the "install"
 # script); without it the server reports the filters as unavailable rather
 # than failing, and in cloud mode it never runs them. sharp, which reads
-# kept photos, ships prebuilt and needs no script.
+# kept photos, and bcrypt ship prebuilt and need no script. Then ONNX
+# Runtime goes (180 MB, an optional package for the neural style filters,
+# which a cloud-mode server doesn't run either; without it they report
+# themselves unavailable), and so do sharp's builds for musl (Alpine), so a
+# new instance has less image to fetch.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+  && rm -rf node_modules/onnxruntime-node node_modules/onnxruntime-common node_modules/@img/*linuxmusl* \
   && npm pkg delete scripts.install \
   && npm cache clean --force
 COPY server ./server
@@ -37,12 +42,14 @@ RUN rm -rf server/test
 COPY --from=client /usr/src/app/dist ./dist
 # Node's compile cache, filled here by loading the server's modules once, so
 # a new instance (the first request after an idle spell waits for it) skips
-# compiling them. It's read-only to the server, which is fine.
+# compiling them. Node keeps a cache for each user, so it's filled as the
+# user the server runs as.
 ENV NODE_COMPILE_CACHE=/usr/src/app/.node-compile-cache
-RUN node -e "for (const r of ['content', 'auth', 'user']) require('./server/routes/' + r + '_routes'); \
-    require('sharp'); require('compression')"
-
+RUN mkdir -p "$NODE_COMPILE_CACHE" && chown node "$NODE_COMPILE_CACHE"
 USER node
+RUN node -e "require('./server/server.js'); require('sharp'); setTimeout(() => process.exit(0), 100)" \
+  && test -n "$(ls -A "$NODE_COMPILE_CACHE"/*/)"
+
 # Cloud Run says which port to listen on in PORT (8080).
 ENV PORT=8080
 EXPOSE 8080
