@@ -105,7 +105,8 @@ exports.median = (src, width, height, radius) =>
 // Premultiplied, with alpha in the variance.
 exports.kuwahara = (src, width, height, radius) =>
   map(src, width, height, (x, y) => {
-    const quadrants = [[-radius, 0, -radius, 0], [0, radius, -radius, 0], [-radius, 0, 0, radius], [0, radius, 0, radius]];
+    const quadrants = [[-radius, 0, -radius, 0], [0, radius, -radius, 0],
+      [-radius, 0, 0, radius], [0, radius, 0, radius]];
     let best = Infinity;
     let out = null;
     for (const [x0, x1, y0, y1] of quadrants) {
@@ -169,7 +170,8 @@ exports.pixelate = (src, width, height, block) =>
     return [sum[0] / sum[3], sum[1] / sum[3], sum[2] / sum[3], sum[3] / n].map((v) => clamp(Math.round(v), 0, 255));
   });
 
-const lumaBin = (src, o) => clamp(Math.floor(0.2126 * src[o] + 0.7152 * src[o + 1] + 0.0722 * src[o + 2] + 0.5), 0, 255);
+const lumaBin = (src, o) =>
+  clamp(Math.floor(0.2126 * src[o] + 0.7152 * src[o + 1] + 0.0722 * src[o + 2] + 0.5), 0, 255);
 
 function withLuma(c, y2) {
   const y = luma(c);

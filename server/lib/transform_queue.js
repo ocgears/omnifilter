@@ -23,7 +23,7 @@ exports.create = function(options) {
     'You already have a photo being processed; wait for it to finish';
 
   var running = 0;
-  const waiting = [];      // entries { key, start, cancel }
+  const waiting = []; // entries { key, start, cancel }
   const perKey = new Map(); // key -> transforms waiting or running
 
   const addKey = (key, n) => {

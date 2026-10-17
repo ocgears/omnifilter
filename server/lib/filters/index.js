@@ -27,7 +27,9 @@ const definitions = [].concat(
 module.exports = definitions.map((def) => {
   const rounded = Object.assign({}, def);
   if (def.plan) rounded.plan = (w, h, p) => def.plan(w, h, roundWholeParams(def.params, p));
-  if (def.run) rounded.run = (job) => def.run(Object.assign({}, job, { params: roundWholeParams(def.params, job.params) }));
+  if (def.run) {
+    rounded.run = (job) => def.run(Object.assign({}, job, { params: roundWholeParams(def.params, job.params) }));
+  }
   if (def.workingSize) rounded.workingSize = (p) => def.workingSize(roundWholeParams(def.params, p));
   return rounded;
 });

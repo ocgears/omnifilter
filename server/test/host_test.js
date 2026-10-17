@@ -104,7 +104,7 @@ describe('the device queue', () => {
     const gpu = loadGpu(native);
     const runs = [
       gpu.apply('gamma', image(32, 32), 32, 32, {}),
-      gpu.apply('gamma', image(128, 128), 128, 128, {}),  // too big for maxAllocBytes: runs scaled down
+      gpu.apply('gamma', image(128, 128), 128, 128, {}), // too big for maxAllocBytes: runs scaled down
       gpu.runPlan(image(16, 16), 16, 16, new Plan(16, 16)),
       gpu.apply('threshold', image(8, 8), 8, 8, {}),
       gpu.runPlan(image(16, 16), 16, 16, new Plan(16, 16))
@@ -127,7 +127,7 @@ describe('the device queue', () => {
         most = Math.max(most, active);
         if (mine === 1) {
           active--;
-          throw new Error('driver says no');  // thrown, not rejected, as the addon's argument checks do
+          throw new Error('driver says no'); // thrown, not rejected, as the addon's argument checks do
         }
         return delay(2).then(() => {
           active--;

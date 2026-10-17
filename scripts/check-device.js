@@ -27,7 +27,7 @@ function testImage(width, height) {
 function allCases(gpu) {
   const cases = {};
   for (const f of gpu.list()) {
-    if (f.group === 'Neural style') continue;  // ONNX Runtime, not kernels
+    if (f.group === 'Neural style') continue; // ONNX Runtime, not kernels
     cases[f.name] = () => gpu.apply(f.name, testImage(W, H), W, H, {});
   }
   // A texture wider than the device allows, so the filter runs scaled down.
@@ -82,7 +82,7 @@ function runChild(names) {
 
 function parent(only) {
   let names = only.length ? only : null;
-  const results = [];  // [name, status, detail]
+  const results = []; // [name, status, detail]
   let device = null;
   for (;;) {
     if (!names) {

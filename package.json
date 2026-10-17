@@ -45,7 +45,7 @@
     "test": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && mocha --exit --timeout 10000 --file server/test/setup.js server/test",
     "test:client": "node scripts/client.js test",
     "test:e2e": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && playwright test",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "start": "mkdir -p db && (mongod --dbpath=./db > db/mongod.log 2>&1 &) && node clientserver & node server/server",
     "fetch-models": "node scripts/fetch-models.js",
     "devices": "node scripts/devices.js",
