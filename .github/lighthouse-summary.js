@@ -30,6 +30,14 @@ for (const run of manifest.filter((r) => r.isRepresentativeRun)) {
     Math.round(a['total-blocking-time'].numericValue) + ' ms',
     a['cumulative-layout-shift'].numericValue.toFixed(3)
   ].join(' | ') + ' |');
+  // The same as an annotation, which shows on the run's page (and in the
+  // API) without opening the summary.
+  if (process.env.GITHUB_ACTIONS) {
+    console.log('::notice title=Lighthouse ' + page + '::performance ' + score(run.summary.performance) +
+      ', FCP ' + seconds(a['first-contentful-paint']) + ', LCP ' + seconds(a['largest-contentful-paint']) +
+      ', TBT ' + Math.round(a['total-blocking-time'].numericValue) + ' ms, CLS ' +
+      a['cumulative-layout-shift'].numericValue.toFixed(3));
+  }
 }
 
 const text = '## Lighthouse (mobile)\n\n' + rows.join('\n') + '\n';
