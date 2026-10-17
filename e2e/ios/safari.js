@@ -74,12 +74,11 @@ class Session {
   find(css) {
     return call('POST', this.base + '/element', { using: 'css selector', value: css });
   }
-  // Clicks the element matching `css`, or with `text`, the one of them that
-  // has that text, from inside the page. (WebDriver's touch actions landed
-  // at varying distances from where they were aimed; see the top.)
-  // Taps the first element matching css (and saying text), once there is
-  // one: what it's in may still be loading (the preset looks come from the
-  // server after the page opens).
+  // Clicks the first element matching `css` (and with `text`, the one that
+  // says that), from inside the page, once there is one: what it's in may
+  // still be loading (the preset looks come from the server after the page
+  // opens). WebDriver's touch actions landed at varying distances from where
+  // they were aimed; see the top, and touch() below.
   async tap(css, text, timeout = 15000) {
     const script = 'const el = Array.from(document.querySelectorAll(arguments[0]))' +
       '.find((e) => !arguments[1] || e.textContent.trim() === arguments[1]);' +
@@ -90,6 +89,35 @@ class Session {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
+  // A real touch on the element matching css (and saying text), through
+  // WebDriver's touch actions aimed at the element itself (origin: the
+  // element, so Safari works out where it is on the screen, not us).
+  // Resolves with what the page saw the touch land on.
+  async touch(css, text) {
+    const element = await this.run('window.touched = null;' +
+      'document.addEventListener("pointerdown", (e) => { window.touched = e.target; }, { once: true, capture: true });' +
+      'const el = Array.from(document.querySelectorAll(arguments[0]))' +
+      '.find((e) => !arguments[1] || e.textContent.trim() === arguments[1]);' +
+      'if (el) el.scrollIntoView({ block: "center" }); return el || null;', css, text || null);
+    if (!element) throw new Error('nothing matches ' + css + (text ? ' saying ' + text : ''));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await call('POST', this.base + '/actions', {
+      actions: [{
+        type: 'pointer', id: 'finger', parameters: { pointerType: 'touch' },
+        actions: [
+          { type: 'pointerMove', duration: 0, origin: element, x: 0, y: 0 },
+          { type: 'pointerDown', button: 0 },
+          { type: 'pause', duration: 50 },
+          { type: 'pointerUp', button: 0 }
+        ]
+      }]
+    });
+    await call('DELETE', this.base + '/actions');
+    return this.run('const t = window.touched, el = arguments[0];' +
+      'return !t ? "nothing" : el.contains(t) ? "it" : (t.id ? "#" + t.id : t.tagName.toLowerCase()) +' +
+      ' (t.textContent ? " (" + t.textContent.trim().slice(0, 20) + ")" : "");', element);
+  }
+
   async screenshot(name) {
     fs.mkdirSync(OUT, { recursive: true });
     const png = await call('GET', this.base + '/screenshot');
@@ -199,6 +227,18 @@ async function check(name, fn) {
       await s.tap('#transform');
       await s.until('the result', count('.photo-card'), 60000);
     });
+
+    // Not a check yet (see docs/MOBILE_TESTING.md): whether touches aimed at
+    // an element, rather than at a point, land on it. Reported, not judged.
+    try {
+      const landed = [];
+      for (const [css, text] of [['.chips .chip', 'Neon night'], ['#undo'], ['label[for=file]', 'Change']]) {
+        landed.push((text || css) + ': ' + await s.touch(css, text).catch((e) => 'error ' + e.message));
+      }
+      notice('notice', 'iOS Safari touch (experiment)', landed.join('; '));
+    } catch (e) {
+      notice('notice', 'iOS Safari touch (experiment)', 'could not run: ' + e.message);
+    }
 
     await s.screenshot('safari');
   } finally {

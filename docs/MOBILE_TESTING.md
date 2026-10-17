@@ -38,4 +38,6 @@ Both were found in October 2026. Neither has a documented cause that I could fin
   - the WebKit bug tracker's WebDriver component, for related bugs (for example [218232](https://bugs.webkit.org/show_bug.cgi?id=218232), touch actions returning "not implemented" in Safari 14)
 - **Real phone GPUs and timings** aren't available on GitHub's runners at all. A device cloud (BrowserStack, Sauce Labs) runs Playwright on real iPhones and Android phones, if that's ever wanted.
 
+The nightly run also tries one way round each, and reports what happened on the run's summary page without judging it (the "experiment" notices): on iOS, touches aimed at an element (WebDriver's `origin: element`, so Safari places them, not our arithmetic); on Android, taps at the middle of the screen through `adb shell input tap` and `input touchscreen swipe`, to see whether anything reaches the page at all.
+
 When the touch problems are solved, the `ios` job's tap and hold, and the `android` job's long press (Android's image menu), can come back. Git history has the earlier versions: commits `f376a70` to `3ff422b` on the `mobile-ci` branch.
