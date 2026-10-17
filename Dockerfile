@@ -3,7 +3,7 @@
 # runs the same kernels on the container's CPU. See docker-compose.yml.
 
 # ---- build: compile the native OpenCL addon and build the Angular client ----
-FROM node:24-trixie-slim AS build
+FROM node:25-trixie-slim AS build
 
 # Compiler toolchain for node-gyp, plus the OpenCL headers and ICD loader.
 RUN apt-get update \
@@ -47,7 +47,7 @@ RUN npm run build:prod && npm prune --omit=dev \
      node_modules/onnxruntime-node/bin/napi-v3/linux/*/libonnxruntime_providers_cuda.so
 
 # ---- runtime ----
-FROM node:24-trixie-slim
+FROM node:25-trixie-slim
 
 # The OpenCL ICD loader, and pocl as the OpenCL driver.
 RUN apt-get update \
