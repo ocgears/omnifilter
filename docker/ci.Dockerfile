@@ -10,7 +10,7 @@
 # On a machine with an NVIDIA GPU and the NVIDIA Container Toolkit,
 # `docker/test.sh --gpu` also hands the container the GPU, for OpenCL and
 # Vulkan (so WebGPU) on real hardware. See docs/DOCKER.md.
-FROM mcr.microsoft.com/playwright:v1.64.0-noble
+FROM mcr.microsoft.com/playwright:v1.64.1-noble
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
