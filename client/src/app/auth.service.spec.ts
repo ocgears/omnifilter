@@ -106,6 +106,18 @@ describe('AuthService', () => {
     expect(clearDraft).toHaveBeenCalled();
   });
 
+  it('signs out of all devices on the server, then here', async () => {
+    auth.token.set('tok');
+    const done = auth.signOutEverywhere();
+    const req = http.expectOne('http://api/signouteverywhere');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.headers.get('token')).toBe('tok');
+    req.flush({ msg: 'ok' });
+    await done;
+    expect(auth.token()).toBeNull();
+    expect(clearDraft).toHaveBeenCalled();
+  });
+
   it('follows a sign-out in another tab', async () => {
     auth.token.set('tok');
     auth.email.set('a@b.co');

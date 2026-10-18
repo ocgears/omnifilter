@@ -115,6 +115,17 @@ export class AuthService {
     this.notice.set('Your sign-in has expired. Sign in again to carry on.');
   }
 
+  // Ends every sign-in to the account, on every device, this one too.
+  async signOutEverywhere(): Promise<void> {
+    const token = this.token();
+    if (token) {
+      await firstValueFrom(
+        this.http.post(this.apiBase + '/signouteverywhere', null, { headers: { token } }),
+      );
+    }
+    this.signOut();
+  }
+
   // However the sign-in ends (the button, or a token the server stopped
   // taking), the draft goes with it: someone else may use this browser next.
   signOut(): void {

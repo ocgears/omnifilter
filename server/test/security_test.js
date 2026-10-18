@@ -219,6 +219,21 @@ describe('security', () => {
         .then((res) => expect(res).to.have.status(200));
     });
 
+    it('signs out every session of an account, and only that account', async () => {
+      const other = jwt.sign({ id: String(alice._id) }, secret, { algorithm: 'HS256', expiresIn: '1h' });
+      expect(await request.execute(baseUri).post('/signouteverywhere')).to.have.status(401);
+      const done = await request.execute(baseUri).post('/signouteverywhere').set({ token: aliceToken });
+      expect(done).to.have.status(200);
+      for (const token of [aliceToken, other]) {
+        expect(await request.execute(baseUri).get('/getAll').set({ token: token })).to.have.status(401);
+      }
+      expect(await request.execute(baseUri).get('/getAll').set({ token: bobToken })).to.have.status(200);
+      // Signing in again works, a second on.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      const again = await request.execute(baseUri).get('/signin').auth('alice@tester.com', 'password1');
+      expect(await request.execute(baseUri).get('/getAll').set({ token: again.body.token })).to.have.status(200);
+    });
+
     it('deletes a user\'s photos along with the account', () => {
       return Content.create({ user_id: alice._id, content: 'data:image/png;base64,AAAA' })
         .then(() => request.execute(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })

@@ -65,6 +65,15 @@ userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
   });
 });
 
+// Signs the account out everywhere: every token issued so far stops working,
+// this one included. Nothing to protect with the password: a stolen token
+// can only end its own use.
+userRouter.post('/signouteverywhere', jwtAuth, (req, res) => {
+  User.updateOne({ _id: req.user._id }, { signedOutAt: new Date() })
+    .then(() => res.status(200).json({ msg: 'Signed out on every device' }))
+    .catch((err) => handleDBError(err, res));
+});
+
 const checkSettings = (req, res, next) => {
   const email = req.body.email;
   const password = req.body.password;

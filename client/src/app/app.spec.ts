@@ -11,6 +11,7 @@ describe('App', () => {
     unverified: ReturnType<typeof signal<boolean>>;
     verify: ReturnType<typeof vi.fn>;
     signOut: ReturnType<typeof vi.fn>;
+    signOutEverywhere: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -20,6 +21,7 @@ describe('App', () => {
       unverified: signal(false),
       verify: vi.fn().mockResolvedValue(undefined),
       signOut: vi.fn(),
+      signOutEverywhere: vi.fn().mockResolvedValue(undefined),
     };
     TestBed.configureTestingModule({
       imports: [App],
@@ -38,6 +40,25 @@ describe('App', () => {
 
     el.querySelector<HTMLButtonElement>('.account button')!.click();
     expect(auth.signOut).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith('/signin');
+  });
+
+  it('signs out of all devices, once asked to be sure', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const button = (name: string) =>
+      Array.from(el.querySelectorAll<HTMLButtonElement>('.everywhere button')).find(
+        (b) => b.textContent?.trim() === name,
+      )!;
+    button('Sign out of all devices').click();
+    fixture.detectChanges();
+    expect(el.querySelector('.everywhere')?.textContent).toContain('this one too?');
+    expect(auth.signOutEverywhere).not.toHaveBeenCalled();
+    button('Sign out everywhere').click();
+    await fixture.whenStable();
+    expect(auth.signOutEverywhere).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith('/signin');
   });
 

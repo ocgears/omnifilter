@@ -24,7 +24,10 @@ var userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   // Tokens issued before this are rejected, so changing the password signs
   // out every other session.
-  passwordChangedAt: Date
+  passwordChangedAt: Date,
+  // Tokens issued before this, or in the same second, are rejected too:
+  // "Sign out of all devices" (user_routes.js).
+  signedOutAt: Date
 });
 
 // Resolves once the password is hashed. Saving also waits for a hash still in
