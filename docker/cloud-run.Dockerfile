@@ -10,7 +10,7 @@
 # nothing.
 
 # ---- build: the Angular client ----
-FROM node:24-trixie-slim@sha256:7f486cabe892bff8fef04c0f7da8dba84a560be3e4e2740b7a86afc57ebec315 AS client
+FROM node:25-trixie-slim@sha256:aabbe39553d15ede8a97cc60c9e1a97034ff772afcf696ea42b94e7f5f2ec71b AS client
 WORKDIR /usr/src/app
 COPY client/package.json client/package-lock.json ./client/
 RUN npm ci --prefix client --no-audit --no-fund
@@ -20,7 +20,7 @@ COPY . .
 RUN OMNIFILTER_API=/ node scripts/client.js build --production
 
 # ---- runtime ----
-FROM node:24-trixie-slim@sha256:7f486cabe892bff8fef04c0f7da8dba84a560be3e4e2740b7a86afc57ebec315
+FROM node:25-trixie-slim@sha256:aabbe39553d15ede8a97cc60c9e1a97034ff772afcf696ea42b94e7f5f2ec71b
 # Reading a photo takes a lot of memory for a moment (a 49 megapixel GIF,
 # about 250 MB), and the server has 512 MiB. Fewer malloc arenas, one libvips
 # thread (there's one CPU), and big allocations handed straight back to the
