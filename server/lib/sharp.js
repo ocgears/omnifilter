@@ -7,6 +7,12 @@
 let sharp = null;
 
 module.exports = function() {
-  if (!sharp) sharp = require('sharp');
+  if (!sharp) {
+    sharp = require('sharp');
+    // libvips keeps recent operations' results in case they're asked for
+    // again, which here they never are, and a big photo's decoded pixels
+    // then stay in memory after it's been kept.
+    sharp.cache(false);
+  }
   return sharp.apply(null, arguments);
 };

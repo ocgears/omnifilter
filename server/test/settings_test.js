@@ -48,20 +48,28 @@ function sendAndLeave(token, bytes) {
 
 const KEYS = ['OMNIFILTER_MODE', 'OMNIFILTER_PROCESSING', 'OMNIFILTER_GUESTS', 'OMNIFILTER_MAX_STORED_PHOTOS',
   'OMNIFILTER_KEEP_MAX_SIDE', 'OMNIFILTER_KEEP_MAX_PIXELS', 'OMNIFILTER_KEEP_MAX_BYTES', 'OMNIFILTER_SIGNUPS_PER_DAY',
-  'OMNIFILTER_MAX_DATA_MB'];
+  'OMNIFILTER_MAX_DATA_MB', 'OMNIFILTER_LIMITS'];
 
 describe('the server settings (lib/settings.js)', () => {
   it('filters on the server for everyone by default, and keeps any number of photos', () => {
     expect(settings.read({})).to.eql({
-      mode: 'standard', processing: 'server', guests: 'server', maxStoredPhotos: null, keepMaxSide: null,
-      keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: null
+      mode: 'standard', strict: false, processing: 'server', guests: 'server', maxStoredPhotos: null,
+      keepMaxSide: null, keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: null
     });
+  });
+
+  it('has strict limits on photos and accounts when asked', () => {
+    expect(settings.read({ OMNIFILTER_LIMITS: 'strict' })).to.include({
+      strict: true, keepMaxPixels: 16e6, keepMaxBytes: 3e6, signupsPerDay: 10, maxDataMB: null
+    });
+    expect(settings.read({ OMNIFILTER_MODE: 'cloud', OMNIFILTER_LIMITS: 'Strict', OMNIFILTER_SIGNUPS_PER_DAY: '4' }))
+      .to.include({ keepMaxPixels: 16e6, signupsPerDay: 4, maxDataMB: 400 });
   });
 
   it('in cloud mode, filters on the visitor\'s device and keeps 5 photos each', () => {
     expect(settings.read({ OMNIFILTER_MODE: 'cloud' })).to.eql({
-      mode: 'cloud', processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048,
-      keepMaxPixels: 16e6, keepMaxBytes: 3e6, signupsPerDay: 10, maxDataMB: 400
+      mode: 'cloud', strict: false, processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048,
+      keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: 400
     });
   });
 
@@ -71,7 +79,7 @@ describe('the server settings (lib/settings.js)', () => {
       OMNIFILTER_MAX_STORED_PHOTOS: '12', OMNIFILTER_KEEP_MAX_SIDE: '4096', OMNIFILTER_KEEP_MAX_PIXELS: '30e6',
       OMNIFILTER_KEEP_MAX_BYTES: '5e6', OMNIFILTER_SIGNUPS_PER_DAY: '3', OMNIFILTER_MAX_DATA_MB: '900'
     })).to.eql({
-      mode: 'cloud', processing: 'device-first', guests: 'off', maxStoredPhotos: 12, keepMaxSide: 4096,
+      mode: 'cloud', strict: false, processing: 'device-first', guests: 'off', maxStoredPhotos: 12, keepMaxSide: 4096,
       keepMaxPixels: 30e6, keepMaxBytes: 5e6, signupsPerDay: 3, maxDataMB: 900
     });
   });
@@ -221,7 +229,8 @@ describe('cloud mode on the server', () => {
     await Content.deleteMany({});
   });
 
-  it('turns away a photo with more pixels than it takes in to keep', async () => {
+  it('turns away a photo with more pixels than it takes in to keep, with strict limits', async () => {
+    process.env.OMNIFILTER_LIMITS = 'strict';
     const big = await sharp({ create: { width: 5000, height: 4000, channels: 3, background: '#406080' } })
       .jpeg().toBuffer();
     const res = await request.execute(baseUri).post('/import').set({ token: token })
@@ -229,6 +238,13 @@ describe('cloud mode on the server', () => {
     expect(res).to.have.status(400);
     expect(res.body.msg).to.match(/at most 16 megapixels/);
     expect(await Content.countDocuments({})).to.eql(0);
+    // Without them, it's kept (at 2048 pixels).
+    delete process.env.OMNIFILTER_LIMITS;
+    const kept = await request.execute(baseUri).post('/import').set({ token: token })
+      .set('Content-Type', 'image/jpeg').send(big);
+    expect(kept).to.have.status(200);
+    expect(kept.body).to.include({ width: 2048, height: 1638 });
+    await Content.deleteMany({});
   });
 
   it('keeps to the limit when clients send photos and go without waiting', async () => {

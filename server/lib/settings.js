@@ -5,6 +5,11 @@
 //
 //   OMNIFILTER_MODE=cloud            the hosted demo: everything below at its
 //                                    cloud value, unless set separately
+//   OMNIFILTER_LIMITS=strict         the three limits marked "strict" below
+//                                    at their strict value, unless set
+//                                    separately: for a server that's being
+//                                    abused (anyone can make an account and
+//                                    keep photos)
 //   OMNIFILTER_PROCESSING            where signed-in users' filters run:
 //     server (default)               here, on this server's GPU (or CPU)
 //     device                         on the visitor's own GPU, in the
@@ -27,32 +32,32 @@
 //                                    anything else the file carried
 //   OMNIFILTER_KEEP_MAX_PIXELS       the largest photo taken in to keep, in
 //                                    pixels (default: the server's pixel
-//                                    limit; cloud: 16 million). The page
+//                                    limit; strict: 16 million). The page
 //                                    scales photos down to the kept size
 //                                    first, so this only turns away ones
-//                                    sent some other way, which would take a
-//                                    lot of this server's memory to read
+//                                    sent some other way
 //   OMNIFILTER_KEEP_MAX_BYTES        the most bytes a kept photo, as drawn
 //                                    again, may take (default: no limit;
-//                                    cloud: 3 MB, ten times a typical photo
+//                                    strict: 3 MB, ten times a typical photo
 //                                    at 2048 px). One over it is tried again
 //                                    at a lower quality, then turned away
 //   OMNIFILTER_SIGNUPS_PER_DAY       accounts made per day from one address
 //                                    (an IPv6 /48) (default: no limit;
-//                                    cloud: 10)
+//                                    strict: 10)
 //   OMNIFILTER_MAX_DATA_MB           photos aren't kept once the database
 //                                    holds this many megabytes (default: no
 //                                    limit; cloud: 400, under the free
 //                                    MongoDB Atlas cluster's 512)
 
-const CLOUD = { processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048,
-  keepMaxPixels: 16e6, keepMaxBytes: 3e6, signupsPerDay: 10, maxDataMB: 400 };
+const CLOUD = { processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048, maxDataMB: 400 };
+const STRICT = { keepMaxPixels: 16e6, keepMaxBytes: 3e6, signupsPerDay: 10 };
 const PROCESSING = ['server', 'device', 'device-first'];
 
 function read(env) {
   const e = env || process.env;
   const cloud = /^cloud$/i.test((e.OMNIFILTER_MODE || '').trim());
-  const fallback = (key) => (cloud ? CLOUD[key] : undefined);
+  const strict = /^strict$/i.test((e.OMNIFILTER_LIMITS || '').trim());
+  const fallback = (key) => (cloud && CLOUD[key]) || (strict && STRICT[key]) || undefined;
 
   let processing = (e.OMNIFILTER_PROCESSING || '').trim().toLowerCase();
   if (!PROCESSING.includes(processing)) processing = fallback('processing') || 'server';
@@ -64,7 +69,8 @@ function read(env) {
   else if (/^(server|on|true|1|yes)$/.test(g)) guests = 'server';
   else guests = fallback('guests') || 'server';
 
-  // A positive number from the environment, or the cloud value, or null.
+  // A positive number from the environment, or the cloud or strict value,
+  // or null.
   const limit = (name, key, parse) => {
     const n = parse(e[name]);
     return n > 0 ? n : fallback(key) || null;
@@ -73,6 +79,7 @@ function read(env) {
 
   return {
     mode: cloud ? 'cloud' : 'standard',
+    strict: strict,
     processing: processing,
     guests: guests,
     maxStoredPhotos: limit('OMNIFILTER_MAX_STORED_PHOTOS', 'maxStoredPhotos', whole),

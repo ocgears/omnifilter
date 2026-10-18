@@ -19,8 +19,8 @@ const photoParser = bodyParser.json({ limit: 16000000 });
 var contentRouter = module.exports = exports = express.Router();
 
 // Reading, checking and saving a 16 MB photo holds several copies of it at
-// once (about 80 MB all told), and decoding it can take far more: a 16
-// megapixel GIF or progressive JPEG peaks at over 150 MB. So only a couple
+// once (about 80 MB all told), and decoding it can take far more: a 49
+// megapixel GIF, about 250 MB. So only a couple
 // of photos are taken in at a time, one in cloud mode (where the server has
 // 512 MiB), and a few more wait, unread, for their turn; past that the
 // server is busy. Each account sends one at a time, which also stops saves
@@ -33,7 +33,7 @@ const uploads = contentRouter.uploads = transformQueue.create({
 });
 
 // How long a client has to send its photo, once it's its turn.
-const UPLOAD_SECONDS = Number(process.env.OMNIFILTER_UPLOAD_SECONDS) || 60;
+const UPLOAD_SECONDS = Number(process.env.OMNIFILTER_UPLOAD_SECONDS) || 120;
 
 // Middleware: the rest of the request runs in one of the upload slots, which
 // is given back once the reply has gone (or the client has) and the photo's
