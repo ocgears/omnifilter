@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const Content = require(__dirname + '/../models/content');
+const User = require(__dirname + '/../models/user');
 const handleDBError = require(__dirname + '/../lib/handle_db_error');
 const jwtAuth = require(__dirname + '/../lib/jwt_auth');
 const gpuFilters = require(__dirname + '/../lib/gpu_filters');
@@ -10,6 +11,7 @@ const filterStack = require(__dirname + '/../lib/stack');
 const transformQueue = require(__dirname + '/../lib/transform_queue');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
 const settings = require(__dirname + '/../lib/settings');
+const storageGuard = require(__dirname + '/../lib/storage_guard');
 
 // Photos arrive as data URLs, so /newcontent takes big bodies.
 const photoParser = bodyParser.json({ limit: 16000000 });
@@ -17,26 +19,42 @@ const photoParser = bodyParser.json({ limit: 16000000 });
 var contentRouter = module.exports = exports = express.Router();
 
 // Reading, checking and saving a 16 MB photo holds several copies of it at
-// once (about 80 MB all told), so only a couple of photos are taken in at a
-// time and a few more wait, unread, for their turn; past that the server is
-// busy. Each account sends one at a time, which also stops saves made at the
-// same moment from all slipping under the photo limit.
+// once (about 80 MB all told), and decoding it can take far more: a 49
+// megapixel GIF, about 250 MB. So only a couple
+// of photos are taken in at a time, one in cloud mode (where the server has
+// 512 MiB), and a few more wait, unread, for their turn; past that the
+// server is busy. Each account sends one at a time, which also stops saves
+// made at the same moment from all slipping under the photo limit.
 const uploads = contentRouter.uploads = transformQueue.create({
-  maxRunning: 2,
+  maxRunning: settings.read().mode === 'cloud' ? 1 : 2,
   maxWaiting: 6,
   maxPerKey: 1,
   perKeyMessage: 'You are already saving a photo; wait for it to finish'
 });
 
+// How long a client has to send its photo, once it's its turn.
+const UPLOAD_SECONDS = Number(process.env.OMNIFILTER_UPLOAD_SECONDS) || 120;
+
 // Middleware: the rest of the request runs in one of the upload slots, which
-// is given back once the reply has gone (or the client has).
+// is given back once the reply has gone (or the client has) and the photo's
+// handler (keeping(), below) has finished with it. A client that goes away
+// once its photo is sent doesn't take the slot with it while the photo is
+// still being read and saved, so it can't get round the limits by doing
+// that over and over.
 function oneUploadAtATime(req, res, next) {
   const cancel = new AbortController();
-  const done = new Promise((resolve) => res.once('close', resolve));
+  const closed = new Promise((resolve) => res.once('close', resolve));
   res.once('close', () => cancel.abort());
+  req.uploadCancelled = cancel.signal;
   uploads.run(String(req.user._id), () => {
+    // A client that takes its turn and then sends its photo a trickle at a
+    // time would keep everyone else waiting, so it gets a while to send it.
+    const deadline = setTimeout(() => {
+      if (!req.complete) req.destroy();
+    }, UPLOAD_SECONDS * 1000);
+    closed.then(() => clearTimeout(deadline));
     next();
-    return done;
+    return closed.then(() => req.uploadHandled);
   }, cancel.signal).catch((e) => {
     if (e.aborted || res.headersSent) return;
     if (e.retryAfter) res.set('Retry-After', String(e.retryAfter));
@@ -166,7 +184,9 @@ contentRouter.get('/content/:id', jwtAuth, validId, async (req, res) => {
   var mime = photo.mime;
   if (!bytes) {
     const legacy = typeof photo.content === 'string' && /^data:(image\/[\w.+-]+);base64,/.exec(photo.content);
-    if (!legacy) return res.status(404).json({ msg: 'No such content' });
+    // Only the types photos were ever kept as: not, say, an SVG, which could
+    // carry a script.
+    if (!legacy || !EXTENSIONS[legacy[1]]) return res.status(404).json({ msg: 'No such content' });
     mime = legacy[1];
     bytes = Buffer.from(photo.content.slice(legacy[0].length), 'base64');
   }
@@ -215,20 +235,9 @@ function readRecipe(body) {
 // Applies the recipe's filters to the photo in req.photo (see readUpload),
 // waiting its turn in `queue` under `key`. Resolves with the new photo, as
 // { bytes, mime }, or with undefined once it has sent an error reply (or the
-// client has gone). A recipe with no filters checks the photo and returns
-// it as it is.
+// client has gone).
 async function transformPhoto(req, res, recipe, options) {
   const photo = req.photo;
-  if (!recipe.layers) {
-    // Saved as is, so check it the same way as a photo to transform.
-    try {
-      return await imageCodec.validatePhoto(photo);
-    } catch (e) {
-      if (!e.status) throw e;
-      res.status(e.status).json({ msg: e.message });
-      return undefined;
-    }
-  }
 
   const layers = recipe.layers;
   const unavailable = unavailableLayer(layers);
@@ -364,38 +373,77 @@ function readUpload(req, res, next) {
   next();
 }
 
-// What comes before a photo to keep is used: who it's for, its turn, room,
-// and the photo itself.
-const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, photoParser, photoFile, readUpload];
+// What comes before a photo to keep is used: who it's for, its turn, room
+// in their account and in the database, and the photo itself.
+const keepingPhoto = [jwtAuth, oneUploadAtATime, roomForAnother, storageGuard.roomInDatabase, photoParser, photoFile,
+  readUpload];
+
+// The handler for a photo to keep, after keepingPhoto: holds the upload slot
+// until it has finished. If the client went away before it started, there's
+// no one to save the photo for.
+const keeping = (handler) => (req, res) => {
+  if (req.uploadCancelled.aborted) return undefined;
+  const handled = Promise.resolve().then(() => handler(req, res));
+  req.uploadHandled = handled.catch(() => {});
+  return handled;
+};
 
 // A checked photo ({ bytes, mime }) as it's kept, scaled down to the
 // server's OMNIFILTER_KEEP_MAX_SIDE if there is one.
 function keptPhoto(photo) {
-  return imageCodec.stored(photo, { maxSide: settings.read().keepMaxSide });
+  const s = settings.read();
+  return imageCodec.stored(photo, { maxSide: s.keepMaxSide, maxBytes: s.keepMaxBytes });
+}
+
+// Checks a photo to keep as it was sent, as validatePhoto does, and within
+// the server's OMNIFILTER_KEEP_MAX_PIXELS. Resolves with it, or replies with
+// what's wrong and resolves with undefined.
+async function photoToKeep(req, res) {
+  try {
+    return await imageCodec.validatePhoto(req.photo, settings.read().keepMaxPixels);
+  } catch (e) {
+    if (!e.status) throw e;
+    res.status(e.status).json({ msg: e.message });
+    return undefined;
+  }
+}
+
+// Keeps a photo for the user: saves fields and the photo as keptPhoto has
+// it. If their account was deleted meanwhile (user_routes.js deletes the
+// account, then its photos), this one goes too.
+async function keepFor(req, photo, fields) {
+  const kept = await keptPhoto(photo);
+  const data = await Content.create(Object.assign({ user_id: req.user._id }, fields, kept));
+  storageGuard.added(kept.image.length + kept.thumb.length);
+  if (!(await User.exists({ _id: req.user._id }))) {
+    await Content.deleteOne({ _id: data._id });
+    return null;
+  }
+  return data;
 }
 
 // Saves a photo, after applying either one filter ({ tOption, params }) or a
 // stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }). With
 // neither, the photo is saved as it is.
-contentRouter.post('/newcontent', keepingPhoto, async (req, res) => {
+contentRouter.post('/newcontent', keepingPhoto, keeping(async (req, res) => {
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
   if (recipe.layers && !serverMayFilter(res, false)) return;
 
-  const photo = await transformPhoto(req, res, recipe, {
+  const photo = recipe.layers ? await transformPhoto(req, res, recipe, {
     queue: transforms,
     key: String(req.user._id)
-  });
+  }) : await photoToKeep(req, res);
   if (photo === undefined) return;
 
-  const data = await Content.create(Object.assign({
-    user_id: req.user._id,
+  const data = await keepFor(req, photo, {
     tOption: recipe.tOption,
     tParams: recipe.tParams,
     tStack: recipe.tStack
-  }, await keptPhoto(photo)));
+  });
+  if (!data) return res.status(404).json({ msg: 'No such account' });
   res.status(200).json(data);
-});
+}));
 
 // Guest mode: anyone can try the filters without an account. Their photos
 // aren't saved here (the page keeps them in the browser), and since anyone
@@ -463,28 +511,23 @@ contentRouter.post('/transform', (req, res, next) => {
 // the browser filtered on the visitor's own GPU. The photo is checked as one
 // saved without a filter is; the filters are only a description, so they're
 // checked to be real but not applied.
-contentRouter.post('/import', keepingPhoto, async (req, res) => {
+contentRouter.post('/import', keepingPhoto, keeping(async (req, res) => {
   const recipe = readRecipe(req.body);
   if (recipe.error) return res.status(400).json({ msg: recipe.error });
 
-  var photo;
-  try {
-    photo = await imageCodec.validatePhoto(req.photo);
-  } catch (e) {
-    if (!e.status) throw e;
-    return res.status(e.status).json({ msg: e.message });
-  }
+  const photo = await photoToKeep(req, res);
+  if (photo === undefined) return;
   const made = new Date(req.body.createdAt);
-  const data = await Content.create(Object.assign({
-    user_id: req.user._id,
+  const data = await keepFor(req, photo, {
     tOption: recipe.tOption,
     tParams: recipe.tParams,
     tStack: recipe.tStack,
     // When it was made, if that's believable.
     createdAt: made.getTime() > 0 && made <= new Date() ? made : new Date()
-  }, await keptPhoto(photo)));
+  });
+  if (!data) return res.status(404).json({ msg: 'No such account' });
   res.status(200).json(data);
-});
+}));
 
 contentRouter.delete('/delete/:id', jwtAuth, validId, (req, res) => {
   Content.deleteOne({ _id: req.params.id, user_id: req.user._id })

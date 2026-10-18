@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { API_BASE } from './api-base';
+import { DraftStore } from './editor/draft-store';
 
 const TOKEN_KEY = 'token';
 
@@ -43,6 +44,7 @@ function writeToken(token: string | null): void {
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly apiBase = inject(API_BASE);
+  private readonly drafts = inject(DraftStore);
 
   readonly token = signal<string | null>(readToken());
   // The signed-in user's email, once the server has confirmed the token.
@@ -51,6 +53,17 @@ export class AuthService {
   readonly unverified = signal(false);
   // Why the sign-in page is shown, when it's because the last one ended.
   readonly notice = signal<string | null>(null);
+
+  constructor() {
+    // Signing in or out in another tab of this site does here too.
+    window.addEventListener('storage', (e) => {
+      if (e.key !== TOKEN_KEY && e.key !== null) return;
+      const token = readToken();
+      if (token === this.token()) return;
+      this.token.set(token);
+      void this.verify();
+    });
+  }
 
   async signUp(user: { email: string; password: string; confirmation: string }): Promise<void> {
     const res = await firstValueFrom(
@@ -102,10 +115,24 @@ export class AuthService {
     this.notice.set('Your sign-in has expired. Sign in again to carry on.');
   }
 
+  // Ends every sign-in to the account, on every device, this one too.
+  async signOutEverywhere(): Promise<void> {
+    const token = this.token();
+    if (token) {
+      await firstValueFrom(
+        this.http.post(this.apiBase + '/signouteverywhere', null, { headers: { token } }),
+      );
+    }
+    this.signOut();
+  }
+
+  // However the sign-in ends (the button, or a token the server stopped
+  // taking), the draft goes with it: someone else may use this browser next.
   signOut(): void {
     this.setToken(null);
     this.email.set(null);
     this.unverified.set(false);
+    void this.drafts.clear().catch(() => undefined);
   }
 
   private setToken(token: string | null): void {

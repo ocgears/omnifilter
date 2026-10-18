@@ -1,7 +1,6 @@
-import { Component, afterNextRender, inject } from '@angular/core';
+import { Component, afterNextRender, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
-import { AuthService } from './auth.service';
-import { DraftStore } from './editor/draft-store';
+import { AuthService, errorMessage } from './auth.service';
 
 // The page around every view: the header with the account, and the footer.
 @Component({
@@ -13,8 +12,11 @@ import { DraftStore } from './editor/draft-store';
 export class App {
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
-  private readonly drafts = inject(DraftStore);
   protected readonly year = new Date().getFullYear();
+  // "Sign out of all devices", in the footer: asked to be sure first.
+  protected readonly confirmEverywhere = signal(false);
+  protected readonly signingOutEverywhere = signal(false);
+  protected readonly everywhereError = signal<string | null>(null);
 
   constructor() {
     // window.omnifilterGpu, the browser's filter engine, for the end-to-end
@@ -37,8 +39,20 @@ export class App {
 
   signOut(): void {
     this.auth.signOut();
-    // Someone else may use this browser next.
-    this.drafts.clear();
     this.router.navigateByUrl('/signin');
+  }
+
+  async signOutEverywhere(): Promise<void> {
+    this.signingOutEverywhere.set(true);
+    this.everywhereError.set(null);
+    try {
+      await this.auth.signOutEverywhere();
+      this.confirmEverywhere.set(false);
+      this.router.navigateByUrl('/signin');
+    } catch (err) {
+      this.everywhereError.set(errorMessage(err, 'Could not sign out of the other devices.'));
+    } finally {
+      this.signingOutEverywhere.set(false);
+    }
   }
 }

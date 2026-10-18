@@ -65,6 +65,15 @@ userRouter.get('/verify', tokenFilter, jwtAuth, (req, res) => {
   });
 });
 
+// Signs the account out everywhere: every token issued so far stops working,
+// this one included. Nothing to protect with the password: a stolen token
+// can only end its own use.
+userRouter.post('/signouteverywhere', jwtAuth, (req, res) => {
+  User.updateOne({ _id: req.user._id }, { signedOutAt: new Date() })
+    .then(() => res.status(200).json({ msg: 'Signed out on every device' }))
+    .catch((err) => handleDBError(err, res));
+});
+
 const checkSettings = (req, res, next) => {
   const email = req.body.email;
   const password = req.body.password;
@@ -99,9 +108,12 @@ userRouter.put('/usersettings/:id', jwtAuth, ownAccountOnly, jsonParser, checkSe
   });
 
 // Deletes the account and its photos. Needs { currentPassword } in the body.
+// The account goes first: a photo still being saved for it then either goes
+// with the rest or, saved after, sees the account is gone and deletes itself
+// (content_routes.js keepFor).
 userRouter.delete('/deleteuser/:id', jwtAuth, ownAccountOnly, jsonParser, currentPasswordRequired, (req, res) => {
-  Content.deleteMany({ user_id: req.params.id })
-    .then(() => User.deleteOne({ _id: req.params.id }))
+  User.deleteOne({ _id: req.params.id })
+    .then(() => Content.deleteMany({ user_id: req.params.id }))
     .then(() => {
       res.status(200).json({
         msg: 'User deleted'

@@ -95,7 +95,7 @@ for s in mongodb-uri app-secret; do
 done
 ```
 
-GitHub Actions deploys without a stored key: Workload Identity Federation lets a workflow run from `ocgears/omnifilter`'s master branch act as a deploy account, and nothing else can.
+GitHub Actions deploys without a stored key: Workload Identity Federation lets the deploy workflow (`.github/workflows/deploy.yml`), run from `ocgears/omnifilter`'s master branch, act as a deploy account, and nothing else can: not another workflow, even one on master.
 
 ```
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
@@ -104,7 +104,7 @@ gcloud iam workload-identity-pools create github --location=global --display-nam
 gcloud iam workload-identity-pools providers create-oidc omnifilter --location=global \
   --workload-identity-pool=github --issuer-uri=https://token.actions.githubusercontent.com \
   --attribute-mapping=google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref \
-  --attribute-condition="assertion.repository == 'ocgears/omnifilter' && assertion.ref == 'refs/heads/master'"
+  --attribute-condition="assertion.repository == 'ocgears/omnifilter' && assertion.ref == 'refs/heads/master' && assertion.job_workflow_ref == 'ocgears/omnifilter/.github/workflows/deploy.yml@refs/heads/master'"
 
 gcloud iam service-accounts create omnifilter-deploy --display-name="OmniFilter (deploys from GitHub)"
 DEPLOY=omnifilter-deploy@$PROJECT_ID.iam.gserviceaccount.com
@@ -116,6 +116,11 @@ gcloud iam service-accounts add-iam-policy-binding omnifilter-run@$PROJECT_ID.ia
   --member=serviceAccount:$DEPLOY --role=roles/iam.serviceAccountUser
 gcloud iam service-accounts add-iam-policy-binding $DEPLOY --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/ocgears/omnifilter"
+
+# A provider made before the deploy workflow was named in its condition
+# takes the new one with:
+#   gcloud iam workload-identity-pools providers update-oidc omnifilter --location=global \
+#     --workload-identity-pool=github --attribute-condition="..."  (as above)
 
 # The values for step 6:
 echo "GCP_PROJECT:      $PROJECT_ID"
@@ -137,7 +142,7 @@ In https://github.com/ocgears/omnifilter → **Settings → Secrets and variable
 
 Then **Settings → Environments → New environment** named `production`: under **Deployment branches and tags**, allow only `master`, and tick **Required reviewers** with yourself. A deploy waits for that approval once, after its checks have passed, before visitors see it.
 
-Optionally, the smoke test can sign in: in **Settings → Environments**, the `smoke` environment (made by the first deploy, or make it now; no reviewers), add two **environment secrets**, `SMOKE_EMAIL` and `SMOKE_PASSWORD`: an email address and a long password for an account kept for this (the test makes it the first time). Without them it skips signing in.
+Optionally, the smoke test can sign in: in **Settings → Environments**, the `smoke` environment (made by the first deploy, or make it now; no reviewers, and under **Deployment branches and tags** only `master`), add two **environment secrets**, `SMOKE_EMAIL` and `SMOKE_PASSWORD`: an email address and a long password for an account kept for this (the test makes it the first time). Without them it skips signing in. With them, Playwright keeps no trace of a failed run (one would hold the password, and the deploy's reports can be downloaded by anyone).
 
 ## Part 2: the first deploy
 
@@ -179,4 +184,4 @@ If the checks fail, **withdraw** removes the `candidate` address without waiting
 
 **Lighthouse** on the candidate (`LHCI_URL=<address> .github/lighthouse/node_modules/.bin/lhci autorun`, after `npm ci --prefix .github/lighthouse`), with the same budgets as CI's lighthouse job. The smoke test has woken the instance by then, so a cold start doesn't count against it. Against the image on a Mac: performance 80, accessibility, best practices and SEO 100.
 
-**Nightly**, `.github/workflows/smoke.yml` runs the smoke test against the live address, so a broken database connection or an expired setting shows up without waiting for a deploy.
+**Nightly**, `.github/workflows/smoke.yml` runs the smoke test against the live address, so a broken database connection or an expired setting shows up without waiting for a deploy. It finds the address in GitHub's record of the last deploy to go live, so it never signs in to Google Cloud either.

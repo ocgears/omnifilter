@@ -1,7 +1,7 @@
 import { apiBaseFrom } from './api-base';
 
 describe('apiBaseFrom', () => {
-  function fakeWindow(opts: { override?: string | null; meta?: string } = {}) {
+  function fakeWindow(opts: { override?: unknown; meta?: string } = {}) {
     return {
       OMNIFILTER_API: opts.override,
       location: { protocol: 'https:', hostname: 'photos.example' },
@@ -9,7 +9,7 @@ describe('apiBaseFrom', () => {
         querySelector: () =>
           opts.meta === undefined ? null : { getAttribute: () => opts.meta as string },
       },
-    } as unknown as Window & { OMNIFILTER_API?: string | null };
+    } as unknown as Window & { OMNIFILTER_API?: unknown };
   }
 
   it("defaults to port 3000 on the page's host", () => {
@@ -20,6 +20,11 @@ describe('apiBaseFrom', () => {
     expect(apiBaseFrom(fakeWindow({ override: 'https://api.example/' }))).toBe(
       'https://api.example',
     );
+  });
+
+  it('ignores an element that took the name window.OMNIFILTER_API', () => {
+    const element = { href: 'https://elsewhere.example', toString: () => 'https://elsewhere.example' };
+    expect(apiBaseFrom(fakeWindow({ override: element, meta: '/' }))).toBe('');
   });
 
   it('uses the omnifilter-api meta tag', () => {

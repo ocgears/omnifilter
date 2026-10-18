@@ -35,6 +35,9 @@ module.exports = defineConfig({
   reporter: 'list',
   use: Object.assign({}, devices['Desktop Chrome'], browser, {
     baseURL: process.env.SMOKE_URL.replace(/\/+$/, ''),
-    trace: 'retain-on-failure'
+    // A trace holds what was typed and sent, so none when the test signs in
+    // to a real account: the deploy keeps its results where anyone can
+    // download them.
+    trace: process.env.SMOKE_PASSWORD ? 'off' : 'retain-on-failure'
   })
 });

@@ -15,36 +15,42 @@ jobs:
   live:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    # For the SMOKE_ secrets; the GCP_ variables are the repository's.
+    # For the SMOKE_ secrets. This job never signs in to Google Cloud: the
+    # test tools it downloads are a lot of other people's code. It finds
+    # the live address from GitHub's record of the last deploy instead.
     environment: smoke
     permissions:
       contents: read
-      id-token: write
-    env:
-      PROJECT: ${{ vars.GCP_PROJECT }}
-      REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      deployments: read
     steps:
-      - name: Check the environment is set up
+      - name: Find the live address
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
-          if [ -z "$PROJECT" ]; then
-            echo "::notice title=Not set up::No GCP_PROJECT repository variable yet (docs/CLOUD_RUN.md), so nothing to check."
+          # The newest production deployment that went live has its address.
+          url=$(python3 - <<'PY'
+          import json, os, urllib.request
+          def get(path):
+              req = urllib.request.Request('https://api.github.com/repos/' + os.environ['REPO'] + path, headers={
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              return json.load(urllib.request.urlopen(req, timeout=30))
+          for d in get('/deployments?environment=production&per_page=20'):
+              done = [s for s in get('/deployments/%d/statuses?per_page=10' % d['id']) if s['state'] == 'success']
+              if done and done[0].get('environment_url'):
+                  print(done[0]['environment_url'])
+                  break
+          PY
+          )
+          if [ -z "$url" ]; then
+            echo "::notice title=Not deployed::No deploy has gone live yet (docs/CLOUD_RUN.md), so nothing to check."
             echo "SKIP=1" >> "$GITHUB_ENV"
           fi
+          echo "SMOKE_URL=$url" >> "$GITHUB_ENV"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         if: env.SKIP != '1'
         with:
           persist-credentials: false
-      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        if: env.SKIP != '1'
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SA }}
-      - name: Find the live address
-        if: env.SKIP != '1'
-        run: |
-          url=$(gcloud run services describe omnifilter --region="$REGION" --project="$PROJECT" \
-            --format='value(status.url)')
-          echo "SMOKE_URL=$url" >> "$GITHUB_ENV"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         if: env.SKIP != '1'
         with:

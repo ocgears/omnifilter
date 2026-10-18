@@ -44,6 +44,7 @@ describe('security', () => {
 
   beforeEach(() => {
     authRouter.rateLimiter.reset();
+    authRouter.wrongPasswordLimiter.reset();
     userRouter.passwordTries.reset();
     userRouter.addressTries.reset();
   });
@@ -218,6 +219,21 @@ describe('security', () => {
         .then((res) => expect(res).to.have.status(200));
     });
 
+    it('signs out every session of an account, and only that account', async () => {
+      const other = jwt.sign({ id: String(alice._id) }, secret, { algorithm: 'HS256', expiresIn: '1h' });
+      expect(await request.execute(baseUri).post('/signouteverywhere')).to.have.status(401);
+      const done = await request.execute(baseUri).post('/signouteverywhere').set({ token: aliceToken });
+      expect(done).to.have.status(200);
+      for (const token of [aliceToken, other]) {
+        expect(await request.execute(baseUri).get('/getAll').set({ token: token })).to.have.status(401);
+      }
+      expect(await request.execute(baseUri).get('/getAll').set({ token: bobToken })).to.have.status(200);
+      // Signing in again works, a second on.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      const again = await request.execute(baseUri).get('/signin').auth('alice@tester.com', 'password1');
+      expect(await request.execute(baseUri).get('/getAll').set({ token: again.body.token })).to.have.status(200);
+    });
+
     it('deletes a user\'s photos along with the account', () => {
       return Content.create({ user_id: alice._id, content: 'data:image/png;base64,AAAA' })
         .then(() => request.execute(baseUri).delete('/deleteuser/' + alice._id).set({ token: aliceToken })
@@ -359,6 +375,20 @@ describe('security', () => {
         .then((res) => expect(res).to.have.status(429));
     });
 
+    it('limits wrong passwords for an account, from any address', async function() {
+      this.timeout(30000);
+      // Each from a different address, as far as the per-address limit knows.
+      const signIn = (email, password) => {
+        authRouter.rateLimiter.reset();
+        return request.execute(baseUri).get('/signin').auth(email, password);
+      };
+      for (let i = 0; i < 10; i++) expect(await signIn('alice@tester.com', 'wrong' + i)).to.have.status(401);
+      const refused = await signIn('alice@tester.com', 'password1');
+      expect(refused).to.have.status(429);
+      expect(refused.body.msg).to.match(/wrong passwords for this email/);
+      expect(await signIn('bob@tester.com', 'password2')).to.have.status(200);
+    });
+
     it('limits guesses at the current password, for each account', function() {
       this.timeout(20000);
       const guess = (i) => request.execute(baseUri).put('/usersettings/' + alice._id).set({ token: aliceToken })
@@ -386,6 +416,8 @@ describe('security', () => {
       expect(rateLimit.clientKey('2001:db8::1')).to.eql('2001:db8:0:0::/64');
       expect(rateLimit.clientKey('::ffff:203.0.113.7')).to.eql('203.0.113.7');
       expect(rateLimit.clientKey('203.0.113.7')).to.eql('203.0.113.7');
+      expect(rateLimit.clientKey('2001:db8:1:2:aaaa::1', 48)).to.eql('2001:db8:1::/48');
+      expect(rateLimit.clientKey('203.0.113.7', 48)).to.eql('203.0.113.7');
       const limiter = rateLimit({ perMinute: 1, burst: 1, now: () => 0 });
       const statuses = [];
       for (const ip of ['2001:db8:1:2::1', '2001:db8:1:2::2', '2001:db8:1:3::1']) {

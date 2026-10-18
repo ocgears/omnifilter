@@ -152,6 +152,15 @@ describe('content API', () => {
     expect(await page('?before=nope')).to.have.status(400);
   });
 
+  it('sends a photo kept as a data URL only if it was kept as a photo type', async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
+    const old = await Content.collection.insertOne({ user_id: String(userId), tOption: 'invert',
+      content: 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64'), createdAt: new Date() });
+    expect(await request.execute(baseUri).get('/content/' + old.insertedId).set({ token: userToken }))
+      .to.have.status(404);
+    await Content.deleteOne({ _id: old.insertedId });
+  });
+
   it('sends a photo as a file to save, and only to its owner', async () => {
     const made = await request.execute(baseUri).post('/newcontent').set({ token: userToken })
       .send({ content: await pngDataUrl() });

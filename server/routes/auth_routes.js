@@ -5,6 +5,7 @@ const handleDBError = require(__dirname + '/../lib/handle_db_error');
 const basicHTTP = require(__dirname + '/../lib/basic_http');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
 const validate = require(__dirname + '/../lib/validate');
+const settings = require(__dirname + '/../lib/settings');
 
 const authRouter = module.exports = exports = express.Router();
 
@@ -18,6 +19,40 @@ const limiter = authRouter.rateLimiter = rateLimit({
   message: 'Too many attempts, please wait a minute and try again'
 });
 
+// Wrong passwords per account, whichever address they come from: a burst of
+// 10, then one a minute. Counts any email, with an account or not, so it
+// says nothing about which have one.
+const wrongPasswords = authRouter.wrongPasswordLimiter = rateLimit({
+  perMinute: 1,
+  burst: 10,
+  key: (req) => 'email:' + req.basicHTTP.email.trim().toLowerCase(),
+  counts: (res) => res.statusCode === 401,
+  message: 'Too many wrong passwords for this email; please wait a few minutes and try again'
+});
+
+// Accounts made per day from one address (OMNIFILTER_SIGNUPS_PER_DAY; an
+// IPv6 address counts by its /48), so that one client can't make enough of
+// them to fill the database with each one's photos. Only sign-ups that
+// make an account count.
+var dailySignups = null;
+function signupsPerDay(req, res, next) {
+  const perDay = settings.read().signupsPerDay;
+  if (!perDay) return next();
+  if (!dailySignups || dailySignups.perDay !== perDay) {
+    dailySignups = Object.assign(rateLimit({
+      perMinute: perDay / (24 * 60),
+      burst: perDay,
+      prefix: 48,
+      counts: (res) => res.statusCode === 200,
+      message: 'Too many accounts have been made from here today; please try again tomorrow'
+    }), { perDay: perDay });
+  }
+  dailySignups(req, res, next);
+}
+authRouter.resetSignupsPerDay = () => {
+  dailySignups = null;
+};
+
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Emails are saved lowercase, but accounts made before that may not be (until
@@ -27,7 +62,7 @@ function findByEmail(email) {
     User.findOne({ email: new RegExp('^' + escapeRegExp(email) + '$', 'i') }));
 }
 
-authRouter.post('/signup', limiter, jsonParser, (req, res) => {
+authRouter.post('/signup', limiter, signupsPerDay, jsonParser, (req, res) => {
   const email = validate.normalizeEmail(req.body.email);
   const password = req.body.password;
 
@@ -53,7 +88,7 @@ authRouter.post('/signup', limiter, jsonParser, (req, res) => {
     });
 });
 
-authRouter.get('/signin', limiter, basicHTTP, (req, res) => {
+authRouter.get('/signin', limiter, basicHTTP, wrongPasswords, (req, res) => {
   // The same answer, after the same amount of work, for an unknown email and a
   // wrong password, so the sign-in form can't be used to find out who has an
   // account.
@@ -80,5 +115,7 @@ function upgradeAccount(user, password) {
   user.email = lower;
   const rehash = user.needsRehash() ? user.hashPassword(password, { rehash: true }) : Promise.resolve();
   rehash.then(() => user.save())
-    .catch((err) => console.log('Could not upgrade account ' + user._id + ': ' + err.message));
+    .catch((err) => console.log('Could not upgrade account ' + user._id + ': ' +
+      // Not the message, which would have the email in it.
+      (err.code === DUPLICATE_KEY ? 'another account has its email in lowercase' : err.message)));
 }

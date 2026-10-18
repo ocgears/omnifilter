@@ -104,3 +104,16 @@ main {
 .site-footer p {
   margin: 0;
 }
+
+.everywhere {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.everywhere p {
+  flex-basis: 100%;
+}

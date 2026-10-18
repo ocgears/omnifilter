@@ -95,7 +95,7 @@ test('makes photos as a guest, then adds them to a new account', async ({ page }
   await expect(page).toHaveURL(/#\/home$/);
 
   const banner = page.locator('.banner.waiting');
-  await expect(banner).toContainText('1 photo you made before signing in');
+  await expect(banner).toContainText('1 photo made in this browser without signing in');
   await expect(photos(page)).toHaveCount(0);
   await banner.getByRole('button', { name: 'Add to my account' }).click();
   await expect(banner).toHaveCount(0);
@@ -343,4 +343,25 @@ test('signs out', async ({ page }) => {
   await page.goto('/#/home');
   await expect(page.locator('.banner.guest')).toBeVisible();
   await expect(photos(page)).toHaveCount(0);
+});
+
+test('signs out of all devices', async ({ page, browser, baseURL }) => {
+  await signIn(page);
+  // Another device, signed in to the same account.
+  const other = await browser.newContext({ baseURL: baseURL });
+  // The API is the page's own server, as setUp() tells the test's own page.
+  await other.addInitScript(() => {
+    window.OMNIFILTER_API = '';
+  });
+  const otherPage = await other.newPage();
+  await signIn(otherPage);
+  const otherToken = await otherPage.evaluate(() => localStorage.getItem('token'));
+
+  await page.locator('footer').getByRole('button', { name: 'Sign out of all devices' }).click();
+  await expect(page.locator('footer')).toContainText('this one too?');
+  await page.locator('footer').getByRole('button', { name: 'Sign out everywhere' }).click();
+  await expect(page).toHaveURL(/#\/signin$/);
+  // The other device's sign-in is over too.
+  expect((await page.request.get('/getAll', { headers: { token: otherToken } })).status()).toBe(401);
+  await other.close();
 });

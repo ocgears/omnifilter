@@ -26,6 +26,27 @@
 </main>
 
 <footer class="site-footer">
+  @if (auth.email()) {
+    <div class="everywhere">
+      @if (confirmEverywhere()) {
+        <span>Sign out on every device where you're signed in, this one too?</span>
+        <button
+          type="button"
+          class="danger"
+          (click)="signOutEverywhere()"
+          [disabled]="signingOutEverywhere()"
+        >
+          Sign out everywhere
+        </button>
+        <button type="button" (click)="confirmEverywhere.set(false)">Cancel</button>
+      } @else {
+        <button type="button" (click)="confirmEverywhere.set(true)">Sign out of all devices</button>
+      }
+      @if (everywhereError(); as error) {
+        <p class="field-error" role="alert">{{ error }}</p>
+      }
+    </div>
+  }
   <p>
     MIT license · 2016–{{ year }} OC Gears ·
     <a href="https://github.com/ocgears/omnifilter">Source and readme on GitHub</a>

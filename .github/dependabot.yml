@@ -49,7 +49,8 @@ updates:
       actions:
         patterns: ['*']
 
-  # The Docker images' base images.
+  # The Docker images' base images, pinned to digests (so a tag pushed again
+  # can't change what's built); updates change the tag and digest together.
   - package-ecosystem: docker
     directories: [/, /docker]
     schedule:

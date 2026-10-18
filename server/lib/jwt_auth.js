@@ -22,10 +22,12 @@ module.exports = exports = (req, res, next) => {
 
   User.findOne({ _id: decoded.id }).select('-password').then((user) => {
     if (!user) return unauthorized(res);
-    // Tokens issued before the last password change no longer work.
+    // Tokens issued before the last password change no longer work, nor
+    // ones issued before signing out of all devices.
     if (user.passwordChangedAt && decoded.iat < Math.floor(user.passwordChangedAt / 1000)) {
       return unauthorized(res);
     }
+    if (user.signedOutAt && decoded.iat <= Math.floor(user.signedOutAt / 1000)) return unauthorized(res);
     req.user = user;
     next();
   }, (err) => {
