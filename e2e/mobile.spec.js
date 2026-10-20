@@ -4,7 +4,7 @@
 // on a slowed-down phone. All of it as a guest, which needs no account.
 const { test, expect } = require('@playwright/test');
 const {
-  setUp, notice, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu, expectAccessible
+  setUp, notice, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasGpu, expectAccessible
 } = require('./helpers');
 
 setUp();
@@ -65,7 +65,7 @@ test('is used by touch: looks, filters, sliders, history and Transform', async (
   // The row of looks scrolls sideways under a finger. (Once their
   // thumbnails are in, where there's WebGPU: they change the row's layout.)
   const looks = page.locator('.chips');
-  if (await hasWebGpu(page)) await expect(page.locator('canvas.thumb').first()).toBeVisible();
+  if (await hasGpu(page)) await expect(page.locator('canvas.thumb').first()).toBeVisible();
   if (chromium && await looks.evaluate((el) => el.scrollWidth > el.clientWidth)) {
     await finger.swipe(looks, -250, 0);
     await expect.poll(() => looks.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
@@ -116,7 +116,7 @@ test('is used by touch: looks, filters, sliders, history and Transform', async (
 test('compares with the original while a finger is held on the photo', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'needs real touch events (Chromium only)');
   await choosePhoto(page);
-  test.skip(!(await hasWebGpu(page)), 'this browser has no WebGPU, so no live preview');
+  test.skip(!(await hasGpu(page)), 'this browser has no WebGPU or WebGL2, so no live preview');
   const canvas = page.locator('of-live-preview canvas');
   await page.locator('#filter-0').selectOption({ label: 'Invert' });
   await expect.poll(() => leftEdgeRed(canvas)).toBeGreaterThan(200);
@@ -142,7 +142,7 @@ test('keeps each control clear of the sticky photo and Transform bar when it has
   await page.locator('details.mix summary').first().tap();
   // The looks get their thumbnails a moment later, which moves everything
   // below them down.
-  if (await hasWebGpu(page)) {
+  if (await hasGpu(page)) {
     await expect(page.locator('canvas.thumb')).toHaveCount(await page.locator('.chips .chip').count());
   }
 
@@ -284,7 +284,7 @@ test('stays usable on a slow phone and connection', async ({ page, browserName }
   start = Date.now();
   await page.getByRole('button', { name: 'Toy camera' }).tap();
   await expect(page.locator('li.layer')).toHaveCount(3);
-  if (await hasWebGpu(page)) {
+  if (await hasGpu(page)) {
     await expect(page.locator('of-live-preview .status')).toContainText(/Live preview.* ms/);
     times.preview = Date.now() - start;
     times.previewSays = await page.locator('of-live-preview .status').textContent();

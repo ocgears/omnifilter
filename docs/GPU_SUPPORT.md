@@ -136,7 +136,17 @@ What's done, in `client/src/gpu/` (plain TypeScript, no Angular) and `server/lib
 Still to do:
 
 * **Measure on phones** (an iPhone on iOS 26, a Pixel), and pick the preview size per device.
-* **Fallback below WebGPU:** WebGL2 could run the per-pixel kernels, but most of the others need compute shaders; for now browsers without WebGPU use the server.
+
+### WebGL2, for browsers without WebGPU
+
+**Done (October 2026).** Browsers without WebGPU (iOS before 26, Android phones whose GPU Chrome blocks, Firefox on Linux and Intel Macs) run the same plans with WebGL2, which nearly every browser has: the live preview, the live camera, the preset thumbnails and full-size filtering in a Web Worker (on an `OffscreenCanvas`). The page picks WebGPU when it can and loads the WebGL2 engine (a 13 kB chunk) only when it can't. In `client/src/gpu/webgl2/`:
+
+* **The same WGSL kernels, translated.** WebGL2 has no compute shaders, so each kernel runs as a fragment shader that draws its output buffer, one fragment per four elements. That works for every kernel that writes only its own element, which is 50 of the 57. `wgsl.ts` translates them to GLSL ES 3.00 when they're first used: it works out every expression's type the way WGSL does (GLSL has no type inference or implicit conversions), maps the built-ins (`round` is `roundEven`, `select` is `mix` or `?:`), and turns buffer reads into texture fetches and the one write into the fragment's result. It refuses a kernel that writes any other element, so a new kernel can't be quietly wrong. There's no second copy of any kernel to keep in step.
+* **Buffers as textures** (RGBA32UI, four 32-bit words a texel, 4096 texels a row) holding the same bytes as WebGPU's buffers, so a buffer reads as pixels, floats or ints just as the WGSL reads it.
+* **The other seven on the CPU** (`cpu-kernels.ts`): the histograms (WGSL's atomics), their prefix sums (work-group memory) and planting Voronoi seeds. They read the image back, which costs more than the arithmetic, but only Equalize, Auto levels, CLAHE and Stained glass use them.
+* **One fix the translation adds:** GLSL compilers may rearrange float maths, so a value WGSL works out as exactly 0 can come out a hair below it, and its square root is NaN. Square roots take `max(x, 0)` first (Halftone needed it).
+
+**How it's tested:** `e2e/gpu.spec.js` runs its comparisons twice, with WebGPU and with WebGL2 (`OMNIFILTER_FORCE_WEBGL2` makes the page and its worker use WebGL2), with the same tolerances. On the Iris 6100 every filter, preset and blend mode passes on both. The live preview, camera and cloud-mode tests run on WebGL2 as well, and unit tests check the translation and the CPU kernels.
 
 ## Phase 5: neural styles on the GPU
 

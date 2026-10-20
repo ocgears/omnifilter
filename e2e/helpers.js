@@ -114,8 +114,9 @@ async function leftEdgeRed(locator) {
   return data[0];
 }
 
-// Whether the browser has WebGPU for the live preview (the built app says).
-async function hasWebGpu(page) {
+// Whether the browser has a GPU engine (WebGPU, or WebGL2 without it) for
+// the live preview and full-size filtering (the built app says).
+async function hasGpu(page) {
   await page.waitForFunction(() => window.omnifilterGpu);
   return page.evaluate(() => window.omnifilterGpu.available());
 }
@@ -135,6 +136,6 @@ async function expectAccessible(page, where) {
 }
 
 module.exports = {
-  setUp, notice, gradientJpeg, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu,
+  setUp, notice, gradientJpeg, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasGpu,
   expectAccessible
 };

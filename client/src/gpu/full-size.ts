@@ -9,7 +9,8 @@
 // again at the end, the same way the server fits filters to a small GPU
 // (server/lib/device_choice.js, which this uses with the GPU's own limits).
 import deviceChoice from '../../../server/lib/device_choice.js';
-import { GpuEngine, GpuError, GpuImage, NativePlan } from './engine';
+import type { GpuError, NativePlan } from './engine';
+import type { EngineImage, FilterEngine } from './engine-api';
 import { buildPlan, filterDef, normalizeParams, workingSize } from './filters';
 import { StackLayer, StackRenderer } from './stack';
 
@@ -30,7 +31,7 @@ export interface DeviceLimits {
 // buffer is a fair guess, and phones share it with everything else.
 const MEMORY_FROM_BUFFERS = 3;
 
-export function deviceLimits(engine: GpuEngine, maxBytes?: number): DeviceLimits {
+export function deviceLimits(engine: FilterEngine, maxBytes?: number): DeviceLimits {
   const limits = engine.device.limits;
   let maxAlloc = Math.min(limits.maxStorageBufferBindingSize, limits.maxBufferSize);
   if (maxBytes && maxBytes > 0) maxAlloc = Math.min(maxAlloc, maxBytes);
@@ -135,7 +136,7 @@ const outOfMemory = (err: unknown) =>
 // its limits say. Any other work the GPU refuses is an error, rather than a
 // blank photo.
 export async function filterFullSize(
-  engine: GpuEngine,
+  engine: FilterEngine,
   bitmap: ImageBitmap,
   layers: readonly StackLayer[],
   blendModes: readonly string[],
@@ -176,7 +177,7 @@ export async function filterFullSize(
 }
 
 async function filterAt(
-  engine: GpuEngine,
+  engine: FilterEngine,
   bitmap: ImageBitmap,
   layers: readonly StackLayer[],
   blendModes: readonly string[],
@@ -194,7 +195,7 @@ async function filterAt(
   const now = () => performance.now();
   // Runs work on the GPU and waits for it; an image it made is released if
   // the GPU refused some of the work.
-  const gpu = (work: () => GpuImage) =>
+  const gpu = (work: () => EngineImage) =>
     engine
       .checked(async () => {
         const made = work();
@@ -202,7 +203,7 @@ async function filterAt(
         return made;
       })
       .catch((err) => {
-        engine.release((err as GpuError).result as GpuImage | undefined);
+        engine.release((err as GpuError).result as EngineImage | undefined);
         throw err;
       });
 
@@ -217,7 +218,7 @@ async function filterAt(
         resizeQuality: 'high',
       })
     : bitmap;
-  let image: GpuImage | null = null;
+  let image: EngineImage | null = null;
   try {
     image = await gpu(() =>
       engine.imageFromFrame(source, source.width, source.height, size.width, size.height),
@@ -234,7 +235,7 @@ async function filterAt(
     for (let n = 0; n < layers.length; n++) {
       check();
       progress({ stage: 'filter', done: n, total: layers.length });
-      const input: GpuImage = image;
+      const input: EngineImage = image;
       const next = await gpu(() => renderer.apply(layers[n], input, size.width, size.height));
       engine.release(image);
       image = next;
@@ -243,7 +244,7 @@ async function filterAt(
     // buffers; if not, the browser enlarges it when encoding.
     let rgbaSize = size;
     if (scaled && pixels(width, height) <= limits.maxAllocBytes) {
-      const small: GpuImage = image;
+      const small: EngineImage = image;
       const full = await gpu(() => renderer.resize(small, width, height));
       engine.release(image);
       image = full;
@@ -254,7 +255,7 @@ async function filterAt(
 
     start = now();
     progress({ stage: 'readback', done: layers.length, total: layers.length });
-    const result: GpuImage = image;
+    const result: EngineImage = image;
     const rgba = await engine.checked(() => engine.readPixels(result));
     return {
       rgba,

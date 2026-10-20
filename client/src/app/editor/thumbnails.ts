@@ -1,5 +1,5 @@
 import { Directive, ElementRef, effect, inject, input } from '@angular/core';
-import type { GpuEngine, StackLayer } from '../../gpu';
+import type { FilterEngine, StackLayer } from '../../gpu';
 import { PreviewPhoto } from './preview-engine';
 
 // Small previews of whole stacks (the preset looks) on the user's photo,
@@ -10,7 +10,7 @@ import { PreviewPhoto } from './preview-engine';
 // presets have changed, the rest aren't rendered.
 const MAX_WORKING_SIDE = 480;
 export async function renderThumbnails(
-  engine: GpuEngine,
+  engine: FilterEngine,
   photo: PreviewPhoto,
   stacks: { key: string; layers: StackLayer[] }[],
   blendModes: readonly string[],

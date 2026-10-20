@@ -2,9 +2,9 @@
 // started that way (playwright.config.js): photos are filtered at full size
 // on the browser's own GPU (in a Web Worker), offered to save or share, and
 // kept only when asked, up to 5 for each account. Browsers without WebGPU
-// (the iphone project's WebKit) are told what they need instead.
+// do it with WebGL2; those with neither are told what they need.
 const { test, expect } = require('@playwright/test');
-const { setUp, choosePhoto, photos, hasWebGpu, expectAccessible } = require('./helpers');
+const { setUp, choosePhoto, photos, hasGpu, expectAccessible } = require('./helpers');
 
 const CLOUD_PORT = Number(process.env.E2E_CLOUD_PORT) || 3931;
 test.use({ baseURL: 'http://localhost:' + CLOUD_PORT });
@@ -35,7 +35,7 @@ test('filters a guest\'s photo at full size on this device, and keeps it when as
   await choosePhoto(page, 2400, 1600);
   await page.locator('#filter-0').selectOption({ label: 'Invert' });
 
-  if (!(await hasWebGpu(page))) {
+  if (!(await hasGpu(page))) {
     await expect(page.locator('.device-info')).toContainText('needs a browser with WebGPU');
     await page.locator('#transform').click();
     await expect(page.getByRole('alert')).toContainText('needs a browser with WebGPU');
@@ -70,13 +70,34 @@ test('filters a guest\'s photo at full size on this device, and keeps it when as
   await expect(photos(page)).toHaveCount(1);
 });
 
+test('filters with WebGL2 where there\'s no WebGPU', async ({ page }) => {
+  // As if the browser had no WebGPU, for the page and its worker.
+  await page.addInitScript(() => {
+    window.OMNIFILTER_FORCE_WEBGL2 = true;
+  });
+  await page.goto('/');
+  await choosePhoto(page, 2400, 1600);
+  await page.waitForFunction(() => window.omnifilterGpu);
+  const backend = await page.evaluate(() => window.omnifilterGpu.backend());
+  test.skip(backend !== 'WebGL2', 'this browser has no WebGL2');
+  await page.locator('#filter-0').selectOption({ label: 'Invert' });
+  await expect(page.locator('of-live-preview .status')).toContainText('WebGL2');
+  await page.locator('#transform').click();
+  await expect(card(page).getByRole('status')).toContainText(/^3\.8 MP, made on .+ \(WebGL2\) in /,
+    { timeout: 60000 });
+  const { size, rgb } = await resultPixel(page, 2, 800);
+  expect(size).toBe('2400x1600');
+  expect(rgb[0]).toBeGreaterThan(200);
+  await card(page).getByRole('button', { name: 'Discard' }).click();
+});
+
 test('tries the sample photo, Earth from Apollo 17, at full size: 12 megapixels', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.sample-credit')).toContainText('Photo: NASA');
   await page.getByRole('button', { name: 'Try a sample photo' }).click();
   await expect(page.locator('.file-name')).toHaveText('Earth from Apollo 17 (NASA).jpg');
   await expect(page.locator('.sample-credit')).toHaveCount(0);
-  test.skip(!(await hasWebGpu(page)), 'this browser has no WebGPU');
+  test.skip(!(await hasGpu(page)), 'this browser has no WebGPU or WebGL2');
   await page.locator('#filter-0').selectOption({ label: 'Invert' });
   await page.locator('#transform').click();
   await expect(card(page).getByRole('status')).toContainText(/^12\.0 MP, made on /, { timeout: 120000 });
@@ -94,7 +115,7 @@ test('runs the filters scaled down when the GPU\'s buffers are too small, then e
   });
   await page.goto('/');
   await choosePhoto(page, 2400, 1600);
-  test.skip(!(await hasWebGpu(page)), 'this browser has no WebGPU');
+  test.skip(!(await hasGpu(page)), 'this browser has no WebGPU or WebGL2');
   await page.locator('#filter-0').selectOption({ label: 'Invert' });
   await page.locator('#transform').click();
   await expect(card(page)).toContainText(/Filtered at \d+×\d+ to fit this GPU, then enlarged to 2400×1600/,
@@ -119,7 +140,7 @@ async function signUp(page, address) {
 test('keeps a 2048-pixel copy of a bigger photo, with a thumbnail in the gallery', async ({ page }) => {
   await signUp(page, 'big-' + email());
   await choosePhoto(page, 2400, 1600);
-  test.skip(!(await hasWebGpu(page)), 'this browser has no WebGPU');
+  test.skip(!(await hasGpu(page)), 'this browser has no WebGPU or WebGL2');
   await page.locator('#filter-0').selectOption({ label: 'Invert' });
   await page.locator('#transform').click();
   await expect(card(page)).toContainText('keeps a copy 2048 pixels on its longer side; Save keeps the full size',
@@ -171,7 +192,7 @@ test('keeps at most 5 photos for an account', async ({ page }) => {
 
   await choosePhoto(page);
   await page.locator('#filter-0').selectOption({ label: 'Invert' });
-  test.skip(!(await hasWebGpu(page)), 'this browser has no WebGPU');
+  test.skip(!(await hasGpu(page)), 'this browser has no WebGPU or WebGL2');
   await page.locator('#transform').click();
   await expect(card(page).getByRole('button', { name: 'Gallery full (5 of 5)' })).toBeDisabled({ timeout: 60000 });
 

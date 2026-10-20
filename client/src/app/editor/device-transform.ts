@@ -25,7 +25,8 @@ export interface DeviceResult {
 export class DeviceTransformError extends Error {
   constructor(
     message: string,
-    // The browser has no WebGPU in a worker: the server may do it instead.
+    // The browser has no WebGPU or WebGL2 in a worker: the server may do it
+    // instead.
     readonly noGpu = false,
   ) {
     super(message);
@@ -41,8 +42,13 @@ export class DeviceTransform {
   private job = 0;
   private reject: ((err: Error) => void) | null = null;
 
+  // Whether the browser can have a GPU in a worker: WebGPU, or WebGL2 on
+  // an OffscreenCanvas. (The worker finds out for sure.)
   static supported(): boolean {
-    return typeof Worker !== 'undefined' && typeof navigator !== 'undefined' && 'gpu' in navigator;
+    if (typeof Worker === 'undefined' || typeof navigator === 'undefined') return false;
+    const webgl2 =
+      typeof WebGL2RenderingContext !== 'undefined' && typeof OffscreenCanvas !== 'undefined';
+    return 'gpu' in navigator || webgl2;
   }
 
   run(file: Blob, layers: StackLayer[], blendModes: string[]): Promise<DeviceResult> {
@@ -53,12 +59,17 @@ export class DeviceTransform {
     }
     this.cancel();
     const id = ++this.job;
-    const worker = (this.worker ??= new Worker(new URL('../../gpu/full-size.worker', import.meta.url), {
-      type: 'module',
-    }));
+    const worker = (this.worker ??= new Worker(
+      new URL('../../gpu/full-size.worker', import.meta.url),
+      {
+        type: 'module',
+      },
+    ));
     // For the end-to-end tests: pretend the GPU's buffers are this small.
     const maxBytes = (globalThis as { OMNIFILTER_DEVICE_MAX_BYTES?: number })
       .OMNIFILTER_DEVICE_MAX_BYTES;
+    // And to use WebGL2 where there's WebGPU.
+    const webgl2 = !!(globalThis as { OMNIFILTER_FORCE_WEBGL2?: boolean }).OMNIFILTER_FORCE_WEBGL2;
     return new Promise<DeviceResult>((resolve, reject) => {
       this.reject = reject;
       const done = () => {
@@ -81,11 +92,13 @@ export class DeviceTransform {
       const onError = (event: ErrorEvent) => {
         done();
         this.end();
-        reject(new DeviceTransformError('Filtering failed: ' + (event.message || 'the worker stopped')));
+        reject(
+          new DeviceTransformError('Filtering failed: ' + (event.message || 'the worker stopped')),
+        );
       };
       worker.addEventListener('message', onMessage);
       worker.addEventListener('error', onError);
-      worker.postMessage({ id, file, layers, blendModes, maxBytes });
+      worker.postMessage({ id, file, layers, blendModes, maxBytes, webgl2 });
     });
   }
 

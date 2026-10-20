@@ -1,8 +1,10 @@
-// The browser's WebGPU filters against the server's OpenCL ones: every
-// filter the browser can preview (with each of its choices) and every
-// preset stack, run on the same image both ways, compared pixel by pixel.
-// The server side runs right here in the test process; the browser side
-// through window.omnifilterGpu in the built app (client/src/gpu/index.ts).
+// The browser's GPU filters against the server's OpenCL ones: every filter
+// the browser can preview (with each of its choices) and every preset stack,
+// run on the same image both ways, compared pixel by pixel; once with
+// WebGPU, and once with WebGL2, which browsers without WebGPU use (the same
+// WGSL kernels, translated: client/src/gpu/webgl2). The server side runs
+// right here in the test process; the browser side through
+// window.omnifilterGpu in the built app (client/src/gpu/index.ts).
 const { test, expect } = require('@playwright/test');
 const gpuFilters = require('../server/lib/gpu_filters');
 const stack = require('../server/lib/stack');
@@ -62,80 +64,99 @@ function expectClose(a, b, name, label) {
   expect(d.mean, what).toBeLessThanOrEqual(limits.mean);
 }
 
-let page;
-let available = false;
+// Every comparison, with one of the browser's engines.
+function compareWith(backend) {
+  test.describe(backend, () => {
+    let page;
+    let available = false;
 
-test.describe.configure({ mode: 'serial' });
+    test.describe.configure({ mode: 'serial' });
 
-test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage();
-  await page.goto('/#/signin');
-  await page.waitForFunction(() => window.omnifilterGpu);
-  available = await page.evaluate(() => window.omnifilterGpu.available());
-  const adapter = await page.evaluate(async () => {
-    const a = navigator.gpu && await navigator.gpu.requestAdapter();
-    return a ? [a.info.vendor, a.info.architecture, a.info.isFallbackAdapter ? '(software)' : ''].join(' ') : 'none';
+    test.beforeAll(async ({ browser }) => {
+      page = await browser.newPage();
+      if (backend === 'WebGL2') {
+        await page.addInitScript(() => {
+          window.OMNIFILTER_FORCE_WEBGL2 = true;
+        });
+      }
+      await page.goto('/#/signin');
+      await page.waitForFunction(() => window.omnifilterGpu);
+      available = (await page.evaluate(() => window.omnifilterGpu.backend())) === backend;
+      if (backend === 'WebGPU') {
+        const adapter = await page.evaluate(async () => {
+          const a = navigator.gpu && await navigator.gpu.requestAdapter();
+          return a ? [a.info.vendor, a.info.architecture, a.info.isFallbackAdapter ? '(software)' : ''].join(' ') : 'none';
+        });
+        // Shows in the GitHub Actions summary which GPU, if any, the browser had.
+        if (process.env.GITHUB_ACTIONS) console.log('::notice title=WebGPU in the e2e browser::' + adapter);
+        if (!available && process.env.E2E_REQUIRE_WEBGPU) {
+          throw new Error('This browser has no WebGPU, and E2E_REQUIRE_WEBGPU is set');
+        }
+      } else if (!available) {
+        // Every browser the tests use has WebGL2 (SwiftShader where there's
+        // no GPU).
+        throw new Error('This browser has no WebGL2');
+      }
+    });
+
+    test.afterAll(async () => {
+      await page.close();
+    });
+
+    test('compiles every kernel', async () => {
+      test.skip(!available, 'This browser has no ' + backend);
+      expect(await page.evaluate(() => window.omnifilterGpu.compileAll())).toEqual([]);
+    });
+
+    test('runs every previewable filter like the server does', async () => {
+      test.skip(!available, 'This browser has no ' + backend);
+      test.setTimeout(300000);
+      const rgba = testImage();
+      const previewable = await page.evaluate(() =>
+        window.omnifilterGpu.filters().filter((n) => window.omnifilterGpu.previewable(n)));
+      expect(previewable.length).toBeGreaterThan(45);
+      for (const f of gpuFilters.list()) {
+        if (!previewable.includes(f.name) || f.available === false) continue;
+        const variants = [{}];
+        for (const p of f.params) {
+          if (p.type === 'select') for (const o of p.options.slice(1)) variants.push({ [p.name]: o.value });
+        }
+        for (const params of variants) {
+          const server = await gpuFilters.apply(f.name, Buffer.from(rgba), W, H, params);
+          const browser = await page.evaluate(
+            ({ name, params, rgba, W, H }) => window.omnifilterGpu.runFilter(name, rgba, W, H, params),
+            { name: f.name, params: params, rgba: Array.from(rgba), W: W, H: H });
+          expectClose(server, browser, f.name, backend + ' ' + f.name + ' ' + JSON.stringify(params));
+        }
+      }
+    });
+
+    test('runs every preset and blend mode like the server does', async () => {
+      test.skip(!available, 'This browser has no ' + backend);
+      test.setTimeout(300000);
+      const rgba = testImage();
+      const stacks = stack.presets().map((p) => ({ name: p.name, stack: p.stack }))
+        .concat(stack.BLEND_MODES.map((mode) => ({
+          name: 'blend ' + mode,
+          stack: [{ tOption: 'invert' }, { tOption: 'sepia', blend: mode, amount: 60 }]
+        })));
+      for (const s of stacks) {
+        const layers = stack.normalizeStack(s.stack);
+        const server = await stack.applyStack(layers, Buffer.from(rgba), W, H);
+        const browser = await page.evaluate(
+          ({ layers, modes, rgba, W, H }) => window.omnifilterGpu.runStack(layers, modes, rgba, W, H),
+          {
+            layers: layers.map((l) => ({ tOption: l.tOption, params: l.tParams, amount: l.amount, blend: l.blend })),
+            modes: stack.BLEND_MODES,
+            rgba: Array.from(rgba),
+            W: W,
+            H: H
+          });
+        expectClose(server, browser, null, backend + ' ' + s.name);
+      }
+    });
   });
-  // Shows in the GitHub Actions summary which GPU, if any, the browser had.
-  if (process.env.GITHUB_ACTIONS) console.log('::notice title=WebGPU in the e2e browser::' + adapter);
-  if (!available && process.env.E2E_REQUIRE_WEBGPU) {
-    throw new Error('This browser has no WebGPU, and E2E_REQUIRE_WEBGPU is set');
-  }
-});
+}
 
-test.afterAll(async () => {
-  await page.close();
-});
-
-test('compiles every WebGPU kernel', async () => {
-  test.skip(!available, 'This browser has no WebGPU');
-  expect(await page.evaluate(() => window.omnifilterGpu.compileAll())).toEqual([]);
-});
-
-test('runs every previewable filter like the server does', async () => {
-  test.skip(!available, 'This browser has no WebGPU');
-  test.setTimeout(300000);
-  const rgba = testImage();
-  const previewable = await page.evaluate(() =>
-    window.omnifilterGpu.filters().filter((n) => window.omnifilterGpu.previewable(n)));
-  expect(previewable.length).toBeGreaterThan(45);
-  for (const f of gpuFilters.list()) {
-    if (!previewable.includes(f.name) || f.available === false) continue;
-    const variants = [{}];
-    for (const p of f.params) {
-      if (p.type === 'select') for (const o of p.options.slice(1)) variants.push({ [p.name]: o.value });
-    }
-    for (const params of variants) {
-      const server = await gpuFilters.apply(f.name, Buffer.from(rgba), W, H, params);
-      const browser = await page.evaluate(
-        ({ name, params, rgba, W, H }) => window.omnifilterGpu.runFilter(name, rgba, W, H, params),
-        { name: f.name, params: params, rgba: Array.from(rgba), W: W, H: H });
-      expectClose(server, browser, f.name, f.name + ' ' + JSON.stringify(params));
-    }
-  }
-});
-
-test('runs every preset and blend mode like the server does', async () => {
-  test.skip(!available, 'This browser has no WebGPU');
-  test.setTimeout(300000);
-  const rgba = testImage();
-  const stacks = stack.presets().map((p) => ({ name: p.name, stack: p.stack }))
-    .concat(stack.BLEND_MODES.map((mode) => ({
-      name: 'blend ' + mode,
-      stack: [{ tOption: 'invert' }, { tOption: 'sepia', blend: mode, amount: 60 }]
-    })));
-  for (const s of stacks) {
-    const layers = stack.normalizeStack(s.stack);
-    const server = await stack.applyStack(layers, Buffer.from(rgba), W, H);
-    const browser = await page.evaluate(
-      ({ layers, modes, rgba, W, H }) => window.omnifilterGpu.runStack(layers, modes, rgba, W, H),
-      {
-        layers: layers.map((l) => ({ tOption: l.tOption, params: l.tParams, amount: l.amount, blend: l.blend })),
-        modes: stack.BLEND_MODES,
-        rgba: Array.from(rgba),
-        W: W,
-        H: H
-      });
-    expectClose(server, browser, null, s.name);
-  }
-});
+compareWith('WebGPU');
+compareWith('WebGL2');

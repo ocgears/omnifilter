@@ -9,7 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { GpuEngine, GpuImage, StackRenderer } from '../../gpu';
+import { EngineImage, FilterEngine, StackRenderer } from '../../gpu';
 import { Layer } from '../models';
 import { PreviewEngine, stackLayers } from './preview-engine';
 
@@ -53,9 +53,9 @@ export class LiveCamera implements OnDestroy {
   });
 
   private stream: MediaStream | null = null;
-  private engine: GpuEngine | null = null;
+  private engine: FilterEngine | null = null;
   private renderer: StackRenderer | null = null;
-  private frame: GpuImage | null = null;
+  private frame: EngineImage | null = null;
   private running = false;
   private stopped = false;
   private avgMs = 0;
@@ -70,7 +70,7 @@ export class LiveCamera implements OnDestroy {
     this.state.set('starting');
     try {
       const engine = this.engine ?? (await this.engines.get());
-      if (!engine) throw new Error('Live camera filters need a browser with WebGPU.');
+      if (!engine) throw new Error('Live camera filters need a browser with WebGPU or WebGL2.');
       if (this.engine !== engine) this.watch(engine);
       this.engine = engine;
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -111,7 +111,7 @@ export class LiveCamera implements OnDestroy {
 
   // A lost GPU device takes the renderer's images with it: carry on with a
   // new engine, with the camera still open.
-  private watch(engine: GpuEngine): void {
+  private watch(engine: FilterEngine): void {
     engine.device.lost.then(async () => {
       if (this.engine !== engine) return;
       this.engine = null;

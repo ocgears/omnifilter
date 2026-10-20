@@ -9,16 +9,16 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { GpuEngine, StackRenderer } from '../../gpu';
+import { FilterEngine, StackRenderer } from '../../gpu';
 import { Layer } from '../models';
 import { PreviewEngine, previewPhoto, stackLayers } from './preview-engine';
 
 type Mode = 'starting' | 'live' | 'static';
 
 // The photo with the current filter stack applied live, on this device's
-// GPU (WebGPU), using the same filter plans as the server. Press and hold
-// to see the original. Where WebGPU isn't available it shows the photo as
-// it is, and Transform shows the result.
+// GPU (WebGPU, or WebGL2 without it), using the same filter plans as the
+// server. Press and hold to see the original. Where neither is available it
+// shows the photo as it is, and Transform shows the result.
 @Component({
   selector: 'of-live-preview',
   templateUrl: './live-preview.html',
@@ -48,13 +48,14 @@ export class LivePreview implements OnDestroy {
   // Set when the last update failed (the stack still shows as it was).
   readonly failed = signal(false);
   readonly software = signal(false);
+  readonly webgl2 = signal(false);
 
   readonly status = computed(() => {
     switch (this.mode()) {
       case 'starting':
         return 'Starting the live preview…';
       case 'static':
-        return 'Live preview needs a browser with WebGPU. Transform shows the result.';
+        return 'Live preview needs a browser with WebGPU or WebGL2. Transform shows the result.';
       default: {
         if (this.paused()) return 'Live preview paused while the full-size photo is made.';
         if (this.failed()) return "The preview couldn't show these settings. Transform still can.";
@@ -69,15 +70,15 @@ export class LivePreview implements OnDestroy {
           );
         }
         const ms = this.renderMs();
-        const where = this.software()
-          ? 'Live preview (software GPU)'
-          : "Live preview on this device's GPU";
+        const where =
+          (this.software() ? 'Live preview (software GPU)' : "Live preview on this device's GPU") +
+          (this.webgl2() ? ', WebGL2' : '');
         return ms === null ? where : where + ' · ' + Math.max(1, Math.round(ms)) + ' ms';
       }
     }
   });
 
-  private engine: GpuEngine | null = null;
+  private engine: FilterEngine | null = null;
   private renderer: StackRenderer | null = null;
   private loading = 0;
   private dirty = false;
@@ -117,6 +118,7 @@ export class LivePreview implements OnDestroy {
       if (this.engine !== engine) this.watch(engine);
       this.engine = engine;
       this.software.set(engine.adapterInfo.fallback);
+      this.webgl2.set(engine.backend === 'WebGL2');
       this.failed.set(false);
       const photo = await previewPhoto(src);
       if (token !== this.loading || this.destroyed) return;
@@ -139,7 +141,7 @@ export class LivePreview implements OnDestroy {
   // A lost GPU device (a driver reset, or a phone reclaiming memory from a
   // background tab) takes the renderer's images with it: start again with a
   // new engine, as soon as it's lost rather than at the next change.
-  private watch(engine: GpuEngine): void {
+  private watch(engine: FilterEngine): void {
     engine.device.lost.then(() => {
       if (this.engine !== engine || this.destroyed) return;
       this.engine = null;
