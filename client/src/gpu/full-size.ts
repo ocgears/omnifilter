@@ -310,3 +310,72 @@ export async function encodePixels(
     ? canvas.convertToBlob({ type: 'image/png' })
     : canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
 }
+
+// One photo filtered and encoded, as the page asks for it: what the
+// full-size worker does, and what the page does itself where the browser
+// has no GPU in workers (WebKit has WebGL2 only on the page).
+export interface FullSizeJob {
+  file: Blob;
+  layers: StackLayer[];
+  blendModes: string[];
+  maxBytes?: number;
+}
+
+export interface FullSizeResult {
+  file: Blob;
+  width: number;
+  height: number;
+  ranAt: { width: number; height: number } | null;
+  device: string;
+  timings: {
+    decode: number;
+    upload: number;
+    filters: number;
+    readback: number;
+    encode: number;
+    total: number;
+  };
+}
+
+export async function fullSizeJob(
+  engine: FilterEngine,
+  job: FullSizeJob,
+  onProgress: (p: FullSizeProgress) => void,
+  cancelled?: () => boolean,
+): Promise<FullSizeResult> {
+  const started = performance.now();
+  let t = performance.now();
+  // Applies the photo's EXIF orientation, as the server does.
+  const bitmap = await createImageBitmap(job.file, { imageOrientation: 'from-image' });
+  const decode = performance.now() - t;
+  let out;
+  try {
+    out = await filterFullSize(engine, bitmap, job.layers, job.blendModes, {
+      maxBytes: job.maxBytes,
+      onProgress,
+      cancelled,
+    });
+  } finally {
+    bitmap.close();
+  }
+  t = performance.now();
+  onProgress({ stage: 'encode', done: job.layers.length, total: job.layers.length });
+  const file = await encodePixels(out.rgba, out.rgbaWidth, out.rgbaHeight, out.width, out.height);
+  const encode = performance.now() - t;
+  return {
+    file,
+    width: out.width,
+    height: out.height,
+    ranAt: out.ranAt,
+    device: deviceLimits(engine).name,
+    timings: { decode, ...out.timings, encode, total: performance.now() - started },
+  };
+}
+
+// What to tell the user about a job that failed.
+export function fullSizeMessage(engine: FilterEngine, err: unknown): string {
+  const lost = engine.lost ? ' (the GPU was reset; try again)' : '';
+  const message =
+    err instanceof FullSizeError ? err.message : 'Filtering failed: ' + (err as Error).message;
+  return message + lost;
+}

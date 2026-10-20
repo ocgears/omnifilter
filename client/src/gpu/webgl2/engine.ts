@@ -61,21 +61,6 @@ const header = (row: number) =>
   ';\n' +
   GLSL_PRELUDE;
 
-// Draws an image's pixels, premultiplied, the right way up.
-const PRESENT = (row: number) =>
-  header(row) +
-  `uniform highp usampler2D _img;
-uniform int _w;
-uniform int _h;
-out vec4 _frag;
-void main() {
-  int i = (_h - 1 - int(gl_FragCoord.y)) * _w + int(gl_FragCoord.x);
-  int t = i >> 2;
-  vec4 c = _unpack4x8unorm(texelFetch(_img, ivec2(t % _TW, t / _TW), 0)[i & 3]);
-  _frag = vec4(c.rgb * c.a, c.a);
-}
-`;
-
 // A frame (in an RGBA8 texture) scaled to _w x _h pixels, bilinear.
 const FROM_FRAME = (row: number) =>
   header(row) +
@@ -159,6 +144,7 @@ export class GlEngine implements FilterEngine {
 
   constructor(
     readonly gl: Gl,
+    // Kept, since the context lives as long as its canvas.
     private readonly canvas: AnyCanvas,
     options: GlEngineOptions = {},
   ) {
@@ -675,37 +661,24 @@ export class GlEngine implements FilterEngine {
 
   // ---- drawing and frames ----
 
+  // Shows an image on a canvas at its own size (CSS scales it), through
+  // the CPU: reading the pixels back and putting them on a 2D canvas works
+  // in every browser, where drawing a WebGL canvas onto another doesn't
+  // (WebKit drew nothing). A preview-sized image takes a few milliseconds.
   present(image: EngineImage, target: AnyCanvas): void {
-    const gl = this.gl;
     const img = image as GlImage;
-    const canvas = this.canvas;
-    if (canvas.width !== img.width) canvas.width = img.width;
-    if (canvas.height !== img.height) canvas.height = img.height;
-    const p = this.helperProgram('present', PRESENT(this.row));
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, img.width, img.height);
-    gl.useProgram(p.program);
-    gl.bindVertexArray(this.vao);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, img.buffer.tex);
-    gl.uniform1i(this.uniform(p, '_img'), 0);
-    gl.uniform1i(this.uniform(p, '_w'), img.width);
-    gl.uniform1i(this.uniform(p, '_h'), img.height);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-
+    const words = this.readWords(img.buffer);
+    const pixels = new Uint8ClampedArray(
+      words.buffer as ArrayBuffer,
+      0,
+      img.width * img.height * 4,
+    );
     if (target.width !== img.width) target.width = img.width;
     if (target.height !== img.height) target.height = img.height;
     const ctx = target.getContext('2d') as
       CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
     if (!ctx) throw new Error('No 2D canvas context to show the preview in');
-    ctx.clearRect(0, 0, img.width, img.height);
-    if ('transferToImageBitmap' in canvas) {
-      const bitmap = canvas.transferToImageBitmap();
-      ctx.drawImage(bitmap, 0, 0);
-      bitmap.close();
-    } else {
-      ctx.drawImage(canvas, 0, 0);
-    }
+    ctx.putImageData(new ImageData(pixels, img.width, img.height), 0, 0);
   }
 
   releaseFrame(): void {
