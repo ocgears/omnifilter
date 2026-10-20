@@ -389,7 +389,13 @@ jobs:
           docker run -d --name app --network host \
             -e MONGOLAB_URI=mongodb://localhost/omnifilter_vulkan -e APP_SECRET=ci-only-secret-not-for-production-use \
             omnifilter-vulkan
-          for i in $(seq 1 30); do curl -fsS localhost:3000/health && break; sleep 2; done
+          for i in $(seq 1 31); do
+            if [ "$i" = 31 ]; then
+              echo "::error title=Not healthy::$(curl -sS localhost:3000/health 2>&1) $(docker logs app 2>&1 | tail -5 | tr '\n' ' ')"
+              exit 1
+            fi
+            curl -fsS localhost:3000/health && break; sleep 2
+          done
           curl -fsS localhost:3000/device | tee /dev/stderr | grep -q '"platform":"WebGPU (Dawn)"'
           curl -fsS -o out.json -w 'bilateral: %{time_total} s\n' -X POST localhost:3000/transform \
             -H 'Content-Type: image/jpeg' -H 'Omnifilter-Recipe: {"tOption":"bilateral"}' \
