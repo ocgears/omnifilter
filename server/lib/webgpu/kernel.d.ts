@@ -48,3 +48,9 @@ export interface Kernel {
 export function isWritable(kind: ArgKind): boolean;
 export function parseArgs(spec: string): KernelArg[];
 export function makeKernel(name: string, spec: KernelSpec, common: string): Kernel;
+// The WGSL helpers made for a buffer argument by name: at_NAME, nearest_NAME
+// and the rest for pixels, f4_at_NAME and linear_NAME for float images,
+// byte_NAME for bytes. (The WebGL2 engine translates them too.)
+export function imageHelpers(name: string): string;
+export function floatImageHelpers(name: string): string;
+export function byteHelpers(name: string): string;
