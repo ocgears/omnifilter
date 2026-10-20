@@ -363,6 +363,42 @@ jobs:
       - name: The image has the production client, without source maps
         run: docker run --rm omnifilter sh -c 'test -s dist/index.html && ls dist/main-*.js && ! ls dist/*.map 2>/dev/null'
 
+  # The WebGPU image (docker/vulkan.Dockerfile) on lavapipe: it finds the
+  # adapter, starts beside a MongoDB, and filters a photo. The webgpu job
+  # above checks every filter on the same driver; this checks the image.
+  vulkan-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mongo:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Build the image
+        run: bash .github/run-and-annotate.sh docker build --progress=plain --build-arg FETCH_MODELS=false -f docker/vulkan.Dockerfile -t omnifilter-vulkan .
+      - name: The image finds a WebGPU adapter
+        run: |
+          docker images omnifilter-vulkan --format '::notice title=Vulkan image::{{.Size}}'
+          docker run --rm omnifilter-vulkan npm run devices
+      - name: It filters a photo
+        run: |
+          docker run -d --name app --network host \
+            -e MONGOLAB_URI=mongodb://localhost/omnifilter_vulkan -e APP_SECRET=ci-only-secret-not-for-production-use \
+            omnifilter-vulkan
+          for i in $(seq 1 30); do curl -fsS localhost:3000/health && break; sleep 2; done
+          curl -fsS localhost:3000/device | tee /dev/stderr | grep -q '"platform":"WebGPU (Dawn)"'
+          curl -fsS -o out.json -w 'bilateral: %{time_total} s\n' -X POST localhost:3000/transform \
+            -H 'Content-Type: image/jpeg' -H 'Omnifilter-Recipe: {"tOption":"bilateral"}' \
+            --data-binary @client/public/images/samples/earth-apollo-17.jpg
+          grep -q '"content":"data:image/jpeg;base64,' out.json
+      - name: The server's log
+        if: ${{ !cancelled() }}
+        run: docker logs app
+
   # The hosted demo's image (docker/cloud-run.Dockerfile), run as Cloud Run
   # runs it, beside a MongoDB, with the deploy's smoke test against it.
   cloud-run:

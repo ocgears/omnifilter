@@ -92,6 +92,8 @@ Then open http://localhost:5000. This starts MongoDB, the API and the client in 
 
 Containers can't reach the GPU on macOS or Windows, so the image uses [pocl](https://portablecl.org/), an OpenCL driver that runs the same kernels on the container's CPU. The filters work, just without the GPU speedup.
 
+`docker/vulkan.Dockerfile` is the same API on the WebGPU backend, which can use an NVIDIA, AMD or Intel GPU on a Linux host through Vulkan; see [docs/DOCKER.md](docs/DOCKER.md#the-vulkan-image).
+
 Any Docker runtime works (Docker Desktop, OrbStack, [Colima](https://github.com/abiosoft/colima)). On macOS 12, which current Docker Desktop no longer supports, use Colima with QEMU: `brew install colima docker docker-compose docker-buildx`, then `colima start --memory 4`. Colima needs QEMU on macOS 12, but Homebrew's QEMU (10 and later) needs Xcode 15, which macOS 12 can't run, so install QEMU 9.1 instead.
 
 ### Tests
