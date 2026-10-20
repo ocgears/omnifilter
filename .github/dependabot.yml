@@ -14,6 +14,9 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Pinned: later releases dropped macOS 12 / Intel Macs (see README).
+      - dependency-name: onnxruntime-node
     open-pull-requests-limit: 5
 
   # The Angular client.
@@ -28,6 +31,13 @@ updates:
         patterns: ['@angular/*', '@angular-devkit/*']
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Angular's compiler supports only the TypeScript versions in
+      # @angular/compiler-cli's peerDependencies (>=6.0 <6.1 for Angular 22);
+      # raise this together with Angular. TypeScript 7 drops the compiler API
+      # that ngc uses.
+      - dependency-name: typescript
+        versions: ['>=6.1']
     open-pull-requests-limit: 5
 
   # Lighthouse CI (.github/lighthouse).
@@ -57,3 +67,8 @@ updates:
       interval: monthly
     cooldown:
       default-days: 14
+    ignore:
+      # Node's odd-numbered majors never become long-term support releases;
+      # stay on the even ones.
+      - dependency-name: node
+        versions: ['25', '25.x', '27', '27.x', '29', '29.x']
