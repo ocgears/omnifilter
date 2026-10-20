@@ -41,6 +41,7 @@ import {
   imageFrom,
   readPhoto,
 } from './photo-file';
+import { takeSharedPhoto } from './shared-photo';
 import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { EditHistory, StackState } from './history';
@@ -226,7 +227,9 @@ export class Editor {
     });
     this.loadFilters();
     this.loadPhotos();
-    this.restoreDraft();
+    // A photo shared from another app comes after the draft, so it replaces
+    // the draft's photo but keeps its filters.
+    this.restoreDraft().finally(() => this.useSharedPhoto());
     afterNextRender(() => this.trackStickyParts());
     effect(() => {
       const source = this.source();
@@ -570,6 +573,11 @@ export class Editor {
     } catch (err) {
       this.addError(err instanceof PhotoFileError ? err.message : 'Could not read that file.');
     }
+  }
+
+  private async useSharedPhoto(): Promise<void> {
+    const file = await takeSharedPhoto();
+    if (file) await this.usePhoto(file);
   }
 
   onFilePicked(event: Event): void {
