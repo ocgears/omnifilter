@@ -111,6 +111,11 @@ app.use('/', contentRouter);
 app.use('/', authRouter);
 app.use('/', userRouter);
 
+// Photos shared to the installed app from other apps go to its service
+// worker (client/public/sw.js). One that arrives here, before the service
+// worker has started, opens the app without the photo instead of a 404.
+app.post('/share-target', (req, res) => res.redirect(303, '/#/home'));
+
 // The built client, when there is one, so the API and the pages can be
 // served from one place. Files whose names carry a hash of their contents
 // (main-4NR54UZ5.js) never change, so browsers may keep them.

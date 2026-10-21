@@ -359,3 +359,13 @@ describe('GET /health', () => {
     });
   });
 });
+
+describe('POST /share-target', () => {
+  it('opens the app when the service worker hasn\'t taken the shared photo', () => {
+    return request.execute(baseUri).post('/share-target').redirects(0)
+      .field('title', 'Shared').then((res) => {
+        expect(res).to.have.status(303);
+        expect(res).to.have.header('location', '/#/home');
+      });
+  });
+});
