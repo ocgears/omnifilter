@@ -251,7 +251,9 @@ describe('Editor', () => {
     await editor.deletePhoto(editor.photos()[0]);
     expect(api.delete).toHaveBeenCalledWith(saved);
     expect(editor.photos()).toEqual([]);
-    expect(editor.messages()).toEqual(['Successfully deleted content']);
+    // Said to screen readers only: the card going is plain to see.
+    expect(editor.messages()).toEqual([]);
+    await vi.waitFor(() => expect(editor.announcement()).toBe('Photo deleted.'));
   });
 
   it("refuses a file that isn't an image", async () => {

@@ -1,3 +1,4 @@
+<button type="button" class="skip-link" (click)="skipToMain()">Skip to content</button>
 <header class="site-header" [class.guest]="!auth.token()">
   <a class="brand" routerLink="/home">
     <img src="/images/logo_omnifilter_header.png" alt="" width="35" height="35" />
@@ -21,7 +22,7 @@
   }
 </header>
 
-<main>
+<main #main tabindex="-1">
   <router-outlet />
 </main>
 
@@ -38,9 +39,11 @@
         >
           Sign out everywhere
         </button>
-        <button type="button" (click)="confirmEverywhere.set(false)">Cancel</button>
+        <button type="button" class="cancel" (click)="askEverywhere(false)">Cancel</button>
       } @else {
-        <button type="button" (click)="confirmEverywhere.set(true)">Sign out of all devices</button>
+        <button type="button" class="ask" (click)="askEverywhere(true)">
+          Sign out of all devices
+        </button>
       }
       @if (everywhereError(); as error) {
         <p class="field-error" role="alert">{{ error }}</p>

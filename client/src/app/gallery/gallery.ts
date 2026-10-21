@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   effect,
   inject,
   input,
@@ -10,6 +11,7 @@ import {
   signal,
 } from '@angular/core';
 import { errorMessage } from '../auth.service';
+import { refocus } from '../focus';
 import { Filter, Photo } from '../models';
 import { PhotoApi } from '../photo-api.service';
 import { photoLabel } from '../editor/stack';
@@ -26,6 +28,7 @@ import { downloadName } from '../photo-names';
 export class Gallery {
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly api = inject(PhotoApi);
+  private readonly injector = inject(Injector);
 
   readonly photos = input.required<Photo[]>();
   readonly filters = input.required<Filter[]>();
@@ -150,6 +153,17 @@ export class Gallery {
           : 'Could not share that photo.',
       );
     }
+  }
+
+  // Asks before deleting, with the focus on Keep; and back to Delete if the
+  // photo is kept.
+  askDelete(photo: Photo, asking: boolean): void {
+    this.confirming.set(asking ? photo._id : null);
+    const card = '[id="photo-' + photo._id + '"] ';
+    refocus(this.injector, [card + (asking ? '.keep' : '.delete')], {
+      always: true,
+      root: this.host.nativeElement,
+    });
   }
 
   confirmDelete(photo: Photo): void {

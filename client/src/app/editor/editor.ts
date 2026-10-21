@@ -2,6 +2,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   afterNextRender,
   computed,
   effect,
@@ -15,6 +16,7 @@ import { Alerts } from '../alerts/alerts';
 import { AuthService, errorMessage as serverMessage } from '../auth.service';
 import { BrowserStorageError } from '../browser-db';
 import { Gallery } from '../gallery/gallery';
+import { refocus } from '../focus';
 import { downloadName } from '../photo-names';
 import { GuestPhotos, LOCAL_ID, isLocal } from '../guest-photos';
 import {
@@ -108,6 +110,7 @@ export class Editor {
   private readonly previewEngine = inject(PreviewEngine);
   private readonly drafts = inject(DraftStore);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly guestStore = inject(GuestPhotos);
@@ -188,6 +191,9 @@ export class Editor {
   // The live camera (where the browser can open one).
   readonly camera = cameraSupported();
   readonly cameraOn = signal(false);
+  // Read out by screen readers when something finishes out of sight, such as
+  // a photo added to the gallery further down.
+  readonly announcement = signal('');
 
   readonly photos = signal<Photo[]>([]);
   // How many of the server's photos aren't loaded yet (they come a page at
@@ -400,6 +406,7 @@ export class Editor {
     } finally {
       this.importing.set(false);
     }
+    refocus(this.injector, ['main']);
     if (added) {
       this.messages.update((list) => [
         ...list,
@@ -412,6 +419,16 @@ export class Editor {
     for (const photo of this.waitingPhotos()) await this.guestStore.remove(photo);
     this.waitingPhotos.set([]);
     this.confirmDiscard.set(false);
+    refocus(this.injector, ['main']);
+  }
+
+  // Asks before deleting the guest's photos, with the focus on Keep; and
+  // back to Delete if they're kept.
+  askDiscard(asking: boolean): void {
+    this.confirmDiscard.set(asking);
+    refocus(this.injector, [asking ? '.banner.waiting .keep' : '.banner.waiting .discard'], {
+      always: true,
+    });
   }
 
   // ---- layout ----
@@ -494,22 +511,29 @@ export class Editor {
     this.saveStackDraft();
   }
 
+  // The button pressed is disabled at the end of the history, and the
+  // control the focus was in may be gone: then the other button has it.
   undo(): void {
     const state = this.history.undo();
     if (state) this.show(state);
     this.saveStackDraft();
+    refocus(this.injector, ['#undo:enabled', '#redo:enabled', '#filter-0']);
   }
 
   redo(): void {
     const state = this.history.redo();
     if (state) this.show(state);
     this.saveStackDraft();
+    refocus(this.injector, ['#redo:enabled', '#undo:enabled', '#filter-0']);
   }
 
   goTo(index: number): void {
     const state = this.history.jump(index);
     if (state) this.show(state);
     this.saveStackDraft();
+    const menu = this.historyMenu()?.nativeElement;
+    if (menu) menu.open = false;
+    refocus(this.injector, ['details.history summary'], { always: true });
   }
 
   // The history list closes on a tap or click anywhere else, or Escape.
@@ -570,6 +594,8 @@ export class Editor {
       this.source.set(await readPhoto(file));
       this.sourceName.set(file.name);
       this.savePhotoDraft();
+      // From the sample button, say, which has gone.
+      refocus(this.injector, ['figure.preview']);
     } catch (err) {
       this.addError(err instanceof PhotoFileError ? err.message : 'Could not read that file.');
     }
@@ -614,6 +640,13 @@ export class Editor {
     this.sourceName.set('Camera photo');
     this.cameraOn.set(false);
     this.savePhotoDraft();
+    refocus(this.injector, ['figure.preview']);
+  }
+
+  // Back to the button that opened the camera.
+  closeCamera(): void {
+    this.cameraOn.set(false);
+    refocus(this.injector, ['#camera', '#file']);
   }
 
   readonly loadingSample = signal(false);
@@ -637,6 +670,7 @@ export class Editor {
     this.source.set(null);
     this.sourceName.set('');
     this.savePhotoDraft();
+    refocus(this.injector, ['#file']);
   }
 
   // ---- presets and layers ----
@@ -754,6 +788,11 @@ export class Editor {
     });
     this.selectedPreset.set(null);
     this.commit('Removed ' + name);
+    // To the filter now in its place (whose own Remove button may be where
+    // the focus is: pressing it again would remove that one too).
+    refocus(this.injector, ['#filter-' + Math.min(index, this.layers().length - 1)], {
+      always: true,
+    });
   }
 
   moveLayer(index: number, by: number): void {
@@ -766,6 +805,11 @@ export class Editor {
     this.layers.set(layers);
     this.selectedPreset.set(null);
     this.commit('Moved ' + name + (by < 0 ? ' up' : ' down'));
+    // The focus goes with the layer, to the same button unless that's now
+    // disabled (at the top or bottom).
+    const moved = '.layers > li:nth-child(' + (to + 1) + ') ';
+    const [same, other] = by < 0 ? ['.move-up', '.move-down'] : ['.move-down', '.move-up'];
+    refocus(this.injector, [moved + same + ':enabled', moved + other], { always: true });
   }
 
   // ---- transforming ----
@@ -813,6 +857,7 @@ export class Editor {
       }
       this.photos.update((photos) => [photo, ...photos]);
       this.latestId.set(photo._id);
+      this.announce('Made ' + photoLabel(this.filters(), photo) + '. It is first in your photos.');
     } catch (err) {
       this.addError(errorMessage(err, 'Could not transform the photo.'));
     } finally {
@@ -911,6 +956,8 @@ export class Editor {
       this.photos.update((photos) => [kept, ...photos]);
       this.latestId.set(kept._id);
       this.discardMade();
+      this.announce('Kept. It is first in your photos.');
+      refocus(this.injector, ['#transform']);
     } catch (err) {
       this.addError(errorMessage(err, 'Could not keep the photo.'));
     } finally {
@@ -931,16 +978,34 @@ export class Editor {
     this.made.set(null);
   }
 
+  // Discard on the result card.
+  onDiscard(): void {
+    this.discardMade();
+    refocus(this.injector, ['#transform']);
+  }
+
+  // Cleared first, so the same words twice are read out twice.
+  private announce(text: string): void {
+    this.announcement.set('');
+    setTimeout(() => this.announcement.set(text), 100);
+  }
+
   async deletePhoto(photo: Photo): Promise<void> {
-    if (isLocal(photo)) {
-      await this.guestStore.remove(photo);
-      this.photos.update((photos) => photos.filter((p) => p !== photo));
-      return;
-    }
+    // The focus goes to the next photo's buttons, or the one before.
+    const photos = this.photos();
+    const at = photos.indexOf(photo);
+    const near = [photos[at + 1], photos[at - 1]]
+      .filter((p) => p)
+      .map((p) => '[id="photo-' + p._id + '"] .actions button');
     try {
-      const res = await this.api.delete(photo);
-      this.photos.update((photos) => photos.filter((p) => p !== photo));
-      if (res?.msg) this.messages.update((list) => [...list, res.msg]);
+      if (isLocal(photo)) {
+        await this.guestStore.remove(photo);
+      } else {
+        await this.api.delete(photo);
+      }
+      this.photos.update((list) => list.filter((p) => p !== photo));
+      this.announce('Photo deleted.');
+      refocus(this.injector, [...near, '#transform']);
     } catch (err) {
       this.addError(errorMessage(err, 'Could not delete that photo.'));
     }
