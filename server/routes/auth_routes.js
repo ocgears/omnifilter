@@ -92,7 +92,7 @@ authRouter.get('/signin', limiter, basicHTTP, wrongPasswords, (req, res) => {
   // The same answer, after the same amount of work, for an unknown email and a
   // wrong password, so the sign-in form can't be used to find out who has an
   // account.
-  const failed = () => res.status(401).json({ msg: 'incorrect email or password' });
+  const failed = () => res.status(401).json({ msg: 'Incorrect email or password.' });
   const email = req.basicHTTP.email.trim().toLowerCase();
   const password = req.basicHTTP.password;
 

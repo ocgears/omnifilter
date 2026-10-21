@@ -113,6 +113,12 @@ img {
   outline-offset: 2px;
 }
 
+// The page's main part takes the focus after Skip to content or going to
+// another page, for the next Tab to start from; it needn't be outlined.
+main:focus {
+  outline: none;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -214,6 +220,11 @@ button:hover:not(:disabled),
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+// Busy, but kept focusable, so the keyboard focus stays put meanwhile.
+button[aria-disabled='true'] {
+  cursor: progress;
 }
 
 button.primary,

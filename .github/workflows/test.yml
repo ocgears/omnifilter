@@ -258,12 +258,67 @@ jobs:
         working-directory: client
       - run: npx playwright install --with-deps chromium webkit
       - name: End-to-end tests
-        run: bash .github/run-and-annotate.sh npx playwright test
+        run: bash .github/run-and-annotate.sh npx playwright test --project desktop --project phone --project iphone
       - name: Keep the report and traces of failed tests
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # The same tests in desktop Firefox, and in WebKit at desktop size (Safari's
+  # engine). Without a GPU neither has WebGPU, so their filters run with
+  # WebGL2, which e2e/gpu.spec.js checks against the server's, pixel by pixel.
+  e2e-browsers:
+    name: e2e (${{ matrix.project }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: firefox
+            browser: firefox
+          - project: safari
+            browser: webkit
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      OMNIFILTER_DEVICE: pocl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the OpenCL loader, headers and pocl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: client
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # Under a virtual display: headless Firefox has WebGL only with one
+      # (Mesa's software GL through it).
+      - name: End-to-end tests
+        run: xvfb-run -a bash .github/run-and-annotate.sh npx playwright test --project ${{ matrix.project }}
+      - name: Keep the report and traces of failed tests
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-${{ matrix.project }}
           path: |
             playwright-report/
             test-results/
@@ -340,7 +395,7 @@ jobs:
             node -e "
               const pw = require(\"@playwright/test\");
               (async () => {
-                for (const type of [\"chromium\", \"webkit\"]) {
+                for (const type of [\"chromium\", \"webkit\", \"firefox\"]) {
                   const browser = await pw[type].launch();
                   console.log(type, browser.version());
                   await browser.close();

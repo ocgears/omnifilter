@@ -1,7 +1,7 @@
 {
   "name": "OmniFilter",
   "short_name": "OmniFilter",
-  "description": "Awesome filters applied to your own photos, run on a GPU.",
+  "description": "Photo filters and preset looks, previewed live on your own device's GPU.",
   "id": "/",
   "start_url": "/#/home",
   "scope": "/",

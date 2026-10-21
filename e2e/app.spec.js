@@ -10,7 +10,7 @@ const { setUp, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasGpu,
 
 setUp();
 
-// Each project (desktop, phone, iphone) gets its own account.
+// Each project (desktop, phone, iphone, firefox, safari) gets its own account.
 const run = Date.now();
 const email = () => 'e2e-' + run + '-' + test.info().project.name + '@example.com';
 const password = 'correct horse battery';
@@ -48,6 +48,63 @@ test('the start page opens the editor, as a guest', async ({ page }) => {
   await expectNoSidewaysScroll(page);
   await page.locator('header').getByRole('link', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+});
+
+// With the keyboard alone: the first Tab reaches Skip to content, and controls
+// that take themselves away (or are disabled while they work) hand the focus
+// on, rather than dropping it back to the top of the page.
+test('works with the keyboard, keeping the focus in place', async ({ page }) => {
+  const press = async (locator, key = 'Enter') => {
+    await locator.focus();
+    await page.keyboard.press(key);
+  };
+  const layer = (i) => page.locator('.layers > li').nth(i);
+  await page.goto('/#/home');
+  await expect(page.locator('#sample')).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Skip to content' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('main')).toBeFocused();
+
+  await press(page.locator('#sample'));
+  await expect(page.locator('figure.preview')).toBeFocused();
+  await press(page.locator('figcaption').getByRole('button', { name: 'Remove' }));
+  await expect(page.locator('#file')).toBeFocused();
+  await choosePhoto(page);
+
+  await page.locator('#filter-0').selectOption('sepia');
+  await press(page.getByRole('button', { name: '+ Stack another filter' }));
+  await page.locator('#filter-1').selectOption('invert');
+  // The focus goes with the layer, to its other button now that it's first.
+  await press(layer(1).getByRole('button', { name: 'Move filter up' }));
+  await expect(page.locator('#filter-0')).toHaveValue('invert');
+  await expect(layer(0).getByRole('button', { name: 'Move filter down' })).toBeFocused();
+  await press(layer(0).getByRole('button', { name: 'Remove filter' }));
+  await expect(page.locator('#filter-0')).toHaveValue('sepia');
+  await expect(page.locator('#filter-0')).toBeFocused();
+  await press(page.locator('details.history summary'));
+  await press(page.locator('details.history').getByRole('button').nth(1));
+  await expect(page.locator('details.history')).not.toHaveAttribute('open');
+  await expect(page.locator('details.history summary')).toBeFocused();
+
+  // Transform keeps the focus while it works, and says when it's done.
+  await page.locator('#filter-0').selectOption('sepia');
+  await press(page.locator('#transform'));
+  await expect(page.locator('.photo-card')).toHaveCount(1);
+  await expect(page.locator('#transform')).toBeFocused();
+  await expect(page.getByRole('status').filter({ hasText: 'It is first in your photos.' })).toHaveCount(1);
+
+  // Delete asks first, with the focus on Keep.
+  const card = page.locator('.photo-card').first();
+  await press(card.getByRole('button', { name: 'Delete' }));
+  await expect(card.getByRole('button', { name: 'Keep' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(card.getByRole('button', { name: 'Delete' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(card.getByRole('button', { name: 'Keep' })).toBeFocused();
+  await press(card.locator('button.danger'));
+  await expect(page.locator('.photo-card')).toHaveCount(0);
+  await expect(page.locator('#transform')).toBeFocused();
 });
 
 test('signs up and lands on the photo page', async ({ page }) => {

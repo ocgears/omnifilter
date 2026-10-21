@@ -1,9 +1,9 @@
 @if (!signedIn()) {
   <aside class="banner guest" aria-label="Guest mode">
     <p>
-      You're trying OmniFilter as a guest. The photos you make stay in this browser;
-      <a routerLink="/signup">create an account</a> to keep them, or
-      <a routerLink="/signin">sign in</a>.
+      You're trying OmniFilter as a guest: pick a photo and a look, and see it live on this device's
+      GPU. Your photos stay in this browser; <a routerLink="/signup">create an account</a> to keep
+      them online, or <a routerLink="/signin">sign in</a>.
     </p>
   </aside>
 } @else if (waitingPhotos().length; as count) {
@@ -15,7 +15,7 @@
       </p>
       <div class="banner-actions">
         <button type="button" class="danger" (click)="discardPhotos()">Delete</button>
-        <button type="button" (click)="confirmDiscard.set(false)">Keep</button>
+        <button type="button" class="keep" (click)="askDiscard(false)">Keep</button>
       </div>
     } @else {
       <p>
@@ -31,7 +31,7 @@
             Add to my account
           }
         </button>
-        <button type="button" (click)="confirmDiscard.set(true)" [disabled]="importing()">
+        <button type="button" class="discard" (click)="askDiscard(true)" [disabled]="importing()">
           Delete
         </button>
       </div>
@@ -41,6 +41,7 @@
 
 <of-alerts [items]="errors()" (dismiss)="dismissError($event)" />
 <of-alerts [items]="messages()" kind="info" (dismiss)="dismissMessage($event)" />
+<p class="visually-hidden" role="status">{{ announcement() }}</p>
 
 <div class="workspace">
   <section
@@ -70,13 +71,13 @@
           [layers]="layers()"
           [blendModes]="blendModeNames()"
           (captured)="useCapture($event)"
-          (closed)="cameraOn.set(false)"
+          (closed)="closeCamera()"
         />
       } @placeholder {
         <p class="loading" role="status">Opening the camera…</p>
       }
     } @else if (source(); as src) {
-      <figure class="preview">
+      <figure class="preview" tabindex="-1" [attr.aria-label]="'Your photo: ' + sourceName()">
         @defer (on immediate) {
           <of-live-preview
             [source]="src"
@@ -91,7 +92,7 @@
           <span class="file-name">{{ sourceName() }}</span>
           <label for="file" class="button">Change</label>
           @if (camera) {
-            <button type="button" (click)="cameraOn.set(true)">Camera</button>
+            <button type="button" id="camera" (click)="cameraOn.set(true)">Camera</button>
           }
           <button type="button" (click)="clearPhoto()">Remove</button>
         </figcaption>
@@ -109,7 +110,9 @@
       </label>
       <div class="start-row">
         @if (camera) {
-          <button type="button" (click)="cameraOn.set(true)">Live camera, with the filters</button>
+          <button type="button" id="camera" (click)="cameraOn.set(true)">
+            Live camera, with the filters
+          </button>
         }
         <button type="button" id="sample" (click)="useSample()" [disabled]="loadingSample()">
           {{ loadingSample() ? 'Loading the sample…' : 'Try a sample photo' }}
@@ -210,7 +213,7 @@
                   type="button"
                   [class.undone]="i > history.index()"
                   [attr.aria-current]="i === history.index() ? 'step' : null"
-                  (click)="goTo(i); historyMenu.open = false"
+                  (click)="goTo(i)"
                 >
                   {{ step.label }}
                 </button>
@@ -241,7 +244,7 @@
             @if (layers().length > 1) {
               <button
                 type="button"
-                class="icon-button"
+                class="icon-button move-up"
                 (click)="moveLayer(i, -1)"
                 [disabled]="first"
                 aria-label="Move filter up"
@@ -251,7 +254,7 @@
               </button>
               <button
                 type="button"
-                class="icon-button"
+                class="icon-button move-down"
                 (click)="moveLayer(i, 1)"
                 [disabled]="last"
                 aria-label="Move filter down"
@@ -354,7 +357,8 @@
         id="transform"
         class="primary wide"
         (click)="transform()"
-        [disabled]="transforming() || !source()"
+        [disabled]="!source()"
+        [attr.aria-disabled]="transforming() || null"
       >
         @if (transforming() && onDevice()) {
           <span class="spinner" aria-hidden="true"></span>
@@ -380,7 +384,7 @@
       }
       @if (onDevice()) {
         <p class="device-info">
-          @if (deviceSupported) {
+          @if (deviceSupported()) {
             Filters run at full size on this device's own GPU
           } @else {
             This server filters on your device's GPU, which needs a browser with WebGPU or WebGL2
@@ -404,7 +408,7 @@
       [canKeep]="roomToKeep()"
       [keeping]="keeping()"
       (keep)="keepMade()"
-      (discard)="discardMade()"
+      (discard)="onDiscard()"
     />
   }
 }

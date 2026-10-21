@@ -142,8 +142,9 @@ async function tryPrebuilt() {
 
 function compile() {
   console.log('omnifilter: compiling the native addon');
-  // npm puts its bundled node-gyp on the PATH for install scripts.
-  const result = spawnSync('node-gyp', ['rebuild'], { cwd: ROOT, stdio: 'inherit', shell: true });
+  // npm puts its bundled node-gyp on the PATH for install scripts. Not
+  // `rebuild`, whose clean step removes build/ (main() has emptied it).
+  const result = spawnSync('node-gyp', ['configure', 'build'], { cwd: ROOT, stdio: 'inherit', shell: true });
   if (result.status !== 0) {
     console.error('\nomnifilter: compiling the native addon failed. It needs a C++ compiler and the OpenCL ' +
       'headers; see "Requirements" in README.md.');
@@ -154,8 +155,12 @@ function compile() {
 async function main() {
   if (process.argv.includes('--key')) return console.log(sourceKey());
   // A local build wins over a prebuilt one (see server/lib/native.js), so
-  // drop any stale one first.
-  fs.rmSync(path.join(ROOT, 'build'), { recursive: true, force: true });
+  // drop any stale one first. Only what's in build/, since it can be a
+  // mounted volume (docker/test.sh), which can't be removed.
+  const build = path.join(ROOT, 'build');
+  for (const entry of fs.existsSync(build) ? fs.readdirSync(build) : []) {
+    fs.rmSync(path.join(build, entry), { recursive: true, force: true });
+  }
   if (wantsSourceBuild(process.env.OMNIFILTER_BUILD_FROM_SOURCE) || !(await tryPrebuilt())) compile();
 }
 

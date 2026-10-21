@@ -4,6 +4,19 @@
   min-height: 100dvh;
 }
 
+// Off the screen until the first Tab on a page lands on it.
+.skip-link {
+  position: absolute;
+  top: 0.5rem;
+  left: var(--gutter);
+  z-index: 20;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
 .site-header {
   position: sticky;
   top: 0;

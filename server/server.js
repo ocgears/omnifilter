@@ -135,7 +135,7 @@ app.use((err, req, res, next) => {
   const status = err.status >= 400 && err.status < 500 ? err.status : 500;
   if (status === 500) console.log('Unexpected error: ', err);
   if (res.headersSent) return next(err);
-  res.status(status).json({ msg: status === 500 ? 'Server Error' : err.message });
+  res.status(status).json({ msg: status === 500 ? 'Something went wrong on the server. Try again in a moment.' : err.message });
 });
 
 // Sets up the device now (OpenCL compiles its kernels here; WebGPU in the

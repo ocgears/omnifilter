@@ -1,6 +1,7 @@
 import {
   Component,
   ElementRef,
+  Injector,
   OnDestroy,
   computed,
   inject,
@@ -11,6 +12,7 @@ import {
 } from '@angular/core';
 import { EngineImage, FilterEngine, StackRenderer } from '../../gpu';
 import { Layer } from '../models';
+import { refocus } from '../focus';
 import { PreviewEngine, stackLayers } from './preview-engine';
 
 // The longer side frames are filtered at.
@@ -23,9 +25,12 @@ const FRAME_SIZE = 960;
   selector: 'of-live-camera',
   templateUrl: './live-camera.html',
   styleUrl: './live-camera.scss',
+  host: { '(keydown.escape)': 'close()' },
 })
 export class LiveCamera implements OnDestroy {
   private readonly engines = inject(PreviewEngine);
+  private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   readonly layers = input.required<Layer[]>();
   readonly blendModes = input<string[]>([]);
@@ -96,8 +101,11 @@ export class LiveCamera implements OnDestroy {
       this.renderer ??= new StackRenderer(engine, this.blendModes(), FRAME_SIZE);
       this.state.set('live');
       this.next();
+      // The button that opened the camera has gone, taking the focus.
+      refocus(this.injector, ['.shutter'], { root: this.host });
     } catch (err) {
       this.state.set('failed');
+      refocus(this.injector, ['button'], { root: this.host });
       const name = (err as Error).name;
       this.error.set(
         name === 'NotAllowedError'

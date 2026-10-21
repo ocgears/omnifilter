@@ -89,7 +89,7 @@ function unavailableLayer(layers) {
 
 const validId = (req, res, next) => {
   if (!mongoose.isObjectIdOrHexString(req.params.id)) {
-    return res.status(404).json({ msg: 'No such content' });
+    return res.status(404).json({ msg: 'No such photo' });
   }
   next();
 };
@@ -179,14 +179,14 @@ async function upgradeOldPhotos(userId) {
 // address is the same for anyone who signs in on this browser.
 contentRouter.get('/content/:id', jwtAuth, validId, async (req, res) => {
   const photo = await Content.findOne({ _id: req.params.id, user_id: req.user._id });
-  if (!photo) return res.status(404).json({ msg: 'No such content' });
+  if (!photo) return res.status(404).json({ msg: 'No such photo' });
   var bytes = photo.image;
   var mime = photo.mime;
   if (!bytes) {
     const legacy = typeof photo.content === 'string' && /^data:(image\/[\w.+-]+);base64,/.exec(photo.content);
     // Only the types photos were ever kept as: not, say, an SVG, which could
     // carry a script.
-    if (!legacy || !EXTENSIONS[legacy[1]]) return res.status(404).json({ msg: 'No such content' });
+    if (!legacy || !EXTENSIONS[legacy[1]]) return res.status(404).json({ msg: 'No such photo' });
     mime = legacy[1];
     bytes = Buffer.from(photo.content.slice(legacy[0].length), 'base64');
   }
@@ -277,7 +277,7 @@ async function transformPhoto(req, res, recipe, options) {
           return { status: 503, msg: 'No ' + gpuFilters.backendLabel + ' device is available to run filters' };
         }
         console.log('Error in transforming the image: ', e);
-        return { status: 500, msg: 'transform failure' };
+        return { status: 500, msg: "The server couldn't run that filter. Try again, or try another one." };
       }
 
       try {
@@ -359,7 +359,7 @@ function readUpload(req, res, next) {
   } else {
     const content = req.body.content;
     if (typeof content !== 'string' || !content.length) {
-      return res.status(400).json({ msg: 'No image content was sent' });
+      return res.status(400).json({ msg: 'No photo was sent' });
     }
     try {
       req.photo = imageCodec.bytesOf(content);
@@ -369,7 +369,7 @@ function readUpload(req, res, next) {
     // The long string can go now.
     req.body.content = undefined;
   }
-  if (!req.photo.length) return res.status(400).json({ msg: 'No image content was sent' });
+  if (!req.photo.length) return res.status(400).json({ msg: 'No photo was sent' });
   next();
 }
 
@@ -532,7 +532,7 @@ contentRouter.post('/import', keepingPhoto, keeping(async (req, res) => {
 contentRouter.delete('/delete/:id', jwtAuth, validId, (req, res) => {
   Content.deleteOne({ _id: req.params.id, user_id: req.user._id })
     .then((result) => {
-      if (!result.deletedCount) return res.status(404).json({ msg: 'No such content' });
+      if (!result.deletedCount) return res.status(404).json({ msg: 'No such photo' });
       res.status(200).json({ msg: 'Successfully deleted content' });
     })
     .catch((err) => handleDBError(err, res));

@@ -36,7 +36,7 @@
             @if (confirming() === photo._id) {
               <span class="confirm-text">Delete this photo?</span>
               <button type="button" class="danger" (click)="confirmDelete(photo)">Delete</button>
-              <button type="button" (click)="confirming.set(null)">Keep</button>
+              <button type="button" class="keep" (click)="askDelete(photo, false)">Keep</button>
             } @else {
               <button
                 type="button"
@@ -64,7 +64,7 @@
                   Use settings
                 </button>
               }
-              <button type="button" (click)="confirming.set(photo._id)">Delete</button>
+              <button type="button" class="delete" (click)="askDelete(photo, true)">Delete</button>
             }
           </div>
         </li>

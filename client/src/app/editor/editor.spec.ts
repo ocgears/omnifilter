@@ -10,6 +10,7 @@ import { PhotoApi } from '../photo-api.service';
 import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { Editor } from './editor';
+import { PreviewEngine } from './preview-engine';
 
 describe('Editor', () => {
   let fixture: ComponentFixture<Editor>;
@@ -251,7 +252,9 @@ describe('Editor', () => {
     await editor.deletePhoto(editor.photos()[0]);
     expect(api.delete).toHaveBeenCalledWith(saved);
     expect(editor.photos()).toEqual([]);
-    expect(editor.messages()).toEqual(['Successfully deleted content']);
+    // Said to screen readers only: the card going is plain to see.
+    expect(editor.messages()).toEqual([]);
+    await vi.waitFor(() => expect(editor.announcement()).toBe('Photo deleted.'));
   });
 
   it("refuses a file that isn't an image", async () => {
@@ -561,19 +564,25 @@ describe('Editor', () => {
       timings: { decode: 300, upload: 50, filters: 1100, readback: 60, encode: 400, total: 1910 },
     };
 
+    // jsdom has no GPU: these fake a browser with one, whose engine starts.
+    let supported: ReturnType<typeof vi.spyOn>;
+    let engine: { get: ReturnType<typeof vi.fn> };
     beforeEach(() => {
       api.settings.mockResolvedValue(CLOUD);
       URL.createObjectURL = vi.fn(() => 'blob:made');
       URL.revokeObjectURL = vi.fn();
+      supported = vi.spyOn(DeviceTransform, 'supported').mockReturnValue(true);
+      engine = { get: vi.fn().mockResolvedValue({}) };
+      TestBed.overrideProvider(PreviewEngine, { useValue: engine });
     });
+    afterEach(() => supported.mockRestore());
 
     it('filters on this device, and keeps the result only when asked', async () => {
       device.run.mockResolvedValue(made);
       api.import.mockImplementation(async (p: Omit<Photo, '_id'>) => ({ ...p, _id: 'kept' }));
       await create();
-      // jsdom has no WebGPU, so the page says it's needed (the device is faked).
       expect(el.querySelector('.device-info')?.textContent).toContain(
-        'needs a browser with WebGPU',
+        "Filters run at full size on this device's own GPU",
       );
       editor.source.set('data:image/png;base64,BB==');
       editor.setFilter(0, 'invert');
@@ -638,6 +647,22 @@ describe('Editor', () => {
       });
       expect(api.import).not.toHaveBeenCalled();
       expect(editor.photos()[0]._id).toBe('local-1');
+    });
+
+    it("says what's needed when the browser has the APIs but its GPU won't start", async () => {
+      engine.get.mockResolvedValue(null);
+      await create();
+      // Checked once the page is idle.
+      await vi.waitFor(() => expect(editor.deviceSupported()).toBe(false));
+      await fixture.whenStable();
+      expect(el.querySelector('.device-info')?.textContent).toContain(
+        'needs a browser with WebGPU',
+      );
+      editor.source.set('data:image/png;base64,BB==');
+      editor.setFilter(0, 'invert');
+      await editor.transform();
+      expect(device.run).not.toHaveBeenCalled();
+      expect(editor.errors()[0]).toContain('needs a browser with WebGPU');
     });
 
     it('says what browser is needed without WebGPU, and nothing when cancelled', async () => {

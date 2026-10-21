@@ -65,6 +65,13 @@
   outline-offset: -3px;
 }
 
+// The file input is hidden behind its labels: with a photo, the Change one
+// shows where the focus is.
+.stage:has(#file:focus-visible) figcaption label[for='file'] {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .dropzone-title {
   font-size: 1.25rem;
   font-weight: 600;

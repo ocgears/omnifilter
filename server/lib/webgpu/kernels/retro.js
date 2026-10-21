@@ -233,5 +233,18 @@ fn halftone_ink(p: vec2f, angle: f32, cell: f32, channel: i32, w: i32, h: i32) -
   let r = ${DISTORT_SAMPLE}(c + d * (1.0 + amount), width, height).x;
   let b = ${DISTORT_SAMPLE}(c + d * (1.0 - amount), width, height).z;
   dst[i] = from_rgba(vec4f(r, g.y, b, g.w));`
+  },
+
+  mirror: {
+    args: 'src:in dst:out width:i32 height:i32 flip_x:i32 flip_y:i32 mode:i32',
+    body: `
+  var s = vec2i(x, y);
+  let r = vec2i(width - 1 - x, height - 1 - y);
+  var m = r;
+  if (mode == 1) { m = min(s, r); }
+  if (mode == 2) { m = max(s, r); }
+  if (flip_x != 0) { s.x = m.x; }
+  if (flip_y != 0) { s.y = m.y; }
+  dst[i] = src[s.y * width + s.x];`
   }
 };
