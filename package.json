@@ -21,7 +21,7 @@
     "express": "^5.2.1",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^9.10.4",
+    "mongoose": "^9.11.0",
     "node-addon-api": "^8.3.0",
     "sharp": "^0.35.5"
   },
