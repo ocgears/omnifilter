@@ -34,7 +34,7 @@ Assumptions baked in that won't hold everywhere:
 | Windows, NVIDIA / AMD / Intel | Vendor drivers include OpenCL | Phase 1 (build on Windows) |
 | Windows on Arm | Microsoft's OpenCL-on-D3D12 layer (OpenCLOn12) | Phase 1, then WebGPU |
 | WSL2 | Intel GPUs have OpenCL in WSL2 ([Phoronix](https://www.phoronix.com/news/Intel-oneAPI-L0-WSL2)); NVIDIA provides CUDA there, not OpenCL | Falls back to CPU (pocl) until the WebGPU backend |
-| Docker on a Linux GPU host | Possible, but needs the vendor's OpenCL driver passed in | Phase 2 |
+| Docker on a Linux GPU host | Possible, but needs the vendor's OpenCL driver passed in | Phase 2, or the Vulkan image (Phase 3) |
 | Docker on macOS / Windows | No GPU access; pocl on the CPU (current image) | Keep; it's the "works anywhere" baseline |
 | Cloud GPU instance (NVIDIA T4/L4/A10 etc.) | NVIDIA OpenCL | Phase 2's NVIDIA image |
 | No GPU | pocl, or Apple's CPU device | Keep, fix the work-group bug (Phase 0) |
@@ -107,7 +107,9 @@ OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it 
 * WebGPU doesn't report how much memory a GPU has. Plans are fitted to four times the largest buffer it allows; set `OMNIFILTER_GPU_MEMORY_MB` for the real figure. A plan that still runs out of memory fails that request with a 400, as a too-large image does on OpenCL.
 * Neural styles still run on ONNX Runtime (Phase 5).
 
-**Still to do:** a Docker image with Vulkan (Mesa for AMD and Intel GPUs; NVIDIA's container toolkit for NVIDIA), timed band heights, and trying it on Apple Silicon (macOS 26), Windows on Arm and WSL2, where it should be most useful. Make it the default where OpenCL is missing once it has run for a while.
+**Docker:** `docker/vulkan.Dockerfile` runs the API on this backend, on lavapipe by default, and on NVIDIA (the container toolkit) or AMD and Intel (Mesa, `/dev/dri`) GPUs when they're passed in; CI builds it and filters a photo. Only lavapipe has been tried so far. See [DOCKER.md](DOCKER.md#the-vulkan-image).
+
+**Still to do:** trying the Vulkan image on a real GPU, timed band heights, and trying it on Apple Silicon (macOS 26), Windows on Arm and WSL2, where it should be most useful. Make it the default where OpenCL is missing once it has run for a while.
 
 **Cheaper alternatives, still worth knowing:**
 * **clvk**, a conformant OpenCL 3.0 built on Vulkan ([Vulkan docs](https://docs.vulkan.org/tutorial/latest/Advanced_Vulkan_Compute/05_OpenCL_on_Vulkan/01_introduction.html)), gives OpenCL on machines that only have Vulkan drivers without changing any Omnifilter code. Users install it as an OpenCL driver. Running it on macOS through MoltenVK is unproven.
