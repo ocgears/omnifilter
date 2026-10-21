@@ -310,8 +310,10 @@ jobs:
       - run: npm ci
         working-directory: client
       - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # Under a virtual display: headless Firefox has WebGL only with one
+      # (Mesa's software GL through it).
       - name: End-to-end tests
-        run: bash .github/run-and-annotate.sh npx playwright test --project ${{ matrix.project }}
+        run: xvfb-run -a bash .github/run-and-annotate.sh npx playwright test --project ${{ matrix.project }}
       - name: Keep the report and traces of failed tests
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
