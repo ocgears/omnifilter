@@ -850,7 +850,8 @@ export class Editor {
         this.addError(
           err.noGpu
             ? "This server filters photos on your own device's GPU, which needs a browser " +
-                'with WebGPU: Chrome or Edge, Safari 26 or later, or Chrome on most Android phones.'
+                'with WebGPU or WebGL2, as almost every browser has; it may be turned off in ' +
+                "this one's settings."
             : err.message,
         );
       }

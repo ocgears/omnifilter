@@ -105,17 +105,29 @@ async function expectNoSidewaysScroll(page) {
 }
 
 // The red channel at the left edge of an element's screenshot, halfway down.
+// A canvas or image with object-fit: contain shows the picture letterboxed
+// when the element's shape differs from it (on an iPhone-sized screen, say),
+// so this reads just inside the picture's own left edge.
 async function leftEdgeRed(locator) {
+  const inset = await locator.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const w = el.width || el.naturalWidth;
+    const h = el.height || el.naturalHeight;
+    if (!w || !h || getComputedStyle(el).objectFit !== 'contain') return 0;
+    return Math.max(0, (box.width - Math.min(box.width, box.height * w / h)) / 2 / box.width);
+  });
   const png = await locator.screenshot();
   const image = sharp(png);
-  const { height } = await image.metadata();
-  const { data } = await image.extract({ left: 2, top: Math.floor(height / 2), width: 2, height: 2 })
+  const { width, height } = await image.metadata();
+  const left = Math.ceil(inset * width) + 2;
+  const { data } = await image.extract({ left: left, top: Math.floor(height / 2), width: 2, height: 2 })
     .raw().toBuffer({ resolveWithObject: true });
   return data[0];
 }
 
-// Whether the browser has WebGPU for the live preview (the built app says).
-async function hasWebGpu(page) {
+// Whether the browser has a GPU engine (WebGPU, or WebGL2 without it) for
+// the live preview and full-size filtering (the built app says).
+async function hasGpu(page) {
   await page.waitForFunction(() => window.omnifilterGpu);
   return page.evaluate(() => window.omnifilterGpu.available());
 }
@@ -135,6 +147,6 @@ async function expectAccessible(page, where) {
 }
 
 module.exports = {
-  setUp, notice, gradientJpeg, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasWebGpu,
+  setUp, notice, gradientJpeg, choosePhoto, photos, expectNoSidewaysScroll, leftEdgeRed, hasGpu,
   expectAccessible
 };
