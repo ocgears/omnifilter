@@ -124,9 +124,13 @@ export class Editor {
     const s = this.settings();
     if (!s) return false;
     const where = this.signedIn() ? s.processing : s.guests;
-    return where === 'device' || (where === 'device-first' && DeviceTransform.supported());
+    return where === 'device' || (where === 'device-first' && this.deviceSupported());
   });
-  readonly deviceSupported = DeviceTransform.supported();
+  // Whether this browser can filter on its GPU: whether it has the APIs at
+  // first, then whether the page's GPU engine really starts (a browser can
+  // have WebGL2 but no context to give, its GPU blocklisted, or headless).
+  readonly deviceSupported = signal(DeviceTransform.supported());
+  private deviceChecked = false;
   // How many photos may be kept, or null for any number.
   readonly storageLimit = computed(() => this.settings()?.maxStoredPhotos ?? null);
   // How many photos are kept: those shown, and the server's not loaded yet.
@@ -237,6 +241,23 @@ export class Editor {
     // the draft's photo but keeps its filters.
     this.restoreDraft().finally(() => this.useSharedPhoto());
     afterNextRender(() => this.trackStickyParts());
+    // Only where the device may do the filtering (elsewhere the engine waits
+    // until there's a photo to preview), and once the page is idle.
+    effect(() => {
+      const s = this.settings();
+      const where = s && (this.signedIn() ? s.processing : s.guests);
+      if (this.deviceChecked || !this.deviceSupported() || !where?.startsWith('device')) return;
+      this.deviceChecked = true;
+      const idle = window.requestIdleCallback ?? ((run: () => void) => setTimeout(run, 500));
+      idle(() =>
+        this.previewEngine.get().then(
+          (engine) => {
+            if (!engine) this.deviceSupported.set(false);
+          },
+          () => this.deviceSupported.set(false),
+        ),
+      );
+    });
     effect(() => {
       const source = this.source();
       const presets = this.presets();
@@ -828,7 +849,13 @@ export class Editor {
       this.addError('Choose a filter first.');
       return;
     }
-    if (this.onDevice()) return this.transformOnDevice(source);
+    if (this.onDevice()) {
+      if (!this.deviceSupported()) {
+        this.addError(NO_DEVICE_GPU);
+        return;
+      }
+      return this.transformOnDevice(source);
+    }
     if (body.tOption === '') {
       this.messages.update((list) => [...list, 'No filter chosen, so the original was saved.']);
     }
@@ -892,13 +919,7 @@ export class Editor {
       if (!(err instanceof DeviceTransformError)) {
         this.addError('Could not filter the photo on this device.');
       } else if (err.message !== 'Cancelled.') {
-        this.addError(
-          err.noGpu
-            ? "This server filters photos on your own device's GPU, which needs a browser " +
-                'with WebGPU or WebGL2, as almost every browser has; it may be turned off in ' +
-                "this one's settings."
-            : err.message,
-        );
+        this.addError(err.noGpu ? NO_DEVICE_GPU : err.message);
       }
     } finally {
       this.transforming.set(false);
@@ -1011,6 +1032,10 @@ export class Editor {
     }
   }
 }
+
+const NO_DEVICE_GPU =
+  "This server filters photos on your own device's GPU, which needs a browser with WebGPU or " +
+  "WebGL2, as almost every browser has; it may be turned off in this one's settings.";
 
 // What went wrong, for the page: the server's message, or the browser's
 // when it couldn't keep a photo, or the fallback.

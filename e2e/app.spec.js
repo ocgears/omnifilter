@@ -101,7 +101,8 @@ test('works with the keyboard, keeping the focus in place', async ({ page }) => 
   await page.keyboard.press('Enter');
   await expect(card.getByRole('button', { name: 'Delete' })).toBeFocused();
   await page.keyboard.press('Enter');
-  await press(card.getByRole('button', { name: 'Delete' }));
+  await expect(card.getByRole('button', { name: 'Keep' })).toBeFocused();
+  await press(card.locator('button.danger'));
   await expect(page.locator('.photo-card')).toHaveCount(0);
   await expect(page.locator('#transform')).toBeFocused();
 });

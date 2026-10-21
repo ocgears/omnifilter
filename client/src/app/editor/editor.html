@@ -384,7 +384,7 @@
       }
       @if (onDevice()) {
         <p class="device-info">
-          @if (deviceSupported) {
+          @if (deviceSupported()) {
             Filters run at full size on this device's own GPU
           } @else {
             This server filters on your device's GPU, which needs a browser with WebGPU or WebGL2
