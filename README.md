@@ -111,7 +111,7 @@ The GPU tests compare every filter's output against a plain JavaScript implement
 
 # Filters
 
-55 filters, all running on the GPU except the neural styles. Pick one in the web page and adjust its settings; `GET /filters` lists them with their parameters.
+56 filters, all running on the GPU except the neural styles. Pick one in the web page and adjust its settings; `GET /filters` lists them with their parameters.
 
 | Group | Filters | What's interesting on the GPU |
 |---|---|---|
@@ -121,7 +121,7 @@ The GPU tests compare every filter's output against a plain JavaScript implement
 | Looks | Teal & orange, warm film, bleach bypass, cross process, faded matte, vignette, plus any `.cube` LUT in `server/luts/` | 3D lookup tables in a 3D texture, interpolated by the texture hardware |
 | Stylize | Bilateral smoothing, cartoon, Kuwahara, oil paint (anisotropic Kuwahara), median, crosshatch | Heavy per-pixel maths; median uses a radix select instead of sorting |
 | Retro | Pixelate, ordered dither (incl. Game Boy palette), CMYK halftone, ASCII art | Bayer dithering is GPU-friendly where Floyd-Steinberg isn't |
-| Distort | Swirl, pinch/bulge, fisheye, ripple, lens distortion, chromatic aberration | Texture sampling with hardware bilinear interpolation |
+| Distort | Swirl, pinch/bulge, fisheye, ripple, lens distortion, chromatic aberration, mirror | Texture sampling with hardware bilinear interpolation; mirror copies pixels exactly |
 | Auto adjust | Auto levels/colour, histogram equalization, CLAHE (local contrast) | Atomic histograms in local memory, parallel reduction and prefix sum |
 | Generative | Stained glass, reaction-diffusion | Jump Flooding Algorithm for Voronoi cells; thousands of simulation steps |
 | Neural style | Mosaic, Candy, Rain princess, Udnie, Pointillism | Pretrained networks run with ONNX Runtime (see below) |

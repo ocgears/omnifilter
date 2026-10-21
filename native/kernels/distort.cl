@@ -134,3 +134,24 @@ __kernel void chromatic_aberration(read_only image2d_t src,
   const float b = sample_at(src, c + d * (1.0f - amount)).z;
   dst[i] = from_rgba((float4)(r, g.y, b, g.w));
 }
+
+// Mirrors the image left to right (flip_x) and/or top to bottom (flip_y).
+// mode 0 flips the whole image; 1 keeps the left (top) half and reflects it
+// onto the other; 2 does that with the right (bottom) half. Pixels are copied
+// as they are, with no resampling.
+__kernel void mirror(__global const uchar4 *src,
+                     __global uchar4 *dst,
+                     const int width,
+                     const int height,
+                     const int flip_x,
+                     const int flip_y,
+                     const int mode)
+{
+  GUARD;
+  int2 s = (int2)(x, y);
+  const int2 r = (int2)(width - 1 - x, height - 1 - y);
+  const int2 m = mode == 1 ? min(s, r) : (mode == 2 ? max(s, r) : r);
+  if (flip_x) s.x = m.x;
+  if (flip_y) s.y = m.y;
+  dst[i] = src[s.y * width + s.x];
+}

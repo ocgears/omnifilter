@@ -170,6 +170,18 @@ exports.pixelate = (src, width, height, block) =>
     return [sum[0] / sum[3], sum[1] / sum[3], sum[2] / sum[3], sum[3] / n].map((v) => clamp(Math.round(v), 0, 255));
   });
 
+// Each pixel copied from its mirrored position (mirror in distort.cl).
+exports.mirror = (src, width, height, flipX, flipY, mode) => {
+  const pick = (v, size) => {
+    const r = size - 1 - v;
+    return [r, Math.min(v, r), Math.max(v, r)][mode];
+  };
+  return map(src, width, height, (x, y) => {
+    const o = ((flipY ? pick(y, height) : y) * width + (flipX ? pick(x, width) : x)) * 4;
+    return src.subarray(o, o + 4);
+  });
+};
+
 const lumaBin = (src, o) =>
   clamp(Math.floor(0.2126 * src[o] + 0.7152 * src[o + 1] + 0.0722 * src[o + 2] + 0.5), 0, 255);
 

@@ -8,7 +8,7 @@ Omnifilter was built and tested on one machine: a 2015 MacBook Pro with an Intel
 
 The design already helps here. Filters don't talk to OpenCL directly. They build a **plan**: a list of named buffers and kernel passes (`server/lib/filters/plan.js`), which the native addon runs (`native/omnifilter.cpp`). The plan format says nothing OpenCL-specific beyond kernel names and argument types, so a second backend can run the same plans.
 
-The kernels: 56 kernels in about 1,800 lines of OpenCL C 1.2 (`native/kernels/*.cl`). 14 of them read images (textures), the histogram and Voronoi kernels use atomics, and none use double precision.
+The kernels: 57 kernels in about 1,800 lines of OpenCL C 1.2 (`native/kernels/*.cl`). 14 of them read images (textures), the histogram and Voronoi kernels use atomics, and none use double precision.
 
 Assumptions baked in that won't hold everywhere:
 
@@ -91,7 +91,7 @@ Each variant keeps pocl as a fallback (the default `OMNIFILTER_DEVICE=auto` pref
 
 OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it under WSL2. A second backend makes Omnifilter independent of any one vendor's OpenCL.
 
-**Why WebGPU rather than Metal, CUDA or Vulkan directly.** One WebGPU port runs on Metal (Apple), Vulkan (Linux, Android) and Direct3D 12 (Windows), and the same shader code runs in the browser (Phase 4). Writing Metal, CUDA and Vulkan backends separately would mean three ports of the 56 kernels.
+**Why WebGPU rather than Metal, CUDA or Vulkan directly.** One WebGPU port runs on Metal (Apple), Vulkan (Linux, Android) and Direct3D 12 (Windows), and the same shader code runs in the browser (Phase 4). Writing Metal, CUDA and Vulkan backends separately would mean three ports of the 57 kernels.
 
 **Done (October 2026), as an opt-in: `OMNIFILTER_BACKEND=webgpu`.** Phase 4 had already written the kernels in WGSL, so the server now runs them too (Slang, the trial this plan first suggested, wasn't needed):
 
@@ -124,7 +124,7 @@ OpenCL's future is uneven. Apple has deprecated it, and NVIDIA doesn't offer it 
 
 What's done, in `client/src/gpu/` (plain TypeScript, no Angular) and `server/lib/webgpu/` (the parts the server's WebGPU backend shares, Phase 3):
 
-* **WGSL versions of all 56 kernels** (`server/lib/webgpu/kernels/`), one per OpenCL kernel and under the same name. Each is declared once with its argument list in the OpenCL order, and `kernel.js` generates its bindings, a uniform struct for the scalars and the `GUARD` macros, so the bodies read like the OpenCL ones. Images (`image2d_t`) are plain buffers with nearest and bilinear helpers, so no textures or samplers are needed; work-group kernels (histograms, scans) use workgroup memory and atomics. Rounding to bytes matches `convert_uchar4_sat_rte`.
+* **WGSL versions of all 57 kernels** (`server/lib/webgpu/kernels/`), one per OpenCL kernel and under the same name. Each is declared once with its argument list in the OpenCL order, and `kernel.js` generates its bindings, a uniform struct for the scalars and the `GUARD` macros, so the bodies read like the OpenCL ones. Images (`image2d_t`) are plain buffers with nearest and bilinear helpers, so no textures or samplers are needed; work-group kernels (histograms, scans) use workgroup memory and atomics. Rounding to bytes matches `convert_uchar4_sat_rte`.
 * **A plan engine** (`server/lib/webgpu/engine.js`, which `client/src/gpu/engine.ts` extends with drawing and camera frames) for the format `native/omnifilter.cpp` runs: buffers, passes, `buf`/`img`/`img3d`/`data`/`int`/`float` arguments, global sizes.
 * **The same plans as the server.** The client bundles `server/lib/filters` (every module except the neural styles and `.cube` loading, which `lut_files.js` and `cube_looks.js` keep server-side), so the preview runs exactly the server's kernels, weights and sizes. Filters with a working size run at the size the server would use for the full photo.
 * **Stacks** (`stack.ts`) with blending, keeping each layer's result so a change reruns only from that layer.

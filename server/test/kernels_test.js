@@ -166,6 +166,17 @@ describe('OpenCL kernels match the reference implementations', function() {
     expect(ref.compare(out, white).max).to.equal(0);
   });
 
+  it('mirror (flips and reflected halves, copied exactly)', async () => {
+    const directions = { horizontal: [1, 0], vertical: [0, 1], both: [1, 1] };
+    for (const direction of Object.keys(directions)) {
+      for (const [mode, n] of [['flip', 0], ['first', 1], ['second', 2]]) {
+        const out = await gpu.apply('mirror', src, W, H, { direction: direction, mode: mode });
+        const [fx, fy] = directions[direction];
+        expect(ref.compare(out, ref.mirror(src, W, H, fx, fy, n)).max, direction + ' ' + mode).to.equal(0);
+      }
+    }
+  });
+
   it('distortions at zero strength leave the image unchanged (texture coordinates)', async () => {
     const cases = [['swirl', { angle: 0 }], ['pinch_bulge', { amount: 0 }], ['lens', { amount: 0 }],
       ['chromatic_aberration', { amount: 0 }]];

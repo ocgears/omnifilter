@@ -5,6 +5,10 @@ const { Plan, int, float, range, choice } = P;
 
 const GROUP = 'Distort';
 
+// The mirror kernel's modes, in its order.
+const MIRROR_MODES = [['flip', 'Flip the whole photo'], ['first', 'Reflect the left / top half'],
+  ['second', 'Reflect the right / bottom half']];
+
 module.exports = [
   {
     name: 'swirl',
@@ -66,5 +70,18 @@ module.exports = [
     description: 'Colour fringes towards the edges, as red and blue focus differently.',
     params: [range('amount', 'Amount (%)', 0, 3, 0.6, 0.05)],
     plan: (w, h, p) => new Plan(w, h).sample('chromatic_aberration', float(p.amount / 100))
+  },
+  {
+    name: 'mirror',
+    label: 'Mirror',
+    group: GROUP,
+    description: 'Flips the photo, or reflects one half of it onto the other.',
+    params: [
+      choice('direction', 'Direction', [['horizontal', 'Left and right'], ['vertical', 'Top and bottom'],
+        ['both', 'Both']]),
+      choice('mode', 'Mode', MIRROR_MODES)
+    ],
+    plan: (w, h, p) => new Plan(w, h).step('mirror', int(p.direction === 'vertical' ? 0 : 1),
+      int(p.direction === 'horizontal' ? 0 : 1), int(MIRROR_MODES.findIndex((m) => m[0] === p.mode)))
   }
 ];
