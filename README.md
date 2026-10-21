@@ -1,5 +1,5 @@
 # omnifilter        [![test](https://github.com/ocgears/omnifilter/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/ocgears/omnifilter/actions/workflows/test.yml?query=branch%3Amaster)
-###### An image processing library designed on the theory of parallel processing to apply filters to photos extremely quickly and efficiently.
+###### Photo filters that run on the GPU: live in the browser as you change them, and at full size on the server or on the visitor's own device.
 
 ## Contents
 +   [Overview](https://github.com/ocgears/omnifilter#overview)
@@ -11,9 +11,9 @@
 +   [License](https://github.com/ocgears/omnifilter#license)
 
 # Overview
-The Omnifilter app is designed to enable the work of filtering images provided by a user on a multitude of server environments. As node.js is fantastic for making web apps, OpenCL is a way to harness the fantastic power of GPUs and multi-core CPUs. It runs on macOS out of the box, and on Linux with an OpenCL driver installed.
+OmniFilter puts 56 filters and preset looks on your photos with a GPU. In the web page, the photo shows the filters live as you change them, on the device's own GPU (WebGPU, or WebGL2 in browsers without it). The full-size photo is made by the server's GPU, through OpenCL from Node.js (or WebGPU, with Dawn), or, on the hosted demo, by the visitor's own GPU in a Web Worker. Every one of them runs the same filter plans, and the tests check that they give the same pixels.
 
-Our application is still under development, thank you for your patience.
+The server runs on macOS out of the box, and on Linux and Windows with an OpenCL driver installed.
 
 # Usage
 
@@ -100,11 +100,11 @@ Any Docker runtime works (Docker Desktop, OrbStack, [Colima](https://github.com/
 ```
 npm test             # server tests (mocha), starts MongoDB from ./db if it isn't running
 npm run test:client  # web client unit tests (Vitest, in jsdom)
-npm run test:e2e     # the whole app in browsers (Playwright), desktop, Android and iPhone sized: sign up, filter photos, presets, touch, delete, sign out
+npm run test:e2e     # the whole app in browsers (Playwright): Chrome, Firefox and WebKit at desktop size, Android and iPhone sized: sign up, filter photos, presets, touch, keyboard, delete, sign out
 ```
 `docker/test.sh` runs all of them in the CI image (`docker/ci.Dockerfile`: Node, Playwright's browsers, pocl, lavapipe and MongoDB), on any machine with Docker, including the iPhone project on macOS 12; `docker/test.sh --gpu` hands it an NVIDIA GPU. See [docs/DOCKER.md](docs/DOCKER.md).
 
-The end-to-end tests run as a desktop browser, as an Android phone (Chromium at Pixel 7 size, with touch) and as an iPhone (WebKit, Safari's engine, at iPhone 15 size). `e2e/mobile.spec.js` adds, on the phones: real touch gestures (swiping the looks, dragging sliders, holding to compare), every common phone width from 320 px, upright and sideways, with no sideways scrolling and every button at least 44 px; no control hidden under the sticky photo or Transform bar when it has focus; axe's WCAG 2.2 checks; and a phone slowed to a quarter of the speed on slow 4G, whose timings go on the CI run's summary page. `e2e/gpu.spec.js` also runs every filter, preset and blend mode both with the server's OpenCL code and with the browser's WebGPU code and compares the results pixel by pixel (on Linux, Chromium uses SwiftShader, its software GPU). They build the client, start the API on port 3930 serving it, and use the `omnifilter_e2e` database, which they empty first. Install the browsers once with `npx playwright install chromium webkit`; on macOS 12, which Playwright's browsers don't support, they use the installed Google Chrome and skip the iPhone.
+The end-to-end tests run as a desktop browser, as an Android phone (Chromium at Pixel 7 size, with touch), as an iPhone (WebKit, Safari's engine, at iPhone 15 size), and in desktop Firefox and WebKit, which on a machine without a GPU have no WebGPU and so test the WebGL2 engine. One test uses the app with the keyboard alone, checking that the focus never drops back to the top of the page. `e2e/mobile.spec.js` adds, on the phones: real touch gestures (swiping the looks, dragging sliders, holding to compare), every common phone width from 320 px, upright and sideways, with no sideways scrolling and every button at least 44 px; no control hidden under the sticky photo or Transform bar when it has focus; axe's WCAG 2.2 checks; and a phone slowed to a quarter of the speed on slow 4G, whose timings go on the CI run's summary page. `e2e/gpu.spec.js` also runs every filter, preset and blend mode both with the server's OpenCL code and with the browser's WebGPU code and compares the results pixel by pixel (on Linux, Chromium uses SwiftShader, its software GPU). They build the client, start the API on port 3930 serving it, and use the `omnifilter_e2e` database, which they empty first. Install the browsers once with `npx playwright install chromium webkit firefox`; on macOS 12, which Playwright's browsers don't support, they use the installed Google Chrome and skip the iPhone, Firefox and WebKit (`docker/test.sh` runs those).
 
 CI also runs Lighthouse's mobile audit on the production build (Lighthouse CI, pinned with its own lockfile in `.github/lighthouse/`: `npm ci --prefix .github/lighthouse`, then `.github/lighthouse/node_modules/.bin/lhci autorun`, with the budgets in `lighthouserc.js`). Every night, smoke tests run in Chrome in the Android emulator (`e2e/android/`) and Mobile Safari in the iOS Simulator (`e2e/ios/safari.js`). [docs/MOBILE_TESTING.md](docs/MOBILE_TESTING.md) says what's tested where, and what's still open.
 The GPU tests compare every filter's output against a plain JavaScript implementation of the same convolution, pixel by pixel.

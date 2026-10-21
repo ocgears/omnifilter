@@ -1,9 +1,9 @@
 @if (!signedIn()) {
   <aside class="banner guest" aria-label="Guest mode">
     <p>
-      You're trying OmniFilter as a guest. The photos you make stay in this browser;
-      <a routerLink="/signup">create an account</a> to keep them, or
-      <a routerLink="/signin">sign in</a>.
+      You're trying OmniFilter as a guest: pick a photo and a look, and see it live on this device's
+      GPU. Your photos stay in this browser; <a routerLink="/signup">create an account</a> to keep
+      them online, or <a routerLink="/signin">sign in</a>.
     </p>
   </aside>
 } @else if (waitingPhotos().length; as count) {

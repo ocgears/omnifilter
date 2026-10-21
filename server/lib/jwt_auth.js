@@ -32,6 +32,6 @@ module.exports = exports = (req, res, next) => {
     next();
   }, (err) => {
     console.log('find error in jwt error' + err);
-    return res.status(500).json({ msg: 'DB error' });
+    return res.status(500).json({ msg: 'Something went wrong on the server. Try again in a moment.' });
   });
 };

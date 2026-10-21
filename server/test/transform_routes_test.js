@@ -387,7 +387,7 @@ describe('POST /newcontent with a transformation', function() {
   [
     [{ code: 'UNSUPPORTED', status: 400, message: 'A 120x80 image is too large for this filter on X' }, 400, /too large/],
     [{ code: 'NO_DEVICE', message: 'No OpenCL devices found' }, 503, /No (OpenCL|WebGPU) device/],
-    [{ message: 'driver exploded' }, 500, /^transform failure$/]
+    [{ message: 'driver exploded' }, 500, /^The server couldn't run that filter/]
   ].forEach((c) => {
     it('answers a ' + (c[0].code || 'filter') + ' error with a ' + c[1], () => {
       const apply = gpuFilters.apply;
