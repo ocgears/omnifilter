@@ -374,6 +374,10 @@ jobs:
         image: mongo:8.0
         ports:
           - 27017:27017
+        # The job's steps start once MongoDB answers.
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1}).ok'"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -384,6 +388,19 @@ jobs:
         run: |
           docker images omnifilter-vulkan --format '::notice title=Vulkan image::{{.Size}}'
           docker run --rm omnifilter-vulkan npm run devices
+      # MongoDB has sometimes gone away while the image builds (the server
+      # then can't connect at all); if so, say how it ended.
+      - name: MongoDB answers
+        env:
+          MONGO: ${{ job.services.mongo.id }}
+        run: |
+          for i in $(seq 1 15); do
+            docker exec "$MONGO" mongosh --quiet --eval 'db.runCommand({ping: 1}).ok' > /dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          state=$(docker inspect -f 'status {{.State.Status}}, exit code {{.State.ExitCode}}, OOM-killed {{.State.OOMKilled}}' "$MONGO")
+          echo "::error title=MongoDB is down::$state. $(docker logs --tail 8 "$MONGO" 2>&1 | tr '\n' ' ' | cut -c1-1500)"
+          exit 1
       - name: It filters a photo
         run: |
           docker run -d --name app --network host \
@@ -415,12 +432,29 @@ jobs:
         image: mongo:8.0
         ports:
           - 27017:27017
+        # The job's steps start once MongoDB answers.
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1}).ok'"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build the image
         run: bash .github/run-and-annotate.sh docker build --progress=plain -f docker/cloud-run.Dockerfile -t omnifilter-cloud .
+      # MongoDB has sometimes gone away while the image builds (the server
+      # then can't connect at all); if so, say how it ended.
+      - name: MongoDB answers
+        env:
+          MONGO: ${{ job.services.mongo.id }}
+        run: |
+          for i in $(seq 1 15); do
+            docker exec "$MONGO" mongosh --quiet --eval 'db.runCommand({ping: 1}).ok' > /dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          state=$(docker inspect -f 'status {{.State.Status}}, exit code {{.State.ExitCode}}, OOM-killed {{.State.OOMKilled}}' "$MONGO")
+          echo "::error title=MongoDB is down::$state. $(docker logs --tail 8 "$MONGO" 2>&1 | tr '\n' ' ' | cut -c1-1500)"
+          exit 1
       - name: Start it
         run: |
           docker images omnifilter-cloud --format '::notice title=Cloud Run image::{{.Size}}'
