@@ -1,7 +1,8 @@
 // End-to-end tests (`npm run test:e2e`): a real browser drives the built
 // client, served by the API server itself, against a real database and the
-// OpenCL device: at desktop size, as an Android phone (Chromium) and as an
-// iPhone (WebKit, Safari's engine). See e2e/.
+// OpenCL device: at desktop size, as an Android phone (Chromium), as an
+// iPhone (WebKit, Safari's engine), and in desktop Firefox and WebKit. See
+// e2e/.
 const os = require('os');
 const { defineConfig, devices } = require('@playwright/test');
 
@@ -68,7 +69,23 @@ module.exports = defineConfig({
     // build, not iOS, so it catches WebKit's layout, storage and missing
     // features (it may have no WebGPU or camera), not iOS's own behaviour.
     // Playwright has no WebKit for macOS 12 or older.
-    ...(oldMac ? [] : [{ name: 'iphone', use: devices['iPhone 15'], testIgnore: /gpu\.spec/ }])
+    ...(oldMac ? [] : [{ name: 'iphone', use: devices['iPhone 15'], testIgnore: /gpu\.spec/ }]),
+    // Desktop Firefox and Safari's engine (WebKit's Linux build again, not
+    // macOS Safari). On a machine without a GPU they have no WebGPU, so they
+    // test the WebGL2 engine. Firefox's fake camera stands in for the
+    // Chromium one above. Neither runs on macOS 12 or older.
+    ...(oldMac ? [] : [
+      {
+        name: 'firefox',
+        use: Object.assign({}, devices['Desktop Firefox'], {
+          launchOptions: {
+            firefoxUserPrefs: { 'media.navigator.streams.fake': true, 'media.navigator.permission.disabled': true }
+          }
+        }),
+        testIgnore: /mobile\.spec/
+      },
+      { name: 'safari', use: devices['Desktop Safari'], testIgnore: /mobile\.spec/ }
+    ])
   ],
   webServer: [{
     // Builds the client into dist/ (installing its packages the first time),
