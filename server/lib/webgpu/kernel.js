@@ -204,4 +204,4 @@ ${spec.body}
   return { name, args, bindings, scalars, workgroup, source };
 }
 
-module.exports = { isWritable, parseArgs, makeKernel };
+module.exports = { isWritable, parseArgs, makeKernel, imageHelpers, floatImageHelpers, byteHelpers };

@@ -58,7 +58,7 @@ jobs:
       # Rusticl only lists drivers it's told to; llvmpipe is Mesa's CPU driver.
       RUSTICL_ENABLE: llvmpipe
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install the OpenCL loader, headers and ${{ matrix.opencl }}
@@ -66,7 +66,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev clinfo ${{ matrix.packages }}
           clinfo --list
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -102,7 +102,7 @@ jobs:
       OMNIFILTER_REQUIRE_WEBGPU: 1
       WEBGPU_VERSION: 0.6.2
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install pocl, and Vulkan with lavapipe
@@ -111,7 +111,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd \
             libvulkan1 mesa-vulkan-drivers vulkan-tools
           vulkaninfo --summary
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -142,10 +142,10 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -165,10 +165,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -194,10 +194,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -239,14 +239,14 @@ jobs:
       # Fail, rather than skip the WebGPU comparisons, if the browser has no WebGPU.
       E2E_REQUIRE_WEBGPU: 1
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install the OpenCL loader, headers and pocl
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -279,14 +279,14 @@ jobs:
       OMNIFILTER_DEVICE: pocl
       APP_SECRET: lighthouse-only-secret-not-for-production
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install the OpenCL loader, headers and pocl
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ocl-icd-opencl-dev pocl-opencl-icd
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm
@@ -323,7 +323,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build the image
@@ -351,7 +351,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Without the neural style models: their host (GitHub's LFS storage)
@@ -363,6 +363,65 @@ jobs:
       - name: The image has the production client, without source maps
         run: docker run --rm omnifilter sh -c 'test -s dist/index.html && ls dist/main-*.js && ! ls dist/*.map 2>/dev/null'
 
+  # The WebGPU image (docker/vulkan.Dockerfile) on lavapipe: it finds the
+  # adapter, starts beside a MongoDB, and filters a photo. The webgpu job
+  # above checks every filter on the same driver; this checks the image.
+  vulkan-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        # The job's steps start once MongoDB answers.
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1}).ok'"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the image
+        run: bash .github/run-and-annotate.sh docker build --progress=plain --build-arg FETCH_MODELS=false -f docker/vulkan.Dockerfile -t omnifilter-vulkan .
+      - name: The image finds a WebGPU adapter
+        run: |
+          docker images omnifilter-vulkan --format '::notice title=Vulkan image::{{.Size}}'
+          docker run --rm omnifilter-vulkan npm run devices
+      # MongoDB has sometimes gone away while the image builds (the server
+      # then can't connect at all); if so, say how it ended.
+      - name: MongoDB answers
+        env:
+          MONGO: ${{ job.services.mongo.id }}
+        run: |
+          for i in $(seq 1 15); do
+            docker exec "$MONGO" mongosh --quiet --eval 'db.runCommand({ping: 1}).ok' > /dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          state=$(docker inspect -f 'status {{.State.Status}}, exit code {{.State.ExitCode}}, OOM-killed {{.State.OOMKilled}}' "$MONGO")
+          echo "::error title=MongoDB is down::$state. $(docker logs --tail 8 "$MONGO" 2>&1 | tr '\n' ' ' | cut -c1-1500)"
+          exit 1
+      - name: It filters a photo
+        run: |
+          docker run -d --name app --network host \
+            -e MONGOLAB_URI=mongodb://localhost/omnifilter_vulkan -e APP_SECRET=ci-only-secret-not-for-production-use \
+            omnifilter-vulkan
+          for i in $(seq 1 31); do
+            if [ "$i" = 31 ]; then
+              echo "::error title=Not healthy::$(curl -sS localhost:3000/health 2>&1) $(docker logs app 2>&1 | tail -5 | tr '\n' ' ')"
+              exit 1
+            fi
+            curl -fsS localhost:3000/health && break; sleep 2
+          done
+          curl -fsS localhost:3000/device | tee /dev/stderr | grep -q '"platform":"WebGPU (Dawn)"'
+          curl -fsS -o out.json -w 'bilateral: %{time_total} s\n' -X POST localhost:3000/transform \
+            -H 'Content-Type: image/jpeg' -H 'Omnifilter-Recipe: {"tOption":"bilateral"}' \
+            --data-binary @client/public/images/samples/earth-apollo-17.jpg
+          grep -q '"content":"data:image/jpeg;base64,' out.json
+      - name: The server's log
+        if: ${{ !cancelled() }}
+        run: docker logs app
+
   # The hosted demo's image (docker/cloud-run.Dockerfile), run as Cloud Run
   # runs it, beside a MongoDB, with the deploy's smoke test against it.
   cloud-run:
@@ -370,15 +429,32 @@ jobs:
     timeout-minutes: 20
     services:
       mongo:
-        image: mongo:8.0
+        image: mongo:7
         ports:
           - 27017:27017
+        # The job's steps start once MongoDB answers.
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1}).ok'"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build the image
         run: bash .github/run-and-annotate.sh docker build --progress=plain -f docker/cloud-run.Dockerfile -t omnifilter-cloud .
+      # MongoDB has sometimes gone away while the image builds (the server
+      # then can't connect at all); if so, say how it ended.
+      - name: MongoDB answers
+        env:
+          MONGO: ${{ job.services.mongo.id }}
+        run: |
+          for i in $(seq 1 15); do
+            docker exec "$MONGO" mongosh --quiet --eval 'db.runCommand({ping: 1}).ok' > /dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          state=$(docker inspect -f 'status {{.State.Status}}, exit code {{.State.ExitCode}}, OOM-killed {{.State.OOMKilled}}' "$MONGO")
+          echo "::error title=MongoDB is down::$state. $(docker logs --tail 8 "$MONGO" 2>&1 | tr '\n' ' ' | cut -c1-1500)"
+          exit 1
       - name: Start it
         run: |
           docker images omnifilter-cloud --format '::notice title=Cloud Run image::{{.Size}}'
@@ -387,7 +463,7 @@ jobs:
             omnifilter-cloud
           for i in $(seq 1 30); do curl -fsS localhost:8080/health && exit 0; sleep 2; done
           docker logs app; exit 1
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: npm

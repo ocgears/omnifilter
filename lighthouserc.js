@@ -40,7 +40,10 @@ module.exports = {
         'largest-contentful-paint': ['warn', { maxNumericValue: 4000, aggregationMethod: 'median-run' }],
         'total-blocking-time': ['warn', { maxNumericValue: 1200, aggregationMethod: 'median-run' }],
         'cumulative-layout-shift': ['error', { maxNumericValue: 0.1, aggregationMethod: 'median-run' }],
-        'uses-text-compression': 'error'
+        // The page arrives compressed, with no redirects, and quickly (Lighthouse
+        // 13's replacement for uses-text-compression; the smoke test checks the
+        // scripts are compressed too).
+        'document-latency-insight': ['error', { minScore: 1, aggregationMethod: 'median-run' }]
       }
     },
     upload: {

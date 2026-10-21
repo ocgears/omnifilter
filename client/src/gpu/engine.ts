@@ -7,6 +7,7 @@ import {
   EngineOptions,
   GpuImage,
 } from '../../../server/lib/webgpu/engine';
+import type { FilterEngine } from './engine-api';
 
 export type {
   GpuError,
@@ -70,7 +71,8 @@ const PRESENT = /* wgsl */ `
 }
 `;
 
-export class GpuEngine extends CoreEngine {
+export class GpuEngine extends CoreEngine implements FilterEngine {
+  readonly backend = 'WebGPU' as const;
   private presentPipeline: { pipeline: GPURenderPipeline; format: GPUTextureFormat } | null = null;
   private fromTexture: { pipeline: GPUComputePipeline; sampler: GPUSampler } | null = null;
   private fromExternal: { pipeline: GPUComputePipeline; sampler: GPUSampler } | null = null;

@@ -41,6 +41,7 @@ import {
   imageFrom,
   readPhoto,
 } from './photo-file';
+import { takeSharedPhoto } from './shared-photo';
 import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
 import { EditHistory, StackState } from './history';
@@ -226,7 +227,9 @@ export class Editor {
     });
     this.loadFilters();
     this.loadPhotos();
-    this.restoreDraft();
+    // A photo shared from another app comes after the draft, so it replaces
+    // the draft's photo but keeps its filters.
+    this.restoreDraft().finally(() => this.useSharedPhoto());
     afterNextRender(() => this.trackStickyParts());
     effect(() => {
       const source = this.source();
@@ -572,6 +575,11 @@ export class Editor {
     }
   }
 
+  private async useSharedPhoto(): Promise<void> {
+    const file = await takeSharedPhoto();
+    if (file) await this.usePhoto(file);
+  }
+
   onFilePicked(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.usePhoto(input.files?.[0]);
@@ -842,7 +850,8 @@ export class Editor {
         this.addError(
           err.noGpu
             ? "This server filters photos on your own device's GPU, which needs a browser " +
-                'with WebGPU: Chrome or Edge, Safari 26 or later, or Chrome on most Android phones.'
+                'with WebGPU or WebGL2, as almost every browser has; it may be turned off in ' +
+                "this one's settings."
             : err.message,
         );
       }
