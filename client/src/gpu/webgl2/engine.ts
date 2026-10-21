@@ -163,7 +163,12 @@ export class GlEngine implements FilterEngine {
         canvas = document.createElement('canvas');
         gl = canvas.getContext('webgl2', attributes);
       }
-      return gl && canvas ? new GlEngine(gl, canvas, options) : null;
+      if (!gl || !canvas) return null;
+      const engine = new GlEngine(gl, canvas, options);
+      if (await engine.works()) return engine;
+      console.warn('WebGL2 is here but gave a wrong result; not using it');
+      engine.destroy();
+      return null;
     } catch {
       return null;
     }
@@ -221,6 +226,27 @@ export class GlEngine implements FilterEngine {
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  }
+
+  // Whether a kernel draws and reads back as it should: a context can be
+  // there and still not work (a blocked or broken driver).
+  private async works(): Promise<boolean> {
+    const src = this.createImage(2, 2);
+    try {
+      const plan: NativePlan = {
+        buffers: [{ name: 'out', bytes: 16 }],
+        passes: [{ kernel: 'jfa_clear', args: [{ buf: 'out' }, { int: 2 }, { int: 2 }] }],
+        output: 'out',
+      };
+      const out = this.run(plan, src);
+      const bytes = await this.readPixels(out);
+      this.release(out);
+      return !this.glError() && bytes.every((b) => b === 255);
+    } catch {
+      return false;
+    } finally {
+      this.release(src);
+    }
   }
 
   // ---- kernels ----

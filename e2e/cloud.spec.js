@@ -16,17 +16,18 @@ const password = 'correct horse battery';
 
 const card = (page) => page.locator('of-result-card');
 
-// The red, green and blue of a pixel of the result card's image, and its
-// natural size, read back from the image itself.
+// The red, green and blue of a pixel of the result card's photo, and its
+// size, read from the file itself rather than the <img>, so it doesn't
+// depend on when the browser gets round to decoding that.
 const resultPixel = (page, x, y) => card(page).locator('img').evaluate(async (img, [px, py]) => {
-  await img.decode();
+  const bitmap = await createImageBitmap(await (await fetch(img.src)).blob());
   const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
   const g = canvas.getContext('2d');
-  g.drawImage(img, 0, 0);
+  g.drawImage(bitmap, 0, 0);
   const [r, gr, b] = g.getImageData(px, py, 1, 1).data;
-  return { size: img.naturalWidth + 'x' + img.naturalHeight, rgb: [r, gr, b] };
+  return { size: bitmap.width + 'x' + bitmap.height, rgb: [r, gr, b] };
 }, [x, y]);
 
 test('filters a guest\'s photo at full size on this device, and keeps it when asked', async ({ page }) => {
@@ -71,7 +72,6 @@ test('filters a guest\'s photo at full size on this device, and keeps it when as
 });
 
 test('filters with WebGL2 where there\'s no WebGPU', async ({ page }) => {
-  page.on('console', (m) => console.log('[DBG console]', m.type(), m.text().slice(0, 300)));
   // As if the browser had no WebGPU, for the page and its worker.
   await page.addInitScript(() => {
     window.OMNIFILTER_FORCE_WEBGL2 = true;
@@ -87,9 +87,6 @@ test('filters with WebGL2 where there\'s no WebGPU', async ({ page }) => {
   await expect(card(page).getByRole('status')).toContainText(/^3\.8 MP, made on .+ \(WebGL2\) in /,
     { timeout: 60000 });
   const { size, rgb } = await resultPixel(page, 2, 800);
-  console.log('[DBG]', await card(page).innerText(), JSON.stringify(rgb), JSON.stringify((await resultPixel(page, 1200, 800)).rgb),
-    JSON.stringify((await resultPixel(page, 2390, 10)).rgb), await card(page).locator('img').getAttribute('src'),
-    await page.evaluate(() => document.querySelector('of-result-card img').currentSrc));
   expect(size).toBe('2400x1600');
   expect(rgb[0]).toBeGreaterThan(200);
   await card(page).getByRole('button', { name: 'Discard' }).click();
