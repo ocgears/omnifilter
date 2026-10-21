@@ -88,6 +88,40 @@ time {
   flex: 1 1 auto;
 }
 
+// A shared photo's link, under its buttons.
+.link {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0 0.75rem 0.75rem;
+  font-size: 0.9375rem;
+}
+
+.link-note,
+.link-status {
+  color: var(--muted);
+}
+
+.link-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.link-actions > * {
+  flex: 1 1 auto;
+}
+
+.link-status {
+  margin: 0;
+  padding: 0 0.75rem 0.75rem;
+  font-size: 0.875rem;
+}
+
 .confirm-text {
   flex-basis: 100%;
   font-size: 0.9375rem;

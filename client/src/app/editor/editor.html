@@ -423,6 +423,8 @@
     [loadingMore]="loadingMore()"
     (remove)="deletePhoto($event)"
     (reuse)="useSettings($event)"
+    [sharing]="signedIn() && !!settings()?.sharing"
+    (shared)="setShared($event.photo, $event.shareId)"
     (more)="loadMorePhotos()"
   />
 }

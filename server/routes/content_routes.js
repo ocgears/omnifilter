@@ -12,6 +12,7 @@ const transformQueue = require(__dirname + '/../lib/transform_queue');
 const rateLimit = require(__dirname + '/../lib/rate_limit');
 const settings = require(__dirname + '/../lib/settings');
 const storageGuard = require(__dirname + '/../lib/storage_guard');
+const { EXTENSIONS, keptFile } = require(__dirname + '/../lib/kept_photo');
 
 // Photos arrive as data URLs, so /newcontent takes big bodies.
 const photoParser = bodyParser.json({ limit: 16000000 });
@@ -179,17 +180,9 @@ async function upgradeOldPhotos(userId) {
 // address is the same for anyone who signs in on this browser.
 contentRouter.get('/content/:id', jwtAuth, validId, async (req, res) => {
   const photo = await Content.findOne({ _id: req.params.id, user_id: req.user._id });
-  if (!photo) return res.status(404).json({ msg: 'No such photo' });
-  var bytes = photo.image;
-  var mime = photo.mime;
-  if (!bytes) {
-    const legacy = typeof photo.content === 'string' && /^data:(image\/[\w.+-]+);base64,/.exec(photo.content);
-    // Only the types photos were ever kept as: not, say, an SVG, which could
-    // carry a script.
-    if (!legacy || !EXTENSIONS[legacy[1]]) return res.status(404).json({ msg: 'No such photo' });
-    mime = legacy[1];
-    bytes = Buffer.from(photo.content.slice(legacy[0].length), 'base64');
-  }
+  const file = photo && keptFile(photo);
+  if (!file) return res.status(404).json({ msg: 'No such photo' });
+  const { bytes, mime } = file;
   res.set('Cache-Control', 'private, no-store');
   if (req.query.download !== undefined) {
     const asked = typeof req.query.download === 'string' ? req.query.download : '';
@@ -199,10 +192,6 @@ contentRouter.get('/content/:id', jwtAuth, validId, async (req, res) => {
   }
   res.type(mime).send(bytes);
 });
-
-const EXTENSIONS = {
-  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif'
-};
 
 // What a request asks to be applied: either one filter ({ tOption, params })
 // or a stack of them ({ stack: [{ tOption, params, amount, blend }, ...] }).
@@ -476,6 +465,7 @@ contentRouter.get('/settings', (req, res) => {
     guests: s.guests,
     maxStoredPhotos: s.maxStoredPhotos,
     keepMaxSide: s.keepMaxSide,
+    sharing: s.sharing,
     maxPixels: imageCodec.MAX_PIXELS,
     guestMaxPixels: Math.min(GUEST_MAX_PIXELS, imageCodec.MAX_PIXELS)
   });

@@ -69,7 +69,7 @@ if (process.env.TRUST_PROXY) {
 // which matters on a phone's connection), except those carrying photos,
 // which hardly shrink and would cost the server time. (The gallery's list
 // carries only small thumbnails, so it's compressed with the rest.)
-const PHOTO_ROUTES = /^\/(newcontent|transform|import|content)\b/;
+const PHOTO_ROUTES = /^\/(newcontent|transform|import|content)\b|^\/p\/[^/]+\/photo$/;
 const compression = require('compression');
 app.use(compression({
   filter: (req, res) => !PHOTO_ROUTES.test(req.path) && compression.filter(req, res)
@@ -106,10 +106,12 @@ app.use((req, res, next) => {
 const contentRouter = require(__dirname + '/routes/content_routes');
 const authRouter = require(__dirname + '/routes/auth_routes');
 const userRouter = require(__dirname + '/routes/user_routes');
+const shareRouter = require(__dirname + '/routes/share_routes');
 
 app.use('/', contentRouter);
 app.use('/', authRouter);
 app.use('/', userRouter);
+app.use('/', shareRouter);
 
 // Photos shared to the installed app from other apps go to its service
 // worker (client/public/sw.js). One that arrives here, before the service

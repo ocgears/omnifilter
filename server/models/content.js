@@ -23,7 +23,11 @@ var contentSchema = new mongoose.Schema({
   // Photos kept before there were thumbnails: the photo as a data URL, which
   // GET /getAll moves to the fields above.
   content: mongoose.Schema.Types.Mixed,
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  // Set while its owner shares it: the photo's public address is
+  // /p/<shareId> (routes/share_routes.js). Random, so it can't be guessed.
+  shareId: String,
+  sharedAt: Date
 }, {
   // Replies describe a photo; the photo itself only comes from /content/:id.
   toJSON: {
@@ -42,5 +46,7 @@ contentSchema.pre('validate', function() {
 // Each user's photos, newest first: the gallery's query, and the count
 // against the photo limit.
 contentSchema.index({ user_id: 1, createdAt: -1 });
+// Shared photos, by their public address.
+contentSchema.index({ shareId: 1 }, { unique: true, partialFilterExpression: { shareId: { $type: 'string' } } });
 
 module.exports = mongoose.model('Content', contentSchema);

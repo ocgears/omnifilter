@@ -17,12 +17,18 @@ describe('Gallery', () => {
   };
   let fixture: ComponentFixture<Gallery>;
   let el: HTMLElement;
-  let api: { file: ReturnType<typeof vi.fn>; fileIfReady: ReturnType<typeof vi.fn> };
+  let api: Record<
+    'file' | 'fileIfReady' | 'share' | 'unshare' | 'shareUrl',
+    ReturnType<typeof vi.fn>
+  >;
 
   beforeEach(async () => {
     api = {
       file: vi.fn().mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' })),
       fileIfReady: vi.fn().mockReturnValue(null),
+      share: vi.fn().mockResolvedValue('AbCdEfGhIjKlMnOpQrStUv'),
+      unshare: vi.fn().mockResolvedValue(undefined),
+      shareUrl: vi.fn((id: string) => 'https://omnifilter.test/p/' + id),
     };
     TestBed.configureTestingModule({ providers: [{ provide: PhotoApi, useValue: api }] });
     fixture = TestBed.createComponent(Gallery);
@@ -137,5 +143,65 @@ describe('Gallery', () => {
     use(first)!.click();
     expect(reused).toEqual([photo]);
     expect(use(second)).toBeUndefined();
+  });
+
+  describe('sharing by link', () => {
+    const button = (name: string) =>
+      Array.from(el.querySelectorAll<HTMLButtonElement>('.photo-card button')).find(
+        (b) => b.textContent?.trim() === name,
+      );
+    let shared: { photo: Photo; shareId: string | null }[];
+
+    beforeEach(async () => {
+      shared = [];
+      fixture.componentInstance.shared.subscribe((e) => shared.push(e));
+      fixture.componentRef.setInput('sharing', true);
+      await fixture.whenStable();
+    });
+
+    it('is offered only where the server allows it, and not for photos kept in this browser', async () => {
+      expect(button('Get link')).toBeTruthy();
+      fixture.componentRef.setInput('photos', [{ ...photo, _id: 'local-1' }]);
+      await fixture.whenStable();
+      expect(button('Get link')).toBeUndefined();
+      fixture.componentRef.setInput('photos', [photo]);
+      fixture.componentRef.setInput('sharing', false);
+      await fixture.whenStable();
+      expect(button('Get link')).toBeUndefined();
+    });
+
+    it('makes a link, copies it, and shows it with a way to stop sharing', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      await fixture.componentInstance.getLink(photo);
+      expect(api.share).toHaveBeenCalledWith(photo);
+      expect(shared).toEqual([{ photo, shareId: 'AbCdEfGhIjKlMnOpQrStUv' }]);
+      expect(writeText).toHaveBeenCalledWith('https://omnifilter.test/p/AbCdEfGhIjKlMnOpQrStUv');
+      // The editor hands back the photo with its link.
+      fixture.componentRef.setInput('photos', [{ ...photo, shareId: 'AbCdEfGhIjKlMnOpQrStUv' }]);
+      await fixture.whenStable();
+      const link = el.querySelector<HTMLAnchorElement>('.link-url')!;
+      expect(link.href).toBe('https://omnifilter.test/p/AbCdEfGhIjKlMnOpQrStUv');
+      expect(el.querySelector('.link-status')?.textContent).toContain('Link copied.');
+      expect(button('Get link')).toBeUndefined();
+
+      await fixture.componentInstance.stopSharing({ ...photo, shareId: 'AbCdEfGhIjKlMnOpQrStUv' });
+      expect(api.unshare).toHaveBeenCalled();
+      expect(shared[1].shareId).toBeNull();
+      await fixture.whenStable();
+      expect(el.querySelector('.link-status')?.textContent).toContain('The link no longer works.');
+    });
+
+    it("says to copy it by hand where the browser won't let the page", async () => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: vi.fn().mockRejectedValue(new Error('not allowed')) },
+        configurable: true,
+      });
+      fixture.componentRef.setInput('photos', [{ ...photo, shareId: 'AbCdEfGhIjKlMnOpQrStUv' }]);
+      await fixture.whenStable();
+      await fixture.componentInstance.copyLink({ ...photo, shareId: 'AbCdEfGhIjKlMnOpQrStUv' });
+      await fixture.whenStable();
+      expect(el.querySelector('.link-status')?.textContent).toContain('press and hold the link');
+    });
   });
 });

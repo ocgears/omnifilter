@@ -393,17 +393,48 @@ test("uses a saved photo's settings again", async ({ page }) => {
   await expect(page.locator('li.layer')).toHaveCount(1);
 });
 
+test('shares a kept photo by link, and stops sharing it', async ({ page, browser }) => {
+  await signIn(page);
+  const card = photos(page).first();
+  const label = (await card.locator('.label').textContent()).trim();
+  await card.getByRole('button', { name: 'Get link' }).click();
+  const link = card.locator('.link-url');
+  await expect(link).toHaveAttribute('href', /\/p\/[A-Za-z0-9_-]{22}$/);
+  await expect(card.getByRole('button', { name: 'Copy link' })).toBeFocused();
+  const url = await link.getAttribute('href');
+
+  // Anyone with the link sees the photo, without signing in.
+  const visitor = await browser.newPage();
+  await visitor.goto(url);
+  await expect(visitor).toHaveTitle(label + ' · OmniFilter');
+  await expect(visitor.locator('figcaption')).toContainText(label + ', made with OmniFilter');
+  await expect.poll(() => visitor.locator('img').evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+
+  // Still shared after a reload; then not at all.
+  await page.reload();
+  await expect(photos(page).first().locator('.link-url')).toHaveAttribute('href', url);
+  await photos(page).first().getByRole('button', { name: 'Stop sharing' }).click();
+  await expect(photos(page).first().getByRole('button', { name: 'Get link' })).toBeFocused();
+  const gone = await visitor.goto(url);
+  expect(gone.status()).toBe(404);
+  await expect(visitor.getByRole('heading', { level: 1 })).toHaveText('This photo isn\'t shared');
+  await visitor.close();
+});
+
 test('keeps the saved photos after a reload, and deletes one', async ({ page }) => {
   await signIn(page);
   await page.reload();
   await expect(photos(page)).toHaveCount(2);
+  // Each picture fills its card's 4:3 frame, whatever the photo's own size.
+  const box = await photos(page).first().locator('img').boundingBox();
+  expect(Math.abs(box.height - box.width * 3 / 4)).toBeLessThan(2);
 
   const card = photos(page).filter({ hasText: 'Invert' });
   await card.getByRole('button', { name: 'Delete' }).click();
   await expect(card).toContainText('Delete this photo?');
   await card.getByRole('button', { name: 'Delete' }).click();
   await expect(photos(page)).toHaveCount(1);
-  await expect(page.getByRole('status')).toContainText('deleted');
+  await expect(page.getByRole('status').filter({ hasText: 'deleted' })).toHaveCount(1);
 
   await page.reload();
   await expect(photos(page)).toHaveCount(1);

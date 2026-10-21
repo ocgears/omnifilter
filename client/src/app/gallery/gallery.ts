@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { errorMessage } from '../auth.service';
 import { refocus } from '../focus';
+import { isLocal } from '../guest-photos';
 import { Filter, Photo } from '../models';
 import { PhotoApi } from '../photo-api.service';
 import { photoLabel } from '../editor/stack';
@@ -44,12 +45,20 @@ export class Gallery {
   readonly remove = output<Photo>();
   // Use the stack a photo was made with again.
   readonly reuse = output<Photo>();
+  // Whether kept photos can be shared by link (the server says), and a
+  // photo that now has a link, or has none any more.
+  readonly sharing = input(false);
+  readonly shared = output<{ photo: Photo; shareId: string | null }>();
 
   // The photo whose delete button is asking "are you sure?".
   readonly confirming = signal<string | null>(null);
   readonly shareError = signal<string | null>(null);
   // The photo being fetched to save or share.
   readonly fetching = signal<string | null>(null);
+  // The photo whose link is being made or taken away, and what was last
+  // done with a link, under that photo.
+  readonly linking = signal<string | null>(null);
+  readonly linkStatus = signal<{ id: string; text: string } | null>(null);
   // The Web Share API with files: phones, and some desktop browsers.
   readonly canShare =
     typeof navigator !== 'undefined' && 'share' in navigator && 'canShare' in navigator;
@@ -152,6 +161,73 @@ export class Gallery {
           ? 'The photo is ready: tap Share again to share it.'
           : 'Could not share that photo.',
       );
+    }
+  }
+
+  // Photos kept in this browser have no address on the server to share.
+  canLink(photo: Photo): boolean {
+    return this.sharing() && !isLocal(photo);
+  }
+
+  linkOf(photo: Photo): string {
+    return photo.shareId ? this.api.shareUrl(photo.shareId) : '';
+  }
+
+  // Makes the photo's public link, and copies it where the browser lets the
+  // page (some only straight from a tap, which this isn't by then).
+  async getLink(photo: Photo): Promise<void> {
+    this.linking.set(photo._id);
+    this.linkStatus.set(null);
+    try {
+      const shareId = await this.api.share(photo);
+      this.shared.emit({ photo, shareId });
+      const copied = await this.copy(this.api.shareUrl(shareId));
+      this.linkStatus.set({
+        id: photo._id,
+        text: (copied ? 'Link copied. ' : '') + 'Anyone with the link can see this photo.',
+      });
+      refocus(this.injector, ['[id="photo-' + photo._id + '"] .copy'], {
+        always: true,
+        root: this.host.nativeElement,
+      });
+    } catch (err) {
+      this.linkStatus.set({ id: photo._id, text: errorMessage(err, 'Could not make a link.') });
+    } finally {
+      this.linking.set(null);
+    }
+  }
+
+  async copyLink(photo: Photo): Promise<void> {
+    const copied = await this.copy(this.linkOf(photo));
+    this.linkStatus.set({
+      id: photo._id,
+      text: copied ? 'Link copied.' : "Couldn't copy it here: press and hold the link to copy it.",
+    });
+  }
+
+  async stopSharing(photo: Photo): Promise<void> {
+    this.linking.set(photo._id);
+    try {
+      await this.api.unshare(photo);
+      this.shared.emit({ photo, shareId: null });
+      this.linkStatus.set({ id: photo._id, text: 'The link no longer works.' });
+      refocus(this.injector, ['[id="photo-' + photo._id + '"] .get-link'], {
+        always: true,
+        root: this.host.nativeElement,
+      });
+    } catch (err) {
+      this.linkStatus.set({ id: photo._id, text: errorMessage(err, 'Could not stop sharing it.') });
+    } finally {
+      this.linking.set(null);
+    }
+  }
+
+  private async copy(text: string): Promise<boolean> {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
     }
   }
 

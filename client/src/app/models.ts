@@ -77,6 +77,8 @@ export interface ServerSettings {
   // Kept photos longer than this on a side are kept scaled down to it, or
   // null if they're kept as they are.
   keepMaxSide: number | null;
+  // Whether a kept photo can be shared by a link anyone can open.
+  sharing?: boolean;
   // The largest photo the server takes, and takes from a guest, in pixels.
   maxPixels: number;
   guestMaxPixels: number;
@@ -107,6 +109,8 @@ export interface Photo {
   tParams?: ParamValues;
   tStack?: { tOption: string; tParams?: ParamValues; amount?: number; blend?: string }[];
   createdAt?: string;
+  // Set while it's shared by link: its public page is /p/<shareId>.
+  shareId?: string;
 }
 
 // The body of POST /newcontent.
