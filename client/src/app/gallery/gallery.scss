@@ -47,9 +47,13 @@ h2 {
   box-shadow: 0 0 0 3px var(--accent);
 }
 
+// Every card's picture in the same 4:3 frame. (The photo's own width and
+// height attributes only reserve the space while it loads: height: auto keeps
+// them from setting the height too, which made a big photo's card as tall.)
 img {
   display: block;
   width: 100%;
+  height: auto;
   aspect-ratio: 4 / 3;
   object-fit: contain;
   background: var(--surface-2);
