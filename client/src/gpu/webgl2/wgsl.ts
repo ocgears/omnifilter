@@ -1013,6 +1013,8 @@ class Emitter {
         return out + '\n';
       }
       case 'for': {
+        const unrolled = this.unroll(s, indent);
+        if (unrolled !== null) return unrolled;
         this.scopes.push(new Map());
         const init = s.init ? this.simple(s.init) : '';
         const cond = s.cond ? this.emit(s.cond) : '';
@@ -1052,6 +1054,90 @@ class Emitter {
       case 'block':
         return indent + '{\n' + this.stmts(s.body, inner) + indent + '}\n';
     }
+  }
+
+  // A loop over a few constant indices (for (var n = 0; n < 8; n++)),
+  // written out once per index, with the index a constant, so the arrays it
+  // indexes can stay in registers: some GLSL compilers keep an array
+  // indexed by a variable in slow memory. Each copy is a do-while(false),
+  // so continue still ends just that iteration. Not for loops with a break
+  // anywhere in them, or that change their index.
+  private unroll(s: Extract<Stmt, { s: 'for' }>, indent: string): string | null {
+    const init = s.init;
+    const cond = s.cond;
+    const up = s.update;
+    if (!init || init.s !== 'decl' || init.init?.e !== 'lit') return null;
+    const name = init.name;
+    const isIndex = (x: Expr) => x.e === 'id' && x.name === name;
+    if (!cond || cond.e !== 'bin' || cond.op !== '<' || !isIndex(cond.a) || cond.b.e !== 'lit') {
+      return null;
+    }
+    if (!up || up.s !== 'incr' || up.op !== '++' || !isIndex(up.lhs)) return null;
+    const from = init.init.value;
+    const to = cond.b.value;
+    if (!Number.isInteger(from) || !Number.isInteger(to) || to <= from || to - from > 8) {
+      return null;
+    }
+    if (Emitter.breaksOrSets(s.body, name)) return null;
+    const type = this.declType(init.type, init.init, name) as VecType;
+    const kind = init.init.kind;
+    const inner = indent + '  ';
+    let out = '';
+    for (let v = from; v < to; v++) {
+      this.scopes.push(new Map());
+      const glsl = this.declare(name, type);
+      const value = this.emit({ e: 'lit', raw: String(v), kind, value: v }, concrete(type.kind));
+      const body = this.stmts(s.body, inner + '  ');
+      this.scopes.pop();
+      out +=
+        indent +
+        '{\n' +
+        inner +
+        'const ' +
+        typeName(type) +
+        ' ' +
+        glsl +
+        ' = ' +
+        value +
+        ';\n' +
+        inner +
+        'do {\n' +
+        body +
+        inner +
+        '} while (false);\n' +
+        indent +
+        '}\n';
+    }
+    return out;
+  }
+
+  // Whether statements break anywhere, or set name.
+  private static breaksOrSets(list: Stmt[], name: string): boolean {
+    return list.some((s) => {
+      switch (s.s) {
+        case 'break':
+          return true;
+        case 'assign':
+        case 'incr':
+          return s.lhs.e === 'id' && s.lhs.name === name;
+        case 'decl':
+          return s.name === name;
+        case 'if':
+          return Emitter.breaksOrSets(s.then, name) || Emitter.breaksOrSets(s.else ?? [], name);
+        case 'block':
+        case 'while':
+          return Emitter.breaksOrSets(s.body, name);
+        case 'for':
+          return Emitter.breaksOrSets(
+            [...(s.init ? [s.init] : []), ...(s.update ? [s.update] : []), ...s.body],
+            name,
+          );
+        case 'switch':
+          return s.cases.some((c) => Emitter.breaksOrSets(c.body, name));
+        default:
+          return false;
+      }
+    });
   }
 
   // ---- declarations ----

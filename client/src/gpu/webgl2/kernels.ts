@@ -74,9 +74,12 @@ function reader(arg: KernelArg): { read: BufferRead; glsl: string } {
     n +
     '(int i) {\n' +
     '  int t = i >> 2;\n' +
-    '  return texelFetch(_b_' +
+    '  uvec4 v = texelFetch(_b_' +
     n +
-    ', ivec2(t % _TW, t / _TW), 0)[i & 3];\n' +
+    ', ivec2(t & _TWM, t >> _TWS), 0);\n' +
+    '  int c = i & 3;\n' +
+    // Not v[i & 3]: some GLSL compilers make a function of that.
+    '  return c < 2 ? (c == 0 ? v.x : v.y) : (c == 2 ? v.z : v.w);\n' +
     '}\n';
   switch (arg.kind) {
     case 'in':
@@ -112,7 +115,7 @@ function reader(arg: KernelArg): { read: BufferRead; glsl: string } {
           '(int i) {\n' +
           '  return uintBitsToFloat(texelFetch(_b_' +
           n +
-          ', ivec2(i % _TW, i / _TW), 0));\n' +
+          ', ivec2(i & _TWM, i >> _TWS), 0));\n' +
           '}\n',
       };
     case 'i2s':
@@ -126,7 +129,7 @@ function reader(arg: KernelArg): { read: BufferRead; glsl: string } {
           '  int t = i >> 1;\n' +
           '  uvec4 v = texelFetch(_b_' +
           n +
-          ', ivec2(t % _TW, t / _TW), 0);\n' +
+          ', ivec2(t & _TWM, t >> _TWS), 0);\n' +
           '  return (i & 1) == 0 ? ivec2(v.xy) : ivec2(v.zw);\n' +
           '}\n',
       };
@@ -153,6 +156,7 @@ const OUTPUT_WRITE: Record<string, { want: { kind: 'f' | 'i' | 'u'; n: number };
 
 // The fragment shader for a GPU kernel, with buffers in rows of rowTexels.
 export function glKernel(name: string, rowTexels: number): GlKernel {
+  if (!Number.isInteger(Math.log2(rowTexels))) throw new Error('Rows must be a power of 2 texels');
   const spec = ALL[name];
   if (!spec || glKernelKind(name) !== 'gpu')
     throw new Error('No WebGL2 version of the ' + name + ' kernel');
@@ -206,12 +210,19 @@ export function glKernel(name: string, rowTexels: number): GlKernel {
   const uniforms = scalars
     .map((s) => 'uniform ' + (s.kind === 'i32' ? 'int ' : 'float ') + glslName(s.name) + ';\n')
     .join('');
-  const store = perTexel === 4 ? 'r[k] = _res;' : 'r = _res4;';
+  const store =
+    perTexel === 4
+      ? 'if (k == 0) r.x = _res; else if (k == 1) r.y = _res; else if (k == 2) r.z = _res; else r.w = _res;'
+      : 'r = _res4;';
   const source =
     '#version 300 es\n' +
     'precision highp float;\nprecision highp int;\nprecision highp usampler2D;\n' +
     'const int _TW = ' +
     rowTexels +
+    ';\nconst int _TWM = ' +
+    (rowTexels - 1) +
+    ';\nconst int _TWS = ' +
+    Math.log2(rowTexels) +
     ';\n' +
     uniforms +
     // The elements to write, [_lo, _hi); the work-item id of element o is

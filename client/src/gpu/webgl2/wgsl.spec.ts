@@ -135,6 +135,26 @@ fn f(v: vec3f, y: f32, x: f32) -> vec3f {
     expect(glKernel('rd_step', 4096).perTexel).toBe(1);
   });
 
+  it('writes out short constant loops, so arrays are indexed by constants', () => {
+    const glsl = translate(`
+fn f() -> f32 {
+  var a: array<f32, 3>;
+  for (var n = 0; n < 3; n++) {
+    if (n == 1) { continue; }
+    a[n] += 1.0;
+  }
+  for (var m = 0; m < 3; m++) {
+    if (a[m] > 0.0) { break; }
+  }
+  return a[2];
+}`);
+    expect(glsl).toContain('const int n = 2;');
+    expect(glsl.match(/do \{/g)).toHaveLength(3);
+    expect(glsl).toContain('a[n] += 1.0;');
+    // A loop that breaks stays a loop.
+    expect(glsl).toContain('for (int m = 0; (m < 3); m++)');
+  });
+
   it('keeps scalars as uniforms', () => {
     expect(translate('fn f() -> f32 { return gamma * 2.0; }', { gamma: scalarF })).toContain(
       'return (gamma * 2.0);',

@@ -232,6 +232,15 @@ for (const webgl2 of [false, true]) {
       await expect(page.getByRole('button', { name: /Live camera/ })).toHaveCount(0);
       return;
     }
+    // WebKit's Linux build offers getUserMedia but has no camera to open.
+    const opens = await page.evaluate(() => Promise.race([
+      navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+        stream.getTracks().forEach((t) => t.stop());
+        return true;
+      }, () => false),
+      new Promise((resolve) => setTimeout(() => resolve(false), 5000))
+    ]));
+    test.skip(gpu && !opens, 'this browser has no camera to open');
     await page.getByRole('button', { name: /Live camera/ }).click();
     const camera = page.locator('of-live-camera');
     if (!gpu) {

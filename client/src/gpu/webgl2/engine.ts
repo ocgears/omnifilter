@@ -58,8 +58,29 @@ const header = (row: number) =>
   '#version 300 es\nprecision highp float;\nprecision highp int;\n' +
   'precision highp usampler2D;\nconst int _TW = ' +
   row +
+  ';\nconst int _TWM = ' +
+  (row - 1) +
+  ';\nconst int _TWS = ' +
+  Math.log2(row) +
   ';\n' +
   GLSL_PRELUDE;
+
+// Draws an image's pixels, premultiplied, the right way up.
+const PRESENT = (row: number) =>
+  header(row) +
+  `uniform highp usampler2D _img;
+uniform int _w;
+uniform int _h;
+out vec4 _frag;
+void main() {
+  int i = (_h - 1 - int(gl_FragCoord.y)) * _w + int(gl_FragCoord.x);
+  int t = i >> 2;
+  uvec4 v = texelFetch(_img, ivec2(t & _TWM, t >> _TWS), 0);
+  int c = i & 3;
+  vec4 p = _unpack4x8unorm(c < 2 ? (c == 0 ? v.x : v.y) : (c == 2 ? v.z : v.w));
+  _frag = vec4(p.rgb * p.a, p.a);
+}
+`;
 
 // A frame (in an RGBA8 texture) scaled to _w x _h pixels, bilinear.
 const FROM_FRAME = (row: number) =>
@@ -82,6 +103,9 @@ void main() {
 `;
 
 const roundUp = (n: number, m: number) => Math.ceil(n / m) * m;
+
+// The most pixels a banded pass draws at once (see draw()).
+const BAND_PIXELS = 1 << 20;
 
 function cleanRenderer(renderer: string): string {
   // ANGLE (Intel Inc., Intel(R) Iris(TM) Graphics 6100, OpenGL 4.1): the GPU.
@@ -111,6 +135,9 @@ export class GlEngine implements FilterEngine {
   private readonly parallel: { COMPLETION_STATUS_KHR: number } | null;
   private frameTexture: WebGLTexture | null = null;
   private scratch: GlBuffer | null = null;
+  // How present() gets images onto the page: drawn by the GPU, or read
+  // back and put there by the CPU where that didn't work (see present).
+  private presentBy: 'gpu' | 'cpu' | 'untested' = 'untested';
   private readonly bands: boolean;
 
   // A WebGL2 engine, or null where WebGL2 isn't available. Works in a Web
@@ -150,7 +177,7 @@ export class GlEngine implements FilterEngine {
   ) {
     this.bands = Boolean(options.bands);
     this.maxTexture = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
-    this.row = Math.min(this.maxTexture, 4096);
+    this.row = 2 ** Math.floor(Math.log2(Math.min(this.maxTexture, 4096)));
     const debug = gl.getExtension('WEBGL_debug_renderer_info');
     const renderer = String(
       (debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) ||
@@ -627,12 +654,17 @@ export class GlEngine implements FilterEngine {
     gl.uniform1ui(this.uniform(p, '_dx'), dx);
     gl.uniform1ui(this.uniform(p, '_dy'), dy);
 
-    // The texel rows holding [lo, hi), in bands of image rows if asked.
+    // The texel rows holding [lo, hi), in bands of image rows if asked: the
+    // plan's band height, or fewer rows so a band has at most BAND_PIXELS
+    // pixels, each drawn and sent to the GPU on its own (WebGL2 can't wait
+    // for one to finish without stalling, so they're kept short instead).
     const texelRow = (element: number) => Math.floor(element / per / this.row);
     const ranges: [number, number][] = [];
     if (this.bands && pass.band && k.guard === 'band') {
-      for (let e = lo; e < hi; e += pass.band * stride)
-        ranges.push([e, Math.min(hi, e + pass.band * stride)]);
+      const rows = Math.max(1, Math.min(pass.band, Math.floor(BAND_PIXELS / stride)));
+      for (let e = lo; e < hi; e += rows * stride) {
+        ranges.push([e, Math.min(hi, e + rows * stride)]);
+      }
     } else {
       ranges.push([lo, hi]);
     }
@@ -661,24 +693,103 @@ export class GlEngine implements FilterEngine {
 
   // ---- drawing and frames ----
 
-  // Shows an image on a canvas at its own size (CSS scales it), through
-  // the CPU: reading the pixels back and putting them on a 2D canvas works
-  // in every browser, where drawing a WebGL canvas onto another doesn't
-  // (WebKit drew nothing). A preview-sized image takes a few milliseconds.
+  // Shows an image on a canvas at its own size (CSS scales it): drawn on
+  // the engine's own canvas by the GPU, which is then drawn onto the
+  // target's 2D context. The first time, a pixel of the target is checked
+  // against the image; if it's wrong (some browsers draw nothing from
+  // another WebGL canvas), images go through the CPU from then on, read
+  // back and put on the canvas, which works everywhere but is slower.
   present(image: EngineImage, target: AnyCanvas): void {
     const img = image as GlImage;
-    const words = this.readWords(img.buffer);
-    const pixels = new Uint8ClampedArray(
-      words.buffer as ArrayBuffer,
-      0,
-      img.width * img.height * 4,
-    );
     if (target.width !== img.width) target.width = img.width;
     if (target.height !== img.height) target.height = img.height;
     const ctx = target.getContext('2d') as
       CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
     if (!ctx) throw new Error('No 2D canvas context to show the preview in');
+    if (this.presentBy === 'cpu') {
+      this.presentByCpu(img, ctx);
+      return;
+    }
+    this.presentByGpu(img, ctx);
+    if (this.presentBy === 'untested') {
+      const shown = this.presentShows(img, ctx);
+      if (shown === false) {
+        console.warn('WebGL2: the GPU-drawn preview came out wrong; drawing it from the CPU');
+        this.presentBy = 'cpu';
+        this.presentByCpu(img, ctx);
+      } else if (shown) {
+        this.presentBy = 'gpu';
+      }
+    }
+  }
+
+  private presentByGpu(
+    img: GlImage,
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  ): void {
+    const gl = this.gl;
+    const canvas = this.canvas;
+    if (canvas.width !== img.width) canvas.width = img.width;
+    if (canvas.height !== img.height) canvas.height = img.height;
+    const p = this.helperProgram('present', PRESENT(this.row));
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, img.width, img.height);
+    gl.useProgram(p.program);
+    gl.bindVertexArray(this.vao);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, img.buffer.tex);
+    gl.uniform1i(this.uniform(p, '_img'), 0);
+    gl.uniform1i(this.uniform(p, '_w'), img.width);
+    gl.uniform1i(this.uniform(p, '_h'), img.height);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    ctx.clearRect(0, 0, img.width, img.height);
+    if ('transferToImageBitmap' in canvas) {
+      const bitmap = canvas.transferToImageBitmap();
+      ctx.drawImage(bitmap, 0, 0);
+      bitmap.close();
+    } else {
+      ctx.drawImage(canvas, 0, 0);
+    }
+  }
+
+  private presentByCpu(
+    img: GlImage,
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  ): void {
+    const words = this.readWords(img.buffer);
+    const n = img.width * img.height * 4;
+    const pixels = new Uint8ClampedArray(words.buffer as ArrayBuffer, 0, n);
     ctx.putImageData(new ImageData(pixels, img.width, img.height), 0, 0);
+  }
+
+  // Whether the middle pixel of the canvas is the image's, or null if it
+  // can't tell (a see-through pixel, which the canvas premultiplies).
+  private presentShows(
+    img: GlImage,
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  ): boolean | null {
+    const x = img.width >> 1;
+    const y = img.height >> 1;
+    const i = y * img.width + x;
+    const t = i >> 2;
+    const gl = this.gl;
+    const texel = new Uint32Array(4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, img.buffer.tex, 0);
+    gl.readPixels(
+      t % this.row,
+      Math.floor(t / this.row),
+      1,
+      1,
+      gl.RGBA_INTEGER,
+      gl.UNSIGNED_INT,
+      texel,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const want = texel[i & 3];
+    if (want >>> 24 !== 255) return null;
+    const got = ctx.getImageData(x, y, 1, 1).data;
+    return [0, 8, 16].every((s, c) => Math.abs(((want >>> s) & 255) - got[c]) <= 2);
   }
 
   releaseFrame(): void {

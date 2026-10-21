@@ -105,11 +105,22 @@ async function expectNoSidewaysScroll(page) {
 }
 
 // The red channel at the left edge of an element's screenshot, halfway down.
+// A canvas or image with object-fit: contain shows the picture letterboxed
+// when the element's shape differs from it (on an iPhone-sized screen, say),
+// so this reads just inside the picture's own left edge.
 async function leftEdgeRed(locator) {
+  const inset = await locator.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const w = el.width || el.naturalWidth;
+    const h = el.height || el.naturalHeight;
+    if (!w || !h || getComputedStyle(el).objectFit !== 'contain') return 0;
+    return Math.max(0, (box.width - Math.min(box.width, box.height * w / h)) / 2 / box.width);
+  });
   const png = await locator.screenshot();
   const image = sharp(png);
-  const { height } = await image.metadata();
-  const { data } = await image.extract({ left: 2, top: Math.floor(height / 2), width: 2, height: 2 })
+  const { width, height } = await image.metadata();
+  const left = Math.ceil(inset * width) + 2;
+  const { data } = await image.extract({ left: left, top: Math.floor(height / 2), width: 2, height: 2 })
     .raw().toBuffer({ resolveWithObject: true });
   return data[0];
 }
