@@ -48,13 +48,14 @@ function sendAndLeave(token, bytes) {
 
 const KEYS = ['OMNIFILTER_MODE', 'OMNIFILTER_PROCESSING', 'OMNIFILTER_GUESTS', 'OMNIFILTER_MAX_STORED_PHOTOS',
   'OMNIFILTER_KEEP_MAX_SIDE', 'OMNIFILTER_KEEP_MAX_PIXELS', 'OMNIFILTER_KEEP_MAX_BYTES', 'OMNIFILTER_SIGNUPS_PER_DAY',
-  'OMNIFILTER_MAX_DATA_MB', 'OMNIFILTER_LIMITS'];
+  'OMNIFILTER_MAX_DATA_MB', 'OMNIFILTER_LIMITS', 'OMNIFILTER_SHARING'];
 
 describe('the server settings (lib/settings.js)', () => {
   it('filters on the server for everyone by default, and keeps any number of photos', () => {
     expect(settings.read({})).to.eql({
       mode: 'standard', strict: false, processing: 'server', guests: 'server', maxStoredPhotos: null,
-      keepMaxSide: null, keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: null
+      keepMaxSide: null, keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: null,
+      sharing: true
     });
   });
 
@@ -69,7 +70,7 @@ describe('the server settings (lib/settings.js)', () => {
   it('in cloud mode, filters on the visitor\'s device and keeps 5 photos each', () => {
     expect(settings.read({ OMNIFILTER_MODE: 'cloud' })).to.eql({
       mode: 'cloud', strict: false, processing: 'device', guests: 'device', maxStoredPhotos: 5, keepMaxSide: 2048,
-      keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: 400
+      keepMaxPixels: null, keepMaxBytes: null, signupsPerDay: null, maxDataMB: 400, sharing: true
     });
   });
 
@@ -77,10 +78,11 @@ describe('the server settings (lib/settings.js)', () => {
     expect(settings.read({
       OMNIFILTER_MODE: 'Cloud', OMNIFILTER_PROCESSING: 'device-first', OMNIFILTER_GUESTS: 'off',
       OMNIFILTER_MAX_STORED_PHOTOS: '12', OMNIFILTER_KEEP_MAX_SIDE: '4096', OMNIFILTER_KEEP_MAX_PIXELS: '30e6',
-      OMNIFILTER_KEEP_MAX_BYTES: '5e6', OMNIFILTER_SIGNUPS_PER_DAY: '3', OMNIFILTER_MAX_DATA_MB: '900'
+      OMNIFILTER_KEEP_MAX_BYTES: '5e6', OMNIFILTER_SIGNUPS_PER_DAY: '3', OMNIFILTER_MAX_DATA_MB: '900',
+      OMNIFILTER_SHARING: 'Off'
     })).to.eql({
       mode: 'cloud', strict: false, processing: 'device-first', guests: 'off', maxStoredPhotos: 12, keepMaxSide: 4096,
-      keepMaxPixels: 30e6, keepMaxBytes: 5e6, signupsPerDay: 3, maxDataMB: 900
+      keepMaxPixels: 30e6, keepMaxBytes: 5e6, signupsPerDay: 3, maxDataMB: 900, sharing: false
     });
   });
 

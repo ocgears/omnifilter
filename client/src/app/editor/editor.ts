@@ -1011,6 +1011,13 @@ export class Editor {
     setTimeout(() => this.announcement.set(text), 100);
   }
 
+  // A photo given a link to share it by, or whose link was taken away.
+  setShared(photo: Photo, shareId: string | null): void {
+    this.photos.update((list) =>
+      list.map((p) => (p._id === photo._id ? { ...p, shareId: shareId ?? undefined } : p)),
+    );
+  }
+
   async deletePhoto(photo: Photo): Promise<void> {
     // The focus goes to the next photo's buttons, or the one before.
     const photos = this.photos();

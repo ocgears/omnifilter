@@ -44,6 +44,9 @@
 //   OMNIFILTER_SIGNUPS_PER_DAY       accounts made per day from one address
 //                                    (an IPv6 /48) (default: no limit;
 //                                    strict: 10)
+//   OMNIFILTER_SHARING               whether people may share a kept photo
+//                                    by a link anyone can open (default: on;
+//                                    off, false, 0 or no to turn it off)
 //   OMNIFILTER_MAX_DATA_MB           photos aren't kept once the database
 //                                    holds this many megabytes (default: no
 //                                    limit; cloud: 400, under the free
@@ -87,7 +90,8 @@ function read(env) {
     keepMaxPixels: limit('OMNIFILTER_KEEP_MAX_PIXELS', 'keepMaxPixels', Number),
     keepMaxBytes: limit('OMNIFILTER_KEEP_MAX_BYTES', 'keepMaxBytes', Number),
     signupsPerDay: limit('OMNIFILTER_SIGNUPS_PER_DAY', 'signupsPerDay', whole),
-    maxDataMB: limit('OMNIFILTER_MAX_DATA_MB', 'maxDataMB', Number)
+    maxDataMB: limit('OMNIFILTER_MAX_DATA_MB', 'maxDataMB', Number),
+    sharing: !/^(off|false|0|no)$/i.test((e.OMNIFILTER_SHARING || '').trim())
   };
 }
 

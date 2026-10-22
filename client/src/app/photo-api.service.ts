@@ -145,6 +145,32 @@ export class PhotoApi {
     return this.files.get(photo._id)?.ready ?? null;
   }
 
+  // Shares a kept photo by link (or tells the link it has): its shareId.
+  async share(photo: Photo): Promise<string> {
+    const res = await firstValueFrom(
+      this.http.post<{ shareId: string }>(
+        this.apiBase + '/content/' + encodeURIComponent(photo._id) + '/share',
+        null,
+        { headers: this.authHeaders() },
+      ),
+    );
+    return res.shareId;
+  }
+
+  // Stops sharing it: the link no longer works.
+  async unshare(photo: Photo): Promise<void> {
+    await firstValueFrom(
+      this.http.delete(this.apiBase + '/content/' + encodeURIComponent(photo._id) + '/share', {
+        headers: this.authHeaders(),
+      }),
+    );
+  }
+
+  // The public page of a shared photo, served by the API.
+  shareUrl(shareId: string): string {
+    return new URL('/p/' + shareId, this.apiBase ? this.apiBase + '/' : location.origin).href;
+  }
+
   delete(photo: Photo): Promise<{ msg: string }> {
     return firstValueFrom(
       this.http.delete<{ msg: string }>(this.apiBase + '/delete/' + encodeURIComponent(photo._id), {

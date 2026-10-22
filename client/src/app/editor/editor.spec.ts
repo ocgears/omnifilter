@@ -72,6 +72,9 @@ describe('Editor', () => {
       file: vi.fn(),
       fileIfReady: vi.fn().mockReturnValue(null),
       remember: vi.fn(),
+      share: vi.fn(),
+      unshare: vi.fn(),
+      shareUrl: vi.fn((id: string) => 'http://localhost/p/' + id),
     };
     guestPhotos = {
       list: vi.fn().mockResolvedValue([]),

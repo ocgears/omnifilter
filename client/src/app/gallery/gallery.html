@@ -11,6 +11,7 @@
     @if (shareError(); as message) {
       <p class="share-error" role="alert">{{ message }}</p>
     }
+    <p class="visually-hidden" role="status">{{ linkStatus()?.text }}</p>
     <ul class="grid">
       @for (photo of photos(); track photo._id) {
         <li
@@ -64,9 +65,42 @@
                   Use settings
                 </button>
               }
+              @if (canLink(photo) && !photo.shareId) {
+                <button
+                  type="button"
+                  class="get-link"
+                  (click)="getLink(photo)"
+                  [disabled]="linking() === photo._id"
+                  title="Make a link anyone can open to see this photo"
+                >
+                  Get link
+                </button>
+              }
               <button type="button" class="delete" (click)="askDelete(photo, true)">Delete</button>
             }
           </div>
+          @if (photo.shareId && canLink(photo)) {
+            <div class="link">
+              <span class="link-note">Shared by link:</span>
+              <a class="link-url" [href]="linkOf(photo)" target="_blank" rel="noopener">{{
+                linkOf(photo)
+              }}</a>
+              <div class="link-actions">
+                <button type="button" class="copy" (click)="copyLink(photo)">Copy link</button>
+                <button
+                  type="button"
+                  class="unshare"
+                  (click)="stopSharing(photo)"
+                  [disabled]="linking() === photo._id"
+                >
+                  Stop sharing
+                </button>
+              </div>
+            </div>
+          }
+          @if (linkStatus()?.id === photo._id) {
+            <p class="link-status" aria-hidden="true">{{ linkStatus()?.text }}</p>
+          }
         </li>
       }
     </ul>
