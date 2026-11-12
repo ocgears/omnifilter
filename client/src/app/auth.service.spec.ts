@@ -130,7 +130,9 @@ describe('AuthService', () => {
   it('forgets the draft when the server stops taking the token too', async () => {
     auth.token.set('tok');
     const done = auth.verify();
-    http.expectOne('http://api/verify').flush({ msg: 'no' }, { status: 401, statusText: 'Unauthorized' });
+    http
+      .expectOne('http://api/verify')
+      .flush({ msg: 'no' }, { status: 401, statusText: 'Unauthorized' });
     await done;
     expect(auth.token()).toBeNull();
     expect(clearDraft).toHaveBeenCalled();

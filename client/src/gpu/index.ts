@@ -12,6 +12,8 @@ export { GpuEngine } from './engine';
 export type { NativePlan } from './engine';
 export type { EngineImage, FilterEngine } from './engine-api';
 export { allFilterNames, previewable };
+export { Animator } from './animation';
+export type { Animation, AnimatorOptions, PauseReason, Touch } from './animation';
 export { StackRenderer } from './stack';
 export type { StackLayer, StackResult } from './stack';
 

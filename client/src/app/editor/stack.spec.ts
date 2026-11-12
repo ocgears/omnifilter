@@ -92,7 +92,7 @@ describe('the filter stack', () => {
     ]);
   });
 
-  it("rebuilds the stack a saved photo was made with", () => {
+  it('rebuilds the stack a saved photo was made with', () => {
     expect(
       layersFromPhoto(FILTERS, {
         _id: '1',
@@ -109,6 +109,8 @@ describe('the filter stack', () => {
     expect(
       layersFromPhoto(FILTERS, { _id: '2', content: '', tOption: 'blur', tParams: { radius: 7 } }),
     ).toEqual([{ tOption: 'blur', params: { radius: 7 }, amount: 100, blend: 'normal' }]);
-    expect(layersFromPhoto(FILTERS, { _id: '3', content: '', tOption: '', tStack: [] })).toEqual([]);
+    expect(layersFromPhoto(FILTERS, { _id: '3', content: '', tOption: '', tStack: [] })).toEqual(
+      [],
+    );
   });
 });
