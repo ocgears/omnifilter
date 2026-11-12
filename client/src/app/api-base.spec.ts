@@ -23,7 +23,10 @@ describe('apiBaseFrom', () => {
   });
 
   it('ignores an element that took the name window.OMNIFILTER_API', () => {
-    const element = { href: 'https://elsewhere.example', toString: () => 'https://elsewhere.example' };
+    const element = {
+      href: 'https://elsewhere.example',
+      toString: () => 'https://elsewhere.example',
+    };
     expect(apiBaseFrom(fakeWindow({ override: element, meta: '/' }))).toBe('');
   });
 
