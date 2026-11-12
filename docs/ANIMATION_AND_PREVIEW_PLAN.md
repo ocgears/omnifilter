@@ -53,7 +53,6 @@ reuses those kernels, but steps them over time instead of all at once.
 5. **Tests.** Unit-test the step and seed kernels deterministically (fixed
    seed, fixed step count, compared with the existing rd output); one e2e
    that taps and checks the canvas changed.
-
 6. **GIF export (first export format, decided 2026-11-12).** Record frames
    from the animation canvas at a capped size (e.g. 480 px wide, 10-15 fps,
    a few seconds) into a ring buffer; encode in a Web Worker with a small
@@ -61,5 +60,12 @@ reuses those kernels, but steps them over time instead of all at once.
    optional ordered dither so gradients don't band). Offer it through the
    result card's save/share path. Video (WebCodecs/MediaRecorder) can follow.
 
-Open question for the user:
-- Which effect first: reaction-diffusion with touch, ripple, or both?
+Decided 2026-11-12: build both effects, with GIF export.
+
+Build order (one branch each, each shippable on its own):
+1. `animate-core`: the frame loop, pause rules, a pluggable `Animation`
+   interface (init / step / seed / render) and the canvas view in the editor.
+2. `animate-rd`: reaction-diffusion stepped live, plus `rd_seed` for touch.
+3. `animate-ripple`: `wave_step` / `wave_seed` / `wave_render`, taps as drops.
+4. `animate-gif`: frame capture + worker GIF encoder + result-card export.
+5. `fast-preview`: the draft/settle painterly preview (part 1 above).
