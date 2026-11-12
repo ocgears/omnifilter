@@ -54,6 +54,12 @@ reuses those kernels, but steps them over time instead of all at once.
    seed, fixed step count, compared with the existing rd output); one e2e
    that taps and checks the canvas changed.
 
-Open questions for the user:
-- Is a short video/GIF export of an animation wanted, or only still frames?
-- Which effects first: reaction-diffusion with touch, ripple, or both?
+6. **GIF export (first export format, decided 2026-11-12).** Record frames
+   from the animation canvas at a capped size (e.g. 480 px wide, 10-15 fps,
+   a few seconds) into a ring buffer; encode in a Web Worker with a small
+   dependency-free GIF encoder (per-frame or global palette via median cut,
+   optional ordered dither so gradients don't band). Offer it through the
+   result card's save/share path. Video (WebCodecs/MediaRecorder) can follow.
+
+Open question for the user:
+- Which effect first: reaction-diffusion with touch, ripple, or both?
