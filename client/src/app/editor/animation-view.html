@@ -1,0 +1,36 @@
+<div
+  class="frame"
+  [class.live]="mode() === 'live'"
+  (pointerdown)="pointerDown($event)"
+  (pointermove)="pointerMove($event)"
+  (pointerup)="pointerUp()"
+  (pointercancel)="pointerUp()"
+  (lostpointercapture)="pointerUp()"
+  (contextmenu)="mode() === 'live' && $event.preventDefault()"
+>
+  <canvas
+    #canvas
+    class="result"
+    [hidden]="mode() !== 'live'"
+    role="img"
+    [attr.aria-label]="label()"
+  ></canvas>
+  @if (mode() !== 'live') {
+    <img [src]="source()" alt="Your photo" />
+  }
+</div>
+<div class="bar">
+  <p class="status" aria-live="polite">{{ status() }}</p>
+  @if (mode() === 'live') {
+    <button
+      type="button"
+      class="play"
+      (click)="toggle()"
+      [attr.aria-pressed]="playing()"
+      [disabled]="paused()"
+    >
+      {{ playing() ? 'Pause' : 'Play' }}
+    </button>
+    <button type="button" class="reset" (click)="reset()">Reset</button>
+  }
+</div>
