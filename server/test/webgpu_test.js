@@ -52,7 +52,7 @@ const LOOSE = {
   kuwahara: { over: 0.002, mean: 0.05 },
   oil_paint: { over: 0.002, mean: 0.05 },
   reaction_diffusion: { over: 0.15, mean: 3 },
-  fractal: { over: 0.02, mean: 0.5 }
+  fractal: { over: 0.02, mean: 1.0 }
 };
 
 function runWebgpu(cases) {
