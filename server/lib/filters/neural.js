@@ -19,6 +19,7 @@ const path = require('path');
 const sharp = require('../sharp');
 const { range } = require('./plan');
 const { makeSpatialDimsDynamic } = require('../onnx_dynamic');
+const system = require('../system');
 
 const { STYLES, MODEL_DIR } = require('./neural_models');
 
@@ -32,6 +33,24 @@ try {
 }
 
 const sessions = new Map();
+var forceCpuProvider = false;
+
+function createSession(patchedBytes) {
+  const providers = forceCpuProvider ? ['cpu'] : system.ortExecutionProviders(exports.ort);
+  const options = providers ?
+    { executionProviders: providers, logSeverityLevel: 3 } :
+    { logSeverityLevel: 3 };
+  return exports.ort.InferenceSession.create(patchedBytes, options).catch((err) => {
+    if (providers && providers.length > 1) {
+      forceCpuProvider = true;
+      return exports.ort.InferenceSession.create(patchedBytes, {
+        executionProviders: ['cpu'],
+        logSeverityLevel: 3
+      });
+    }
+    throw err;
+  });
+}
 
 // The published models declare a fixed 224x224 input; patch that so they
 // accept any size, then cache the session. A failed load isn't cached, so the
@@ -39,8 +58,7 @@ const sessions = new Map();
 function session(file) {
   if (!sessions.has(file)) {
     const created = fs.promises.readFile(path.join(MODEL_DIR, file))
-      .then((bytes) => exports.ort.InferenceSession.create(
-        makeSpatialDimsDynamic(bytes, 'input1', 'output1'), { logSeverityLevel: 3 }));
+      .then((bytes) => createSession(makeSpatialDimsDynamic(bytes, 'input1', 'output1')));
     sessions.set(file, created);
     created.catch(() => {
       if (sessions.get(file) === created) sessions.delete(file);
@@ -121,5 +139,6 @@ exports = module.exports = !ort ? [] : STYLES
 // For tests: the ONNX Runtime module in use (replaceable with a stub), the
 // session loader and its cache.
 exports.ort = ort;
+exports.createSession = createSession;
 exports.session = session;
 exports.sessions = sessions;

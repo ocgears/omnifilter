@@ -14,14 +14,25 @@ const native = require('./native');
 const definitions = require('./filters');
 const deviceChoice = require('./device_choice');
 const { roundWholeParams } = require('./filters/plan');
+const system = require('./system');
 
 const KERNEL_DIR = path.join(__dirname, '..', '..', 'native', 'kernels');
 
-// Which backend runs the plans: 'opencl' (the default) or 'webgpu'.
-const BACKEND = (process.env.OMNIFILTER_BACKEND || 'opencl').trim().toLowerCase();
-if (!['opencl', 'webgpu'].includes(BACKEND)) {
-  throw new Error('OMNIFILTER_BACKEND must be opencl or webgpu, not ' + BACKEND);
-}
+// Which backend runs the plans: 'opencl', 'webgpu' or 'auto' (the default,
+// which uses OpenCL when the OpenCL addon/device is present and otherwise
+// falls back to WebGPU when Dawn is installed and supported on this system).
+const BACKEND = system.selectBackend(process.env, {
+  hasOpenCL: (probeDevices) => {
+    if (native.loaded === false) return false;
+    if (!probeDevices) return true;
+    try {
+      return native.devices().length > 0;
+    } catch (e) {
+      return false;
+    }
+  },
+  hasWebGPU: () => require('./webgpu/backend').available()
+});
 const webgpu = BACKEND === 'webgpu' ? require('./webgpu/backend') : null;
 // For messages: "No OpenCL device is available".
 const BACKEND_LABEL = webgpu ? 'WebGPU' : 'OpenCL';

@@ -11,7 +11,7 @@
 +   [License](https://github.com/ocgears/omnifilter#license)
 
 # Overview
-OmniFilter puts 56 filters and preset looks on your photos with a GPU. In the web page, the photo shows the filters live as you change them, on the device's own GPU (WebGPU, or WebGL2 in browsers without it). The full-size photo is made by the server's GPU, through OpenCL from Node.js (or WebGPU, with Dawn), or, on the hosted demo, by the visitor's own GPU in a Web Worker. Every one of them runs the same filter plans, and the tests check that they give the same pixels.
+OmniFilter puts 57 filters and preset looks on your photos with a GPU. In the web page, the photo shows the filters live as you change them, on the device's own GPU (WebGPU, or WebGL2 in browsers without it). The full-size photo is made by the server's GPU, through OpenCL from Node.js (or WebGPU, with Dawn), or, on the hosted demo, by the visitor's own GPU in a Web Worker. Every one of them runs the same filter plans, and the tests check that they give the same pixels.
 
 The server runs on macOS out of the box, and on Linux and Windows with an OpenCL driver installed.
 
@@ -114,7 +114,7 @@ The GPU tests compare every filter's output against a plain JavaScript implement
 
 # Filters
 
-56 filters, all running on the GPU except the neural styles. Pick one in the web page and adjust its settings; `GET /filters` lists them with their parameters.
+57 filters, all running on the GPU except the neural styles. Pick one in the web page and adjust its settings; `GET /filters` lists them with their parameters.
 
 | Group | Filters | What's interesting on the GPU |
 |---|---|---|
@@ -126,7 +126,7 @@ The GPU tests compare every filter's output against a plain JavaScript implement
 | Retro | Pixelate, ordered dither (incl. Game Boy palette), CMYK halftone, ASCII art | Bayer dithering is GPU-friendly where Floyd-Steinberg isn't |
 | Distort | Swirl, pinch/bulge, fisheye, ripple, lens distortion, chromatic aberration, mirror | Texture sampling with hardware bilinear interpolation; mirror copies pixels exactly |
 | Auto adjust | Auto levels/colour, histogram equalization, CLAHE (local contrast) | Atomic histograms in local memory, parallel reduction and prefix sum |
-| Generative | Stained glass, reaction-diffusion | Jump Flooding Algorithm for Voronoi cells; thousands of simulation steps |
+| Generative | Stained glass, reaction-diffusion, fractal explorer | Jump Flooding Algorithm for Voronoi cells; thousands of simulation steps; Mandelbrot, Julia, Burning Ship and Tricorn fractals overlaid on or seeded from the photo |
 | Neural style | Mosaic, Candy, Rain princess, Udnie, Pointillism | Pretrained networks run with ONNX Runtime (see below) |
 
 To add your own colour grade, drop a `.cube` file (exported from Lightroom, DaVinci Resolve, etc.) into `server/luts/` and restart the server.

@@ -18,8 +18,8 @@
 
 const { spawnSync } = require('child_process');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const system = require('../server/lib/system');
 
 const root = path.join(__dirname, '..');
 const clientDir = path.join(root, 'client');
@@ -29,12 +29,17 @@ const production = process.argv.includes('--production') || process.env.NODE_ENV
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 function run(cmd, args, env) {
-  const result = spawnSync(cmd, args, {
-    cwd: clientDir,
-    stdio: 'inherit',
-    env: Object.assign({}, process.env, env),
-    shell: process.platform === 'win32'
-  });
+  const result = process.platform === 'win32' ?
+    spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', [cmd].concat(args).join(' ')], {
+      cwd: clientDir,
+      stdio: 'inherit',
+      env: Object.assign({}, process.env, env)
+    }) :
+    spawnSync(cmd, args, {
+      cwd: clientDir,
+      stdio: 'inherit',
+      env: Object.assign({}, process.env, env)
+    });
   if (result.status !== 0) process.exit(result.status || 1);
 }
 
@@ -52,7 +57,7 @@ if (!fs.existsSync(path.join(clientDir, 'node_modules', '@angular', 'core'))) {
 const env = { NG_CLI_ANALYTICS: 'false' };
 // Angular compiles Sass with sass-embedded, whose Dart binary needs macOS 14
 // (Darwin 23); on older macOS it hangs, so use the pure JavaScript compiler.
-if (process.platform === 'darwin' && parseInt(os.release(), 10) < 23) {
+if (!system.supportsNativeSass()) {
   env.NG_BUILD_SASS_EMBEDDED = '0';
 }
 

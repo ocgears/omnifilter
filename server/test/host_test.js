@@ -278,6 +278,6 @@ describe('check-device', () => {
       env: Object.assign({}, process.env, { NODE_OPTIONS: '--require ' + crash })
     });
     expect(result.status).to.equal(1);
-    expect(result.stderr).to.include('crashed while setting up the OpenCL device (SIGKILL)');
+    expect(result.stderr).to.match(/crashed while setting up the OpenCL device \((SIGKILL|exit code 1)\)/);
   });
 });

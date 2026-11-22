@@ -46,6 +46,13 @@ import {
 import { takeSharedPhoto } from './shared-photo';
 import { DeviceTransform, DeviceTransformError } from './device-transform';
 import { DraftStore } from './draft-store';
+import {
+  isFractalMoved,
+  panFractal,
+  resetFractalView,
+  snapFractalToEdge,
+  zoomFractal,
+} from './fractal-nav';
 import { EditHistory, StackState } from './history';
 import { PreviewEngine, previewPhoto, smallerPhoto, stackLayers } from './preview-engine';
 import {
@@ -767,10 +774,14 @@ export class Editor {
   // done = false, and are recorded as an edit when let go.
   setParam(index: number, param: FilterParam, raw: string, done = true): void {
     const value = param.type === 'range' ? Number(raw) : raw;
-    this.updateLayer(index, (l) => ({
-      ...l,
-      params: { ...l.params, [param.name]: value } as ParamValues,
-    }));
+    this.updateLayer(index, (l) => {
+      const nextParams: ParamValues = { ...l.params, [param.name]: value };
+      // Picking a new fractal starting point resets pan/zoom to that preset's view.
+      if (l.tOption === 'fractal' && param.name === 'preset') {
+        return { ...l, params: resetFractalView(nextParams) };
+      }
+      return { ...l, params: nextParams };
+    });
     if (!done) return;
     const shown =
       param.type === 'select' ? (param.options.find((o) => o.value === value)?.label ?? raw) : raw;
@@ -778,6 +789,33 @@ export class Editor {
       this.layerName(index) + ': ' + param.label + ' ' + shown,
       'param:' + index + ':' + param.name,
     );
+  }
+
+  isFractalMoved(layer: Layer): boolean {
+    return layer.tOption === 'fractal' && isFractalMoved(layer.params);
+  }
+
+  moveFractal(index: number, dirX: number, dirY: number, label: string): void {
+    this.updateLayer(index, (l) => ({ ...l, params: panFractal(l.params, dirX, dirY) }));
+    this.commit(this.layerName(index) + ': Move ' + label, 'fractal-pan:' + index);
+  }
+
+  stepFractalZoom(index: number, delta: number): void {
+    this.updateLayer(index, (l) => ({ ...l, params: zoomFractal(l.params, delta) }));
+    this.commit(
+      this.layerName(index) + ': ' + (delta > 0 ? 'Zoom in' : 'Zoom out'),
+      'fractal-zoom:' + index,
+    );
+  }
+
+  snapFractal(index: number): void {
+    this.updateLayer(index, (l) => ({ ...l, params: snapFractalToEdge(l.params) }));
+    this.commit(this.layerName(index) + ': Snap to edge');
+  }
+
+  resetFractal(index: number): void {
+    this.updateLayer(index, (l) => ({ ...l, params: resetFractalView(l.params) }));
+    this.commit(this.layerName(index) + ': Reset view');
   }
 
   setAmount(index: number, raw: string, done = true): void {
@@ -966,12 +1004,12 @@ export class Editor {
       const kept = signedIn
         ? await this.api.import(photo, file)
         : await this.guestStore.add({
-            ...photo,
-            file,
-            mime: file.type,
-            width: made.width,
-            height: made.height,
-          });
+          ...photo,
+          file,
+          mime: file.type,
+          width: made.width,
+          height: made.height,
+        });
       // The gallery's Save and Share need not fetch it again.
       if (signedIn) this.api.remember(kept._id, file);
       this.photos.update((photos) => [kept, ...photos]);

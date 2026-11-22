@@ -19,6 +19,7 @@
 const { fork } = require('child_process');
 const path = require('path');
 const { GpuEngine } = require('./engine');
+const system = require('../system');
 
 var worker = null;
 var nextId = 1;
@@ -27,12 +28,7 @@ var description = null;
 var setting = 'auto';
 
 function available() {
-  try {
-    require.resolve('webgpu');
-    return true;
-  } catch (e) {
-    return false;
-  }
+  return system.supportsDawn();
 }
 
 function start() {
