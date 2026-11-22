@@ -151,6 +151,99 @@ describe('Editor', () => {
     expect(editor.layers()[0].params['amount']).toBe(55);
   });
 
+  it('moves, zooms, snaps to edge and resets view for the fractal filter', async () => {
+    const fractalFilter = {
+      name: 'fractal',
+      label: 'Fractal explorer',
+      group: 'Generative',
+      params: [
+        {
+          name: 'mode',
+          label: 'Mode',
+          type: 'select' as const,
+          options: [
+            { value: 'overlay', label: 'Overlaid on photo' },
+            { value: 'seeded', label: 'Seeded with photo' },
+            { value: 'standalone', label: 'Fractal only' },
+          ],
+          default: 'overlay',
+        },
+        {
+          name: 'preset',
+          label: 'Starting point',
+          type: 'select' as const,
+          options: [
+            { value: 'mandelbrot', label: 'Mandelbrot set' },
+            { value: 'seahorse', label: 'Seahorse Valley' },
+          ],
+          default: 'mandelbrot',
+        },
+        {
+          name: 'zoom',
+          label: 'Zoom',
+          type: 'range' as const,
+          min: -1,
+          max: 14,
+          step: 0.1,
+          default: 0,
+        },
+        {
+          name: 'pan_x',
+          label: 'Move horizontal',
+          type: 'range' as const,
+          min: -2,
+          max: 2,
+          step: 0.0001,
+          default: 0,
+        },
+        {
+          name: 'pan_y',
+          label: 'Move vertical',
+          type: 'range' as const,
+          min: -2,
+          max: 2,
+          step: 0.0001,
+          default: 0,
+        },
+        {
+          name: 'iterations',
+          label: 'Detail (iterations)',
+          type: 'range' as const,
+          min: 30,
+          max: 300,
+          step: 10,
+          default: 100,
+        },
+      ],
+    };
+    api.filters.mockResolvedValue([...FILTERS, fractalFilter]);
+    await create();
+    editor.setFilter(0, 'fractal');
+    await fixture.whenStable();
+
+    const resetBtn = el.querySelector<HTMLButtonElement>('.fractal-reset')!;
+    expect(resetBtn).not.toBeNull();
+    expect(resetBtn.disabled).toBe(true);
+
+    el.querySelector<HTMLButtonElement>('.fractal-pan-right')!.click();
+    el.querySelector<HTMLButtonElement>('.fractal-zoom-in')!.click();
+    await fixture.whenStable();
+    expect(Number(editor.layers()[0].params['pan_x'])).toBeGreaterThan(0);
+    expect(Number(editor.layers()[0].params['zoom'])).toBe(0.5);
+    expect(resetBtn.disabled).toBe(false);
+
+    el.querySelector<HTMLButtonElement>('.fractal-snap')!.click();
+    await fixture.whenStable();
+    expect(editor.history.current()?.label).toContain('Snap to edge');
+
+    resetBtn.click();
+    await fixture.whenStable();
+    expect(editor.layers()[0].params['pan_x']).toBe(0);
+    expect(editor.layers()[0].params['pan_y']).toBe(0);
+    expect(editor.layers()[0].params['zoom']).toBe(0);
+    expect(resetBtn.disabled).toBe(true);
+  });
+
   it("fills in the layers from a preset, and forgets the preset once they're edited", async () => {
     await create();
     const chip = Array.from(el.querySelectorAll<HTMLButtonElement>('.chip')).find(

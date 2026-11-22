@@ -3,6 +3,8 @@
 const expect = require('chai').expect;
 const gpu = require(__dirname + '/../lib/gpu_filters');
 const choice = require(__dirname + '/../lib/device_choice');
+const system = require(__dirname + '/../lib/system');
+const neural = require(__dirname + '/../lib/filters/neural');
 const { Plan, buf, int } = require(__dirname + '/../lib/filters/plan');
 const ref = require(__dirname + '/reference');
 
@@ -233,6 +235,126 @@ describe('when the device fails', function() {
     } finally {
       gpu.checkPlan = check;
       gpu.apply = apply;
+    }
+  });
+});
+
+describe('detecting modern vs legacy systems', () => {
+  it('distinguishes legacy macOS 12 (Darwin 21) from modern macOS, Linux and Windows', () => {
+    expect(system.darwinMajor('darwin', '21.6.0')).to.equal(21);
+    expect(system.darwinMajor('darwin', '23.4.0')).to.equal(23);
+    expect(system.darwinMajor('linux', '6.8.0')).to.equal(null);
+    expect(system.darwinMajor('win32', '10.0.26100')).to.equal(null);
+
+    expect(system.isLegacyMac('darwin', '21.6.0')).to.equal(true);
+    expect(system.isLegacyMac('darwin', '22.1.0')).to.equal(false);
+    expect(system.isLegacyMac('linux', '6.8.0')).to.equal(false);
+    expect(system.isLegacyMac('win32', '10.0.26100')).to.equal(false);
+
+    expect(system.supportsNativeSass('darwin', '21.6.0')).to.equal(false);
+    expect(system.supportsNativeSass('darwin', '22.6.0')).to.equal(false);
+    expect(system.supportsNativeSass('darwin', '23.0.0')).to.equal(true);
+    expect(system.supportsNativeSass('linux', '6.8.0')).to.equal(true);
+    expect(system.supportsNativeSass('win32', '10.0.26100')).to.equal(true);
+  });
+
+  it('checks whether the installed Dawn (webgpu) binary supports the current OS', () => {
+    const installed = () => '/node_modules/webgpu/index.js';
+    const missing = () => {
+      throw new Error('Cannot find module webgpu');
+    };
+    expect(system.supportsDawn({ resolve: missing, platform: 'linux', release: '6.8.0' })).to.equal(false);
+    expect(system.supportsDawn({
+      resolve: installed,
+      platform: 'darwin',
+      release: '21.6.0',
+      version: '0.3.8'
+    })).to.equal(false);
+    expect(system.supportsDawn({
+      resolve: installed,
+      platform: 'darwin',
+      release: '21.6.0',
+      version: '0.2.0'
+    })).to.equal(true);
+    expect(system.supportsDawn({
+      resolve: installed,
+      platform: 'darwin',
+      release: '25.0.0',
+      version: '0.3.8'
+    })).to.equal(true);
+    expect(system.supportsDawn({
+      resolve: installed,
+      platform: 'win32',
+      release: '10.0.26100',
+      version: '0.3.8'
+    })).to.equal(true);
+  });
+
+  it('chooses OpenCL when available and falls back to WebGPU on modern systems without OpenCL', () => {
+    expect(system.selectBackend({}, { hasOpenCL: () => true, hasWebGPU: () => true })).to.equal('opencl');
+    expect(system.selectBackend({}, { hasOpenCL: () => false, hasWebGPU: () => true })).to.equal('webgpu');
+    expect(system.selectBackend({}, { hasOpenCL: () => false, hasWebGPU: () => false })).to.equal('opencl');
+    expect(system.selectBackend({ OMNIFILTER_BACKEND: 'webgpu' }, {
+      hasOpenCL: () => true,
+      hasWebGPU: () => false
+    })).to.equal('webgpu');
+    expect(system.selectBackend({ OMNIFILTER_BACKEND: 'opencl' }, {
+      hasOpenCL: () => false,
+      hasWebGPU: () => true
+    })).to.equal('opencl');
+    expect(() => system.selectBackend({ OMNIFILTER_BACKEND: 'cuda' })).to.throw(/OMNIFILTER_BACKEND/);
+  });
+
+  it('picks hardware ONNX Runtime execution providers on modern systems and CPU on legacy macOS', () => {
+    const fakeOrt = {
+      listSupportedBackends: () => [
+        { name: 'cpu', bundled: true },
+        { name: 'dml', bundled: true },
+        { name: 'coreml', bundled: true }
+      ]
+    };
+    expect(system.ortExecutionProviders(fakeOrt, {
+      platform: 'win32',
+      release: '10.0.26100',
+      env: {}
+    })).to.eql(['dml', 'coreml', 'cpu']);
+    expect(system.ortExecutionProviders(fakeOrt, {
+      platform: 'darwin',
+      release: '21.6.0',
+      env: {}
+    })).to.eql(['cpu']);
+    expect(system.ortExecutionProviders(fakeOrt, {
+      platform: 'linux',
+      release: '6.8.0',
+      env: { OMNIFILTER_ORT_PROVIDERS: 'cuda, cpu' }
+    })).to.eql(['cuda', 'cpu']);
+    expect(system.ortExecutionProviders({}, { env: {} })).to.equal(null);
+  });
+
+  it('falls back to the CPU execution provider if a hardware provider fails to initialise', async () => {
+    const realOrt = neural.ort;
+    const seenOptions = [];
+    neural.ort = {
+      listSupportedBackends: () => [{ name: 'cpu', bundled: true }, { name: 'dml', bundled: true }],
+      InferenceSession: {
+        create: (bytes, opts) => {
+          seenOptions.push(opts);
+          if (opts.executionProviders && opts.executionProviders[0] === 'dml') {
+            return Promise.reject(new Error('DML device init failed'));
+          }
+          return Promise.resolve({ provider: 'cpu' });
+        }
+      }
+    };
+    try {
+      const s = await neural.createSession(Buffer.alloc(0));
+      expect(s).to.eql({ provider: 'cpu' });
+      expect(seenOptions).to.eql([
+        { executionProviders: ['dml', 'cpu'], logSeverityLevel: 3 },
+        { executionProviders: ['cpu'], logSeverityLevel: 3 }
+      ]);
+    } finally {
+      neural.ort = realOrt;
     }
   });
 });

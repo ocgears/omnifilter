@@ -161,5 +161,123 @@ fn read_u64(k: u32) -> f32 {
     o = mix(c * 0.12, vivid, t);
   }
   dst[i] = from_rgb(o, sat_u8(photo.w * 255.0));`
+  },
+
+  fractal: {
+    args: 'src:in dst:out width:i32 height:i32 center_x:f32 center_y:f32 scale:f32 seed_re:f32 seed_im:f32 fractal_type:i32 mode:i32 palette:i32 max_iter:i32 blend_amount:f32 row0:i32',
+    guard: 'band',
+    helpers: `
+fn fractal_palette(t: f32, palette: i32) -> vec3f {
+  let s = clamp(t, 0.0, 1.0);
+  let inv = 1.0 - s;
+  if (palette == 1) {
+    return vec3f(s * s * 0.75, s * (1.5 - 0.5 * s) * 0.95, 0.25 + 0.75 * sqrt(s));
+  }
+  if (palette == 2) {
+    return vec3f(min(1.0, s * 1.65), s * s * 0.95, s * s * s * s * 0.65);
+  }
+  if (palette == 3) {
+    return vec3f(s * s * 0.35, 0.15 + 0.85 * sqrt(s), s * 0.65);
+  }
+  return vec3f(
+    9.0 * inv * s * s * s,
+    15.0 * inv * inv * s * s,
+    8.5 * inv * inv * inv * s
+  );
+}`,
+    body: `
+  let raw_px = src[i];
+  let photo = to_rgba(raw_px);
+  let photo_rgb = select(vec3f(0.0), photo.xyz, photo.w > 0.0);
+
+  let short_side = f32(max(min(width, height), 1));
+  let nx = (f32(x) + 0.5 - 0.5 * f32(width)) / short_side;
+  let ny = (f32(y) + 0.5 - 0.5 * f32(height)) / short_side;
+  let coord_re = nx * scale + center_x;
+  let coord_im = ny * scale + center_y;
+
+  var c_re = seed_re;
+  var c_im = seed_im;
+  var eff_type = fractal_type;
+
+  if (mode == 1) {
+    var sum_rgb = vec3f(0.0);
+    var sum_a = 0.0;
+    for (var s = 0; s < 16; s++) {
+      let gx = s & 3;
+      let gy = s >> 2;
+      let sx = ((gx * 2 + 1) * width) / 8;
+      let sy = ((gy * 2 + 1) * height) / 8;
+      let sp = premul_pixel(at_src(sx, sy, width, height));
+      sum_rgb += sp.xyz;
+      sum_a += sp.w;
+    }
+    let mean_rgb = select(vec3f(0.5), sum_rgb / sum_a, sum_a > 0.0);
+    let theta = (mean_rgb.x * 1.7 + mean_rgb.y * 2.3 + mean_rgb.z * 3.1) * (2.0 * PI);
+    let card_re = 0.5 * cos(theta) - 0.25 * cos(2.0 * theta);
+    let card_im = 0.5 * sin(theta) - 0.25 * sin(2.0 * theta);
+    c_re = card_re + (seed_re + 0.4) * 0.08;
+    c_im = card_im + (seed_im - 0.6) * 0.08;
+    eff_type = 1;
+  }
+
+  var z_re = select(0.0, coord_re, eff_type == 1);
+  var z_im = select(0.0, coord_im, eff_type == 1);
+  let cr = select(coord_re, c_re, eff_type == 1);
+  let ci = select(coord_im, c_im, eff_type == 1);
+
+  if (mode == 1) {
+    let lum = luma(photo_rgb);
+    z_re += (lum - 0.5) * scale * 0.08;
+    z_im += (photo_rgb.x - photo_rgb.z) * scale * 0.06;
+  }
+
+  var iter = 0;
+  var mag_sq = 0.0;
+  var min_trap = 10.0;
+
+  for (var step_i = 0; step_i < max_iter; step_i++) {
+    let zr2 = z_re * z_re;
+    let zi2 = z_im * z_im;
+    mag_sq = zr2 + zi2;
+    if (mag_sq > 4.0) { break; }
+    var next_im = 2.0 * z_re * z_im + ci;
+    if (eff_type == 2) {
+      next_im = 2.0 * abs(z_re * z_im) + ci;
+    } else if (eff_type == 3) {
+      next_im = -2.0 * z_re * z_im + ci;
+    }
+    z_re = zr2 - zi2 + cr;
+    z_im = next_im;
+    min_trap = min(min_trap, abs(z_re) + abs(z_im));
+    iter++;
+  }
+
+  let escaped = iter < max_iter;
+  var smooth_val = f32(iter);
+  if (escaped && mag_sq > 1.0001) {
+    let log_zn = 0.5 * log2(mag_sq);
+    let nu = clamp(log2(max(log_zn, 0.0001)), -2.0, 4.0);
+    smooth_val = max(0.0, f32(iter) + 1.0 - nu);
+  }
+  let t = clamp(smooth_val / f32(max(max_iter, 1)), 0.0, 1.0);
+  let frac_col = select(vec3f(0.03, 0.04, 0.07), clamp(fractal_palette(t, palette), vec3f(0.0), vec3f(1.0)), escaped);
+
+  var out_rgb: vec3f;
+  if (mode == 0) {
+    let target_rgb = select(photo_rgb * 0.35, frac_col, escaped);
+    let mix_amt = select(blend_amount * 0.5, blend_amount, escaped);
+    out_rgb = mix(photo_rgb, target_rgb, mix_amt);
+  } else if (mode == 1) {
+    let lum = luma(photo_rgb);
+    let vivid = clamp(lum + (photo_rgb - lum) * 1.35, vec3f(0.0), vec3f(1.0));
+    let trap_t = clamp(1.0 - min_trap * 0.45, 0.0, 1.0);
+    let seeded_col = select(mix(vivid * 0.25, frac_col, 0.4), mix(frac_col, vivid, 0.38 * trap_t), escaped);
+    out_rgb = mix(photo_rgb, seeded_col, blend_amount);
+  } else {
+    out_rgb = mix(photo_rgb, frac_col, blend_amount);
+  }
+
+  dst[i] = from_rgb(clamp(out_rgb, vec3f(0.0), vec3f(1.0)), alpha_of(raw_px));`
   }
 };

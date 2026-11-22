@@ -3,8 +3,8 @@
 // OpenCL device: at desktop size, as an Android phone (Chromium), as an
 // iPhone (WebKit, Safari's engine), and in desktop Firefox and WebKit. See
 // e2e/.
-const os = require('os');
 const { defineConfig, devices } = require('@playwright/test');
+const system = require('./server/lib/system');
 
 const PORT = Number(process.env.E2E_PORT) || 3930;
 const CLOUD_PORT = Number(process.env.E2E_CLOUD_PORT) || 3931;
@@ -24,7 +24,7 @@ function serverEnv(own) {
 
 // Playwright has no Chromium build for macOS 12 (Darwin 21) or older, so use
 // the installed Google Chrome there.
-const oldMac = process.platform === 'darwin' && parseInt(os.release(), 10) < 22;
+const oldMac = system.isLegacyMac();
 
 // WebGPU, for the live preview (e2e/gpu.spec.js). Chrome has it on macOS and
 // Windows; on Linux it's behind a flag, and machines without a GPU (CI) use

@@ -3,11 +3,12 @@ import type { Animation, PauseReason, Touch } from '../../gpu';
 import { AnimationView } from './animation-view';
 
 describe('AnimationView', () => {
-  async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
-    for (let n = 0; n < 5; n++) {
-      await new Promise((resolve) => setTimeout(resolve));
-      await fixture.whenStable();
-    }
+  async function settle(fixture: {
+    whenStable(): Promise<unknown>;
+    componentInstance: AnimationView;
+  }): Promise<void> {
+    await vi.waitFor(() => expect(fixture.componentInstance.mode()).not.toBe('starting'));
+    await fixture.whenStable();
   }
 
   function create() {

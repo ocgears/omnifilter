@@ -53,6 +53,24 @@ const REACTIONS = {
   worms: { feed: 0.078, kill: 0.061 }
 };
 
+// Standard fractal starting points: type 0 is Mandelbrot, 1 Julia,
+// 2 Burning Ship, 3 Tricorn (Mandelbar).
+const FRACTAL_PRESETS = {
+  mandelbrot: { type: 0, centerX: -0.5, centerY: 0.0, baseZoom: 1.0, cRe: -0.7, cIm: 0.27015 },
+  seahorse: { type: 0, centerX: -0.74364, centerY: 0.13183, baseZoom: 32.0, cRe: -0.74364, cIm: 0.13183 },
+  elephant: { type: 0, centerX: 0.28172, centerY: 0.57711, baseZoom: 24.0, cRe: 0.28172, cIm: 0.57711 },
+  julia_spiral: { type: 1, centerX: 0.0, centerY: 0.0, baseZoom: 1.0, cRe: -0.4, cIm: 0.6 },
+  julia_rabbit: { type: 1, centerX: 0.0, centerY: 0.0, baseZoom: 1.0, cRe: -0.123, cIm: 0.745 },
+  julia_dragon: { type: 1, centerX: 0.0, centerY: 0.0, baseZoom: 1.0, cRe: -0.8, cIm: 0.156 },
+  julia_dendrite: { type: 1, centerX: 0.0, centerY: 0.0, baseZoom: 1.0, cRe: 0.0, cIm: 1.0 },
+  julia_siegel: { type: 1, centerX: 0.0, centerY: 0.0, baseZoom: 1.0, cRe: -0.391, cIm: -0.587 },
+  burning_ship: { type: 2, centerX: -0.45, centerY: -0.5, baseZoom: 0.9, cRe: -0.45, cIm: -0.5 },
+  tricorn: { type: 3, centerX: -0.3, centerY: 0.0, baseZoom: 0.95, cRe: -0.3, cIm: 0.0 }
+};
+
+const FRACTAL_MODES = { overlay: 0, seeded: 1, standalone: 2 };
+const FRACTAL_PALETTES = { cosmic: 0, electric: 1, fire: 2, emerald: 3 };
+
 module.exports = [
   {
     name: 'stained_glass',
@@ -127,6 +145,66 @@ module.exports = [
       plan.pass('rd_render', [img(a, { width: gw, height: gh, format: 'rgba32f' }), img('src'), buf(out),
         int(w), int(h), int(gw), int(gh), int(p.colour === 'ink' ? 0 : 1)]);
       plan.current = out;
+      return plan;
+    }
+  },
+  {
+    name: 'fractal',
+    label: 'Fractal explorer',
+    group: GROUP,
+    description: 'Mandelbrot, Julia, Burning Ship and Tricorn fractals on the GPU, overlaid on the photo, seeded from its colours, or explored from classic starting points.',
+    params: [
+      choice('mode', 'Mode', [
+        ['overlay', 'Overlaid on photo'],
+        ['seeded', 'Seeded with photo'],
+        ['standalone', 'Fractal only']
+      ], 'overlay'),
+      choice('preset', 'Starting point', [
+        ['mandelbrot', 'Mandelbrot set'],
+        ['seahorse', 'Seahorse Valley'],
+        ['elephant', 'Elephant Valley'],
+        ['julia_spiral', 'Golden spiral (Julia)'],
+        ['julia_rabbit', 'Douady\'s rabbit (Julia)'],
+        ['julia_dragon', 'Lightning dragon (Julia)'],
+        ['julia_dendrite', 'Dendrite (Julia)'],
+        ['julia_siegel', 'Siegel disk (Julia)'],
+        ['burning_ship', 'Burning Ship'],
+        ['tricorn', 'Tricorn (Mandelbar)']
+      ], 'mandelbrot'),
+      choice('palette', 'Palette', [
+        ['cosmic', 'Cosmic nebula'],
+        ['electric', 'Electric blue'],
+        ['fire', 'Solar fire'],
+        ['emerald', 'Emerald']
+      ], 'cosmic'),
+      range('zoom', 'Zoom', -1, 14, 0, 0.1),
+      range('pan_x', 'Move horizontal', -2, 2, 0, 0.0001),
+      range('pan_y', 'Move vertical', -2, 2, 0, 0.0001),
+      range('iterations', 'Detail (iterations)', 30, 300, 100, 10),
+      range('blend_amount', 'Overlay strength (%)', 10, 100, 75, 5)
+    ],
+    plan(w, h, p) {
+      const preset = FRACTAL_PRESETS[p.preset] || FRACTAL_PRESETS.mandelbrot;
+      const effectiveZoom = preset.baseZoom * Math.pow(2, p.zoom);
+      const scale = 3.0 / Math.max(effectiveZoom, 0.0001);
+      const centerX = preset.centerX + p.pan_x;
+      const centerY = preset.centerY + p.pan_y;
+      const modeIndex = FRACTAL_MODES[p.mode] !== undefined ? FRACTAL_MODES[p.mode] : 0;
+      const paletteIndex = FRACTAL_PALETTES[p.palette] !== undefined ? FRACTAL_PALETTES[p.palette] : 0;
+      const plan = new Plan(w, h);
+      plan.step('fractal',
+        float(centerX),
+        float(centerY),
+        float(scale),
+        float(preset.cRe),
+        float(preset.cIm),
+        int(preset.type),
+        int(modeIndex),
+        int(paletteIndex),
+        int(p.iterations),
+        float(p.blend_amount / 100),
+        int(0)
+      ).band(128);
       return plan;
     }
   }

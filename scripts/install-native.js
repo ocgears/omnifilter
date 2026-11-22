@@ -18,6 +18,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
@@ -140,11 +141,50 @@ async function tryPrebuilt() {
   return true;
 }
 
+// On Windows, if OPENCL_SDK is not set, looks for an installed Intel OpenCL
+// SDK (which puts OpenCL.lib under lib/x64 or lib/ia32 rather than lib/) and
+// prepares a folder with the include/ and lib/OpenCL.lib layout binding.gyp
+// expects.
+function resolveWindowsOpenCLSdk() {
+  if (process.platform !== 'win32' || process.env.OPENCL_SDK) return process.env.OPENCL_SDK;
+  const candidates = [
+    process.env.INTELOCLSDKROOT,
+    'C:\\Program Files (x86)\\Intel\\OpenCL SDK\\6.3'
+  ].filter(Boolean);
+  const archDir = process.arch === 'ia32' ? 'x86' : 'x64';
+  for (const sdk of candidates) {
+    const header = path.join(sdk, 'include', 'CL', 'cl.h');
+    const directLib = path.join(sdk, 'lib', 'OpenCL.lib');
+    const archLib = path.join(sdk, 'lib', archDir, 'OpenCL.lib');
+    if (!fs.existsSync(header)) continue;
+    if (fs.existsSync(directLib)) return sdk;
+    if (fs.existsSync(archLib)) {
+      const staged = path.join(os.tmpdir(), 'omnifilter-opencl-sdk-' + archDir);
+      fs.mkdirSync(path.join(staged, 'include', 'CL'), { recursive: true });
+      fs.mkdirSync(path.join(staged, 'lib'), { recursive: true });
+      for (const name of fs.readdirSync(path.join(sdk, 'include', 'CL'))) {
+        const srcFile = path.join(sdk, 'include', 'CL', name);
+        if (fs.statSync(srcFile).isFile()) {
+          fs.copyFileSync(srcFile, path.join(staged, 'include', 'CL', name));
+        }
+      }
+      fs.copyFileSync(archLib, path.join(staged, 'lib', 'OpenCL.lib'));
+      return staged;
+    }
+  }
+  return undefined;
+}
+
 function compile() {
   console.log('omnifilter: compiling the native addon');
+  const sdk = resolveWindowsOpenCLSdk();
+  const env = sdk ? Object.assign({}, process.env, { OPENCL_SDK: sdk }) : process.env;
   // npm puts its bundled node-gyp on the PATH for install scripts. Not
   // `rebuild`, whose clean step removes build/ (main() has emptied it).
-  const result = spawnSync('node-gyp', ['configure', 'build'], { cwd: ROOT, stdio: 'inherit', shell: true });
+  const result = process.platform === 'win32' ?
+    spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'node-gyp configure build'],
+      { cwd: ROOT, stdio: 'inherit', env: env }) :
+    spawnSync('node-gyp', ['configure', 'build'], { cwd: ROOT, stdio: 'inherit', env: env });
   if (result.status !== 0) {
     console.error('\nomnifilter: compiling the native addon failed. It needs a C++ compiler and the OpenCL ' +
       'headers; see "Requirements" in README.md.');

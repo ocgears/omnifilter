@@ -215,3 +215,138 @@ __kernel void rd_render(read_only image2d_t state,
   }
   dst[i] = from_rgb(o, convert_uchar_sat_rte(photo.w * 255.0f));
 }
+
+// ---- Fractals (Mandelbrot, Julia, Burning Ship, Tricorn) --------------------
+// Explores the complex plane z_{n+1} = f(z_n) + c, either overlaid on the
+// photo, seeded from the photo's colours and brightness, or rendered standalone
+// from one of the classic fractal starting points.
+
+float3 fractal_palette(float t, int palette) {
+  const float s = clamp(t, 0.0f, 1.0f);
+  const float inv = 1.0f - s;
+  if (palette == 1) {
+    return (float3)(s * s * 0.75f, s * (1.5f - 0.5f * s) * 0.95f, 0.25f + 0.75f * sqrt(s));
+  }
+  if (palette == 2) {
+    return (float3)(min(1.0f, s * 1.65f), s * s * 0.95f, s * s * s * s * 0.65f);
+  }
+  if (palette == 3) {
+    return (float3)(s * s * 0.35f, 0.15f + 0.85f * sqrt(s), s * 0.65f);
+  }
+  return (float3)(
+    9.0f * inv * s * s * s,
+    15.0f * inv * inv * s * s,
+    8.5f * inv * inv * inv * s
+  );
+}
+
+__kernel void fractal(__global const uchar4 *src,
+                      __global uchar4 *dst,
+                      const int width,
+                      const int height,
+                      const float center_x,
+                      const float center_y,
+                      const float scale,
+                      const float seed_re,
+                      const float seed_im,
+                      const int fractal_type,
+                      const int mode,
+                      const int palette,
+                      const int max_iter,
+                      const float blend_amount,
+                      const int row0)
+{
+  GUARD_BAND;
+  const uchar4 raw_px = src[i];
+  const float4 photo = to_rgba(raw_px);
+  const float3 photo_rgb = photo.w > 0.0f ? photo.xyz : (float3)(0.0f);
+
+  const float short_side = (float)max(min(width, height), 1);
+  const float nx = ((float)x + 0.5f - 0.5f * (float)width) / short_side;
+  const float ny = ((float)y + 0.5f - 0.5f * (float)height) / short_side;
+  const float coord_re = nx * scale + center_x;
+  const float coord_im = ny * scale + center_y;
+
+  float c_re = seed_re;
+  float c_im = seed_im;
+  int eff_type = fractal_type;
+
+  if (mode == 1) {
+    float3 sum_rgb = (float3)(0.0f);
+    float sum_a = 0.0f;
+    for (int s = 0; s < 16; s++) {
+      const int gx = s & 3;
+      const int gy = s >> 2;
+      const int sx = ((gx * 2 + 1) * width) / 8;
+      const int sy = ((gy * 2 + 1) * height) / 8;
+      const float4 sp = premul_pixel(pixel_at(src, sx, sy, width, height));
+      sum_rgb += sp.xyz;
+      sum_a += sp.w;
+    }
+    const float3 mean_rgb = sum_a > 0.0f ? (sum_rgb / sum_a) : (float3)(0.5f);
+    const float theta = (mean_rgb.x * 1.7f + mean_rgb.y * 2.3f + mean_rgb.z * 3.1f) * (2.0f * PI);
+    const float card_re = 0.5f * cos(theta) - 0.25f * cos(2.0f * theta);
+    const float card_im = 0.5f * sin(theta) - 0.25f * sin(2.0f * theta);
+    c_re = card_re + (seed_re + 0.4f) * 0.08f;
+    c_im = card_im + (seed_im - 0.6f) * 0.08f;
+    eff_type = 1;
+  }
+
+  float z_re = eff_type == 1 ? coord_re : 0.0f;
+  float z_im = eff_type == 1 ? coord_im : 0.0f;
+  const float cr = eff_type == 1 ? c_re : coord_re;
+  const float ci = eff_type == 1 ? c_im : coord_im;
+
+  if (mode == 1) {
+    const float lum = luma(photo_rgb);
+    z_re += (lum - 0.5f) * scale * 0.08f;
+    z_im += (photo_rgb.x - photo_rgb.z) * scale * 0.06f;
+  }
+
+  int iter = 0;
+  float mag_sq = 0.0f;
+  float min_trap = 10.0f;
+
+  for (int step_i = 0; step_i < max_iter; step_i++) {
+    const float zr2 = z_re * z_re;
+    const float zi2 = z_im * z_im;
+    mag_sq = zr2 + zi2;
+    if (mag_sq > 4.0f) break;
+    float next_im = 2.0f * z_re * z_im + ci;
+    if (eff_type == 2) {
+      next_im = 2.0f * fabs(z_re * z_im) + ci;
+    } else if (eff_type == 3) {
+      next_im = -2.0f * z_re * z_im + ci;
+    }
+    z_re = zr2 - zi2 + cr;
+    z_im = next_im;
+    min_trap = min(min_trap, fabs(z_re) + fabs(z_im));
+    iter++;
+  }
+
+  const int escaped = iter < max_iter ? 1 : 0;
+  float smooth_val = (float)iter;
+  if (escaped && mag_sq > 1.0001f) {
+    const float log_zn = 0.5f * log2(mag_sq);
+    const float nu = clamp(log2(max(log_zn, 0.0001f)), -2.0f, 4.0f);
+    smooth_val = max(0.0f, (float)iter + 1.0f - nu);
+  }
+  const float t = clamp(smooth_val / (float)max(max_iter, 1), 0.0f, 1.0f);
+  const float3 frac_col = escaped ? clamp(fractal_palette(t, palette), 0.0f, 1.0f) : (float3)(0.03f, 0.04f, 0.07f);
+
+  float3 out_rgb;
+  if (mode == 0) {
+    const float3 target = escaped ? frac_col : (photo_rgb * 0.35f);
+    out_rgb = mix(photo_rgb, target, escaped ? blend_amount : (blend_amount * 0.5f));
+  } else if (mode == 1) {
+    const float lum = luma(photo_rgb);
+    const float3 vivid = clamp(lum + (photo_rgb - lum) * 1.35f, 0.0f, 1.0f);
+    const float trap_t = clamp(1.0f - min_trap * 0.45f, 0.0f, 1.0f);
+    const float3 seeded_col = escaped ? mix(frac_col, vivid, 0.38f * trap_t) : mix(vivid * 0.25f, frac_col, 0.4f);
+    out_rgb = mix(photo_rgb, seeded_col, blend_amount);
+  } else {
+    out_rgb = mix(photo_rgb, frac_col, blend_amount);
+  }
+
+  dst[i] = from_rgb(clamp(out_rgb, 0.0f, 1.0f), raw_px.w);
+}

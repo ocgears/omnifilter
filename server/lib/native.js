@@ -22,7 +22,7 @@ function unavailable(message) {
   const fail = () => {
     throw new Error(message);
   };
-  return { devices: fail, init: fail, deviceInfo: fail, kernels: fail, filter: fail };
+  return { loaded: false, devices: fail, init: fail, deviceInfo: fail, kernels: fail, filter: fail };
 }
 
 const found = candidates.find((file) => fs.existsSync(file));

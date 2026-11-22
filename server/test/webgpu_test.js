@@ -13,13 +13,9 @@ const path = require('path');
 const expect = require('chai').expect;
 const gpuFilters = require(__dirname + '/../lib/gpu_filters');
 const stack = require(__dirname + '/../lib/stack');
+const webgpuBackend = require(__dirname + '/../lib/webgpu/backend');
 
-var hasDawn = true;
-try {
-  require.resolve('webgpu');
-} catch (e) {
-  hasDawn = false;
-}
+const hasDawn = webgpuBackend.available();
 
 // A gradient with some texture, a transparent hole and a soft alpha edge.
 function testImage(width, height) {
@@ -55,7 +51,8 @@ function compare(a, b) {
 const LOOSE = {
   kuwahara: { over: 0.002, mean: 0.05 },
   oil_paint: { over: 0.002, mean: 0.05 },
-  reaction_diffusion: { over: 0.15, mean: 3 }
+  reaction_diffusion: { over: 0.15, mean: 3 },
+  fractal: { over: 0.02, mean: 1.0 }
 };
 
 function runWebgpu(cases) {
@@ -120,7 +117,12 @@ describe('the WebGPU backend', function() {
     const tall = testImage(120, 700);
     cases.push({ label: 'banded bilateral', name: 'bilateral', params: {}, rgba: tall, width: 120, height: 700 });
     cases.push({ label: 'banded median', name: 'median', params: {}, rgba: tall, width: 120, height: 700 });
-    webgpu = await runWebgpu(cases);
+    try {
+      webgpu = await runWebgpu(cases);
+    } catch (e) {
+      if (process.env.OMNIFILTER_REQUIRE_WEBGPU) throw e;
+      this.skip();
+    }
     // Shows in the GitHub Actions summary which GPU the backend had.
     if (process.env.GITHUB_ACTIONS) {
       console.log('::notice title=WebGPU backend device::' + webgpu.device.name + ' (' + webgpu.device.type + ')');

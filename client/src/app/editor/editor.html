@@ -308,6 +308,79 @@
               }
             </div>
 
+            @if (layer.tOption === 'fractal') {
+              <div class="fractal-nav" role="group" aria-label="Fractal navigation">
+                <div class="fractal-nav-row">
+                  <button
+                    type="button"
+                    class="fractal-pan-left"
+                    (click)="moveFractal(i, -1, 0, 'left')"
+                    aria-label="Move fractal left"
+                  >
+                    &larr; Left
+                  </button>
+                  <button
+                    type="button"
+                    class="fractal-pan-up"
+                    (click)="moveFractal(i, 0, -1, 'up')"
+                    aria-label="Move fractal up"
+                  >
+                    &uarr; Up
+                  </button>
+                  <button
+                    type="button"
+                    class="fractal-pan-down"
+                    (click)="moveFractal(i, 0, 1, 'down')"
+                    aria-label="Move fractal down"
+                  >
+                    &darr; Down
+                  </button>
+                  <button
+                    type="button"
+                    class="fractal-pan-right"
+                    (click)="moveFractal(i, 1, 0, 'right')"
+                    aria-label="Move fractal right"
+                  >
+                    Right &rarr;
+                  </button>
+                </div>
+                <div class="fractal-nav-row">
+                  <button
+                    type="button"
+                    class="fractal-zoom-in"
+                    (click)="stepFractalZoom(i, 0.5)"
+                    aria-label="Zoom in fractal"
+                  >
+                    + Zoom in
+                  </button>
+                  <button
+                    type="button"
+                    class="fractal-zoom-out"
+                    (click)="stepFractalZoom(i, -0.5)"
+                    aria-label="Zoom out fractal"
+                  >
+                    &minus; Zoom out
+                  </button>
+                  <button
+                    type="button"
+                    class="fractal-snap"
+                    (click)="snapFractal(i)"
+                    title="Find the nearest fractal boundary when lost"
+                  >
+                    Snap to edge
+                  </button>
+                  <button
+                    type="button"
+                    class="fractal-reset"
+                    (click)="resetFractal(i)"
+                    [disabled]="!isFractalMoved(layer)"
+                  >
+                    Reset view
+                  </button>
+                </div>
+              </div>
+            }
+
             @if (blendModes().length) {
               <details class="mix" [open]="layer.amount < 100 || layer.blend !== 'normal'">
                 <summary>Layer mix: {{ blendLabel(layer.blend) }}, {{ layer.amount }}%</summary>

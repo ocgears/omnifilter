@@ -5,11 +5,12 @@ import { stackLayers } from './preview-engine';
 describe('LivePreview', () => {
   // Until the preview has asked for the GPU engine (its code loads on
   // demand) and been told there's none.
-  async function settle(fixture: { whenStable(): Promise<unknown> }): Promise<void> {
-    for (let n = 0; n < 5; n++) {
-      await new Promise((resolve) => setTimeout(resolve));
-      await fixture.whenStable();
-    }
+  async function settle(fixture: {
+    whenStable(): Promise<unknown>;
+    componentInstance: LivePreview;
+  }): Promise<void> {
+    await vi.waitFor(() => expect(fixture.componentInstance.mode()).not.toBe('starting'));
+    await fixture.whenStable();
   }
 
   it('shows the photo as it is, and says why, where there is no WebGPU', async () => {
