@@ -265,9 +265,9 @@ fn fractal_palette(t: f32, palette: i32) -> vec3f {
 
   var out_rgb: vec3f;
   if (mode == 0) {
-    let target = select(photo_rgb * 0.35, frac_col, escaped);
+    let target_rgb = select(photo_rgb * 0.35, frac_col, escaped);
     let mix_amt = select(blend_amount * 0.5, blend_amount, escaped);
-    out_rgb = mix(photo_rgb, target, mix_amt);
+    out_rgb = mix(photo_rgb, target_rgb, mix_amt);
   } else if (mode == 1) {
     let lum = luma(photo_rgb);
     let vivid = clamp(lum + (photo_rgb - lum) * 1.35, vec3f(0.0), vec3f(1.0));
